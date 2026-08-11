@@ -228,6 +228,26 @@ MIGRATIONS: list[list[str]] = [
         )
         """,
     ],
+    # -- v5: Phase 8, semantic tree ----------------------------------------
+    [
+        """
+        CREATE TABLE IF NOT EXISTS tree_nodes (
+            node_id         TEXT PRIMARY KEY,
+            kind            TEXT NOT NULL,
+            label           TEXT NOT NULL,
+            parent_id       TEXT,
+            file_id         INTEGER,
+            rel_path        TEXT NOT NULL DEFAULT '',
+            summary         TEXT NOT NULL DEFAULT '',
+            summary_backend TEXT NOT NULL DEFAULT '',
+            depth           INTEGER NOT NULL DEFAULT 0,
+            file_count      INTEGER NOT NULL DEFAULT 0
+        )
+        """,
+        "CREATE INDEX IF NOT EXISTS idx_tree_parent ON tree_nodes(parent_id)",
+        "CREATE INDEX IF NOT EXISTS idx_tree_kind   ON tree_nodes(kind)",
+        "CREATE INDEX IF NOT EXISTS idx_tree_file   ON tree_nodes(file_id)",
+    ],
 ]
 
 #: The schema version this build of ContextFS writes.
@@ -881,6 +901,60 @@ class Store:
         """Return ``{file_id: relative_path}`` for present files."""
         rows = self.conn.execute("SELECT id, path FROM files WHERE status = 'present'").fetchall()
         return {row["id"]: row["path"] for row in rows}
+
+    # -- semantic tree (Phase 8) -------------------------------------------
+
+    def save_tree(self, tree: Any) -> int:
+        """Replace the stored semantic tree.
+
+        Replaced wholesale rather than patched: the tree is cheap to rebuild
+        (it is derived entirely from `files` and `documents`) and a partially
+        updated tree with a stale parent link would be far harder to detect
+        than a rebuilt one.
+
+        Returns:
+            The number of nodes stored.
+        """
+        with self.transaction() as cursor:
+            cursor.execute("DELETE FROM tree_nodes")
+            cursor.executemany(
+                "INSERT INTO tree_nodes (node_id, kind, label, parent_id, file_id, rel_path, "
+                "summary, summary_backend, depth, file_count) VALUES (?,?,?,?,?,?,?,?,?,?)",
+                [
+                    (
+                        node.node_id,
+                        node.kind,
+                        node.label,
+                        node.parent_id,
+                        node.file_id,
+                        node.rel_path,
+                        node.summary,
+                        node.summary_backend,
+                        node.depth,
+                        node.file_count,
+                    )
+                    for node in tree.nodes.values()
+                ],
+            )
+        return len(tree.nodes)
+
+    def tree_nodes(self, kind: str | None = None) -> list[sqlite3.Row]:
+        """Return stored tree nodes, optionally filtered by kind."""
+        if kind:
+            return self.conn.execute(
+                "SELECT * FROM tree_nodes WHERE kind = ? ORDER BY depth, label", (kind,)
+            ).fetchall()
+        return self.conn.execute("SELECT * FROM tree_nodes ORDER BY depth, label").fetchall()
+
+    def tree_node(self, node_id: str) -> sqlite3.Row | None:
+        """Look up one tree node."""
+        return self.conn.execute(
+            "SELECT * FROM tree_nodes WHERE node_id = ?", (node_id,)
+        ).fetchone()
+
+    def tree_node_count(self) -> int:
+        """Total stored tree nodes."""
+        return self.conn.execute("SELECT COUNT(*) FROM tree_nodes").fetchone()[0]
 
     # -- scan runs ---------------------------------------------------------
 

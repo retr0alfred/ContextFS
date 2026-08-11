@@ -1271,3 +1271,103 @@ daemon. Recorded now so it is not discovered as a surprise at demo time.
 - `Embedder.pool()` for computing summary-node vectors from their children.
 
 ---
+
+## Phase 8 — Semantic tree (Layer 5, RAPTOR-inspired)
+
+### What was built
+
+`src/contextfs/summarize.py` — extractive summariser plus an optional
+loopback-only Ollama client. `src/contextfs/tree.py` — `Root → Project → Folder
+→ File → Chunk` construction with bottom-up rollup of file counts, vectors and
+summaries. Schema v5 adds `tree_nodes`. Wired into `contextfs scan`.
+
+### Decisions & reasoning
+
+#### Decision 43 — The extractive summariser is the default-tested path
+
+Ollama is not installed on the development machine, so the fallback is what
+actually runs in every test and every measurement. A fallback that only executes
+on someone else's laptop is not a fallback. `Summarizer` probes for Ollama once,
+uses it when present, and falls back per-node on failure while counting the
+fallbacks so the behaviour is visible rather than silent.
+
+#### Decision 44 — The tree's skeleton is the filesystem, not embedding clusters
+[DEVIATION from RAPTOR — deliberate]
+
+**What RAPTOR does:** cluster chunks by embedding similarity and build an
+abstract hierarchy over the clusters.
+
+**What ContextFS does:** use the user's own folder hierarchy, with top-level
+directories as "Project" nodes.
+
+**Why:** three reasons, in order of weight.
+
+1. **Explanations are a hard requirement here.** A clustered node has no name a
+   user recognises — "cluster 7" is not something anyone remembers. A folder
+   node is called `MachineLearning`, which is a thing the user themselves
+   created. RAPTOR's tree feeds an LLM; ContextFS's tree has to be shown to a
+   person.
+2. **Folder structure is authored signal.** The user *chose* it, so it encodes
+   their own organisation of their work. Discarding it to re-derive structure
+   from embeddings throws away information and replaces it with a guess.
+3. **Incrementality.** Adding one file adds one node. Re-clustering would
+   restructure the tree on every scan, violating the incremental constraint.
+
+**What is kept from RAPTOR:** a summary node is itself a legitimate retrieval
+target, and summaries are built bottom-up from child summaries rather than from
+concatenated raw text — so input size stays bounded regardless of subtree size.
+
+#### Decision 45 — Summaries are hard-capped in length [found by a failing test]
+
+`test_file_summaries_are_shorter_than_their_documents` failed on
+`evaluation_plan.xlsx`: an **856-character summary of an 833-character
+document**. Cause: for a spreadsheet, "sentences" are table rows with no
+terminal punctuation, so a sentence-count limit bounded nothing.
+
+A summary longer than its source is not a summary, and because folder summaries
+are built from child summaries, unbounded node summaries would have **grown
+without limit up the tree**. Fixed with `MAX_SUMMARY_CHARS = 400` and
+word-boundary clipping. Two new invariant tests: every summary is bounded, and a
+parent summary is never longer than the sum of its children's.
+
+### Verification — actual output
+
+```
+$ contextfs scan
+semantic tree: 321 nodes (4 projects, 7 folders, 40 files, 269 chunks),
+               52 summaries via extractive in ~30 ms
+
+$ pytest -q      249 passed in 78.86s
+$ ruff check .   All checks passed!
+```
+
+**Phase-required checks, both passing:**
+
+- *Every file node reachable from root* — `reachable_from_root()` covers all 321
+  nodes; `orphans()` is empty.
+- *Summary count matches the folder/project structure* — 52 summaries = 1 root +
+  4 projects + 7 folders + 40 files, asserted as an equation rather than a
+  constant.
+
+Project nodes resolve to exactly `{College, Projects, Personal, Downloads}`;
+`path_to_root` for `app.py` gives `["app.py", "UrbanFlow", "Projects", "corpus"]`.
+
+### Known-broken / deferred after Phase 8
+
+- The tree is rebuilt wholesale on each scan rather than patched. Cheap here
+  (~30 ms) because it derives entirely from `files` and `documents`, but it is a
+  genuine exception to the incremental rule and is called out as such.
+- Summary-node **vectors** are computed when a `VectorStore` is passed but are
+  not yet persisted to LanceDB, so summary nodes are not directly searchable.
+  Deferred until Phase 15 shows whether seed selection actually needs them.
+- The extractive summariser is frequency-based and is poor on tabular documents
+  (it can only pick rows). Acceptable: those documents' value is in their dates
+  and entities, both extracted by other layers.
+
+### What Phase 9 needs from this phase
+
+- `Store.entity_index()` for entity edges, `VectorStore.document_vectors()` for
+  semantic and duplicate edges, and `files.folder` for structural edges.
+- `tree_nodes` for folder-proximity computation.
+
+---

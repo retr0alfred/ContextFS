@@ -281,6 +281,16 @@ def _run_embeddings(store, cfg):
         raise typer.Exit(EXIT_CONFIG_ERROR) from exc
 
 
+def _run_tree(store, cfg):
+    """Rebuild the semantic tree and persist it."""
+    from contextfs.summarize import Summarizer
+    from contextfs.tree import build_tree
+
+    tree, report = build_tree(store, _open_vector_store(cfg), Summarizer(cfg))
+    store.save_tree(tree)
+    return report
+
+
 def _forget_deleted(store, cfg, deleted_paths):
     """Remove derived data belonging to files that vanished from disk.
 
@@ -366,12 +376,14 @@ def scan(
         result = scanner.scan(store, full=full, dry_run=dry_run, rehash=rehash)
         entity_stats = None
         embedding = None
+        tree_report = None
         if not dry_run and not no_extract:
             extraction = _run_extraction(store, cfg)
             entity_stats = _run_entities(store, cfg)
             if result.deleted:
                 _forget_deleted(store, cfg, result.deleted)
             embedding = _run_embeddings(store, cfg)
+            tree_report = _run_tree(store, cfg)
 
     table = Table(
         title=f"Scan of {cfg.paths.root}" + (" [dry run]" if dry_run else ""),
@@ -450,6 +462,16 @@ def scan(
             err_console.print(f"  [red]embedding failed[/red] {path}: {error}")
     elif embedding is not None:
         console.print("[dim]embeddings: nothing to do, all vectors current[/dim]")
+
+    if tree_report is not None:
+        kinds = tree_report.by_kind
+        console.print(
+            f"semantic tree: {tree_report.nodes} nodes "
+            f"({kinds.get('project', 0)} projects, {kinds.get('folder', 0)} folders, "
+            f"{kinds.get('file', 0)} files, {kinds.get('chunk', 0)} chunks), "
+            f"{tree_report.summaries} summaries via {tree_report.summary_backend} "
+            f"in {tree_report.duration_ms:.0f} ms"
+        )
 
     if result.errors:
         err_console.print(f"[yellow]{len(result.errors)} error(s) during scan:[/yellow]")
