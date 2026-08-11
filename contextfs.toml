@@ -1,0 +1,160 @@
+# ============================================================================
+# ContextFS configuration
+# ============================================================================
+# Every path in this file is resolved RELATIVE TO THIS FILE unless it is
+# already absolute. Nothing in the codebase may hardcode a scan path; this
+# file (or a CLI flag, or CONTEXTFS_* environment variables) is the only way
+# a root directory is chosen.
+#
+# Precedence (highest wins):
+#   1. CLI flag           (e.g. --root D:\SomeFolder)
+#   2. Environment var    (e.g. CONTEXTFS_ROOT)
+#   3. This config file
+#   4. Built-in defaults
+#
+# To point ContextFS at your own files without touching version control,
+# copy this to `contextfs.local.toml` (git-ignored) and edit that instead.
+# ============================================================================
+
+[general]
+# Human-readable name for this index. Used in CLI output and stats.
+profile_name = "default"
+
+[paths]
+# The directory tree ContextFS will scan. READ-ONLY: ContextFS never writes,
+# renames, moves or deletes anything under this path.
+# Default points at the generated synthetic corpus (Phase 3), so a fresh
+# clone is runnable with zero configuration.
+root = "data/synthetic/corpus"
+
+# Where ALL derived data lives. Nothing is ever written outside this dir.
+data_dir = ".contextfs"
+
+# Sub-stores inside data_dir (relative to data_dir unless absolute).
+sqlite_path = "contextfs.db"      # metadata, entities, sessions, feedback
+vector_path = "vectors.lance"     # LanceDB embedding store
+graph_path = "graph.json"         # serialised NetworkX MultiDiGraph
+
+[scan]
+# Directory names skipped entirely during traversal.
+ignore_dirs = [
+    ".git", ".svn", ".hg",
+    "node_modules", "__pycache__", ".venv", "venv", "env",
+    ".contextfs", ".pytest_cache", ".ruff_cache", ".mypy_cache",
+    "build", "dist", ".eggs", "site-packages",
+    "$RECYCLE.BIN", "System Volume Information",
+    "AppData", "Windows", "Program Files", "Program Files (x86)",
+]
+
+# Glob patterns for files to skip.
+ignore_globs = [
+    "*.tmp", "*.temp", "~$*", ".~lock.*",
+    "*.exe", "*.dll", "*.so", "*.dylib", "*.bin",
+    "*.zip", "*.7z", "*.rar", "*.iso",
+    "Thumbs.db", "desktop.ini", ".DS_Store",
+]
+
+# Extensions ContextFS will attempt to extract content from.
+# Anything else is still recorded as a file node (metadata only).
+include_extensions = [
+    ".pdf", ".docx", ".pptx", ".xlsx", ".txt", ".md", ".markdown",
+    ".py", ".js", ".ts", ".java", ".c", ".cpp", ".h", ".cs", ".go",
+    ".rs", ".rb", ".sh", ".sql", ".html", ".css", ".json", ".yaml", ".yml",
+    ".csv",
+]
+
+# Files larger than this are recorded but not content-extracted.
+max_file_size_mb = 50
+
+# Follow symbolic links / junctions. Off by default: prevents cycles and
+# accidental traversal outside the configured root.
+follow_symlinks = false
+
+[extraction]
+# Hard cap on characters pulled from a single document, to bound memory on
+# low-RAM machines. Set to 0 for unlimited.
+max_chars_per_document = 400000
+
+[entities]
+# spaCy model. Small model is the default: it runs comfortably on CPU.
+spacy_model = "en_core_web_sm"
+
+[embeddings]
+# sentence-transformers model. all-MiniLM-L6-v2 is 384-dim, ~90 MB, and
+# CPU-fast - chosen deliberately for the target hardware (see log.md).
+model = "sentence-transformers/all-MiniLM-L6-v2"
+dimension = 384
+# Chunking (justified in docs/ - Phase 7).
+chunk_size_tokens = 256
+chunk_overlap_tokens = 48
+batch_size = 16
+# Force CPU inference. The target machine has no CUDA device.
+device = "cpu"
+
+[summarization]
+# Optional local LLM for semantic-tree summaries. ContextFS MUST remain
+# fully functional with this disabled; an extractive fallback is used.
+enabled = false
+backend = "ollama"                # only local backends are permitted
+model = "llama3.2:3b"
+endpoint = "http://127.0.0.1:11434"
+timeout_seconds = 120
+
+[graph]
+# Cosine similarity above which two documents get a `semantic` edge.
+semantic_edge_threshold = 0.55
+# Max semantic edges kept per node (keeps the graph sparse and fast).
+semantic_edges_per_node = 8
+# Minimum shared named entities for an `entity` edge.
+min_shared_entities = 2
+# Cosine similarity above which two documents are treated as near-duplicates.
+duplicate_threshold = 0.95
+
+[temporal]
+# --- Meaningful vs. incidental date classification (Phase 10) --------------
+# Signal weights. Must sum to 1.0; validated at load time.
+weight_keyword_proximity = 0.40
+weight_structured_context = 0.25
+weight_metadata_consistency = 0.20
+weight_cross_file_recurrence = 0.15
+
+# A date becomes a timeline node only at or above this relevance score.
+# This is the single most important tunable parameter in the system.
+timeline_node_threshold = 0.55
+
+# Token window around a date mention searched for meaningful-date keywords.
+keyword_window_tokens = 12
+
+# Days between a mentioned date and the document's mtime within which the
+# metadata-consistency signal is considered fully satisfied.
+metadata_consistency_window_days = 60
+
+[activity]
+# --- Activity session reconstruction (Phase 12) ---------------------------
+# Files edited within this many hours of each other may join one session.
+session_gap_hours = 72
+# Minimum combined (topic + entity + folder) similarity to join a session.
+session_link_threshold = 0.35
+# Sessions smaller than this are discarded as noise.
+min_session_size = 2
+
+[retrieval]
+# --- Hybrid ranking weights (Phase 15). Must sum to 1.0. ------------------
+weight_semantic = 0.45
+weight_graph = 0.20
+weight_activity = 0.20
+weight_timeline = 0.15
+# Feedback nudge (Phase 19) is applied as a bounded multiplier, not a weight.
+feedback_max_boost = 0.15
+
+# Graph traversal budget.
+max_hops = 2
+max_seed_nodes = 10
+max_expanded_nodes = 400
+top_k = 10
+
+[eval]
+# Ground-truth benchmark used by the evaluation harness (Phases 21-22).
+ground_truth = "data/synthetic/ground_truth.json"
+results_dir = "data/eval"
+k_values = [1, 3, 5, 10]

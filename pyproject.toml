@@ -1,0 +1,153 @@
+[build-system]
+requires = ["setuptools>=69", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "contextfs"
+version = "0.1.0"
+description = "ContextFS - a local-first, context-aware, time-intelligent personal file retrieval system"
+readme = "README.md"
+requires-python = ">=3.10,<3.13"
+license = { text = "MIT" }
+authors = [
+    { name = "Alfred Mathew" },
+    { name = "Abu Ibrahim Mothi" },
+]
+keywords = [
+    "information-retrieval",
+    "personal-information-management",
+    "context-aware-retrieval",
+    "local-first",
+]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Environment :: Console",
+    "Intended Audience :: Science/Research",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Scientific/Engineering :: Information Analysis",
+]
+
+# ---------------------------------------------------------------------------
+# Core runtime dependencies.
+#
+# Version policy: lower bounds are the oldest release we have actually
+# exercised; upper bounds pin the next major/minor that is known to contain
+# breaking changes. Exact resolved versions are frozen to
+# requirements.lock.txt after install (see log.md, Phase 1).
+# ---------------------------------------------------------------------------
+dependencies = [
+    # CLI + presentation
+    "typer>=0.12,<0.17",
+    "rich>=13.7,<15",
+    # Config + validation
+    "pydantic>=2.7,<3",
+    "tomli>=2.0,<3; python_version < '3.11'",
+    # NLP
+    "spacy>=3.7,<3.9",
+    # Embeddings (torch is installed separately, CPU-only - see log.md)
+    "sentence-transformers>=3.0,<6",
+    "torch>=2.2,<3",
+    "numpy>=1.26,<3",
+    # Storage
+    "lancedb>=0.13,<0.30",
+    "pyarrow>=15,<23",
+    # Graph
+    "networkx>=3.2,<4",
+    # Temporal
+    "intervaltree>=3.1,<4",
+    "python-dateutil>=2.9,<3",
+    # Content extraction
+    "pypdf>=4.2,<7",
+    "python-docx>=1.1,<2",
+    "python-pptx>=0.6.23,<2",
+    "openpyxl>=3.1,<4",
+    "pillow>=10.3,<13",
+    # Hashing (fast, non-cryptographic content fingerprints)
+    "xxhash>=3.4,<4",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.2,<9",
+    "pytest-cov>=5.0,<8",
+    "black>=24.4,<26",
+    "ruff>=0.4,<1",
+]
+# Synthetic-corpus generation (Phase 3). Kept out of the core install so the
+# retrieval system itself never depends on document *writing* libraries.
+datagen = [
+    "reportlab>=4.2,<5",
+]
+
+[project.scripts]
+contextfs = "contextfs.cli.main:app"
+
+[project.urls]
+Repository = "https://github.com/retr0alfred/ContextFS"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+contextfs = ["py.typed"]
+
+# ---------------------------------------------------------------------------
+# Formatting / linting
+# ---------------------------------------------------------------------------
+[tool.black]
+line-length = 100
+target-version = ["py310", "py311", "py312"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py310"
+src = ["src", "tests", "scripts"]
+
+[tool.ruff.lint]
+select = [
+    "E",   # pycodestyle errors
+    "W",   # pycodestyle warnings
+    "F",   # pyflakes
+    "I",   # isort
+    "B",   # flake8-bugbear
+    "UP",  # pyupgrade
+    "C4",  # comprehensions
+    "SIM", # simplify
+    "D",   # pydocstyle (docstrings are a Phase 24 requirement)
+]
+ignore = [
+    "D203", # conflicts with D211
+    "D213", # conflicts with D212
+    "E501", # line length is Black's job
+    "B008", # Typer relies on function-call defaults (typer.Option(...))
+]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/*" = ["D100", "D101", "D102", "D103", "D104"]
+"scripts/*" = ["D100", "D103"]
+
+[tool.ruff.lint.pydocstyle]
+convention = "google"
+
+# ---------------------------------------------------------------------------
+# Testing
+# ---------------------------------------------------------------------------
+[tool.pytest.ini_options]
+minversion = "8.0"
+testpaths = ["tests"]
+addopts = "-ra --strict-markers"
+markers = [
+    "slow: tests that load ML models or build full indexes",
+    "integration: end-to-end tests across multiple layers",
+]
+filterwarnings = [
+    "ignore::DeprecationWarning:pkg_resources.*",
+]
+
+[tool.coverage.run]
+source = ["src/contextfs"]
+branch = true
+
+[tool.coverage.report]
+show_missing = true
+skip_empty = true

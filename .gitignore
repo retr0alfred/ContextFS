@@ -1,0 +1,99 @@
+# ---------------------------------------------------------------------------
+# ContextFS .gitignore
+#
+# PRIVACY-CRITICAL: ContextFS scans a user's real personal files. Nothing that
+# is derived from a real scan may ever reach the repository. The rules under
+# "Derived data" below exist for that reason, not for tidiness.
+# ---------------------------------------------------------------------------
+
+# --- Derived data from real scans (NEVER commit) ---------------------------
+.contextfs/
+*.contextfs/
+data/index/
+data/real/
+data/user/
+*.lance/
+*.lancedb/
+contextfs.db
+contextfs.db-journal
+contextfs.db-wal
+contextfs.db-shm
+*.sqlite
+*.sqlite3
+scan_state.json
+**/embeddings/
+**/graph.pkl
+**/graph.gpickle
+
+# --- Local user config that may contain real absolute paths ----------------
+contextfs.local.toml
+.contextfs.toml
+*.local.toml
+
+# --- Generated synthetic corpus (reproducible from scripts, not committed) --
+data/synthetic/corpus/
+
+# --- Python ----------------------------------------------------------------
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+
+# --- Environments ----------------------------------------------------------
+.venv/
+venv/
+ENV/
+env/
+.python-version
+
+# --- Testing / coverage ----------------------------------------------------
+.pytest_cache/
+.coverage
+.coverage.*
+htmlcov/
+coverage.xml
+.tox/
+.nox/
+
+# --- Tooling caches --------------------------------------------------------
+.ruff_cache/
+.mypy_cache/
+.dmypy.json
+
+# --- Models (downloaded locally, large, reproducible) ----------------------
+models/
+.cache/
+*.bin
+*.safetensors
+*.onnx
+
+# --- Editors / OS ----------------------------------------------------------
+.vscode/
+.idea/
+*.swp
+*.swo
+Thumbs.db
+desktop.ini
+$RECYCLE.BIN/
+.DS_Store
+
+# --- Logs / scratch --------------------------------------------------------
+*.log
+scratch/
+tmp/
