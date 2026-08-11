@@ -48,8 +48,9 @@ def test_no_args_shows_help_not_a_crash():
     assert "Traceback" not in result.output
 
 
+#: Commands still awaiting implementation, and the phase each lands in.
+#: Entries are removed as phases complete - `scan` went live in Phase 4.
 STUBS = [
-    (["scan"], 4),
     (["query", "some text"], 15),
     (["timeline", "March to April"], 11),
     (["explain", "abc123"], 16),
@@ -102,6 +103,43 @@ def test_root_flag_overrides_config(tmp_path):
     )
     assert result.exit_code == 0, result.output
     assert tmp_path.name in unwrap(result.output)
+
+
+def test_scan_command_runs_against_an_isolated_index(tmp_path):
+    """`contextfs scan` must work end to end without touching the project index."""
+    result = runner.invoke(
+        app,
+        [
+            "--config",
+            str(PROJECT_ROOT / "contextfs.toml"),
+            "--data-dir",
+            str(tmp_path / "derived"),
+            "scan",
+            "--dry-run",
+        ],
+    )
+    assert result.exit_code == 0, result.output
+    assert "new" in result.output
+    assert "Dry run" in result.output
+    assert not (tmp_path / "derived").exists() or not any((tmp_path / "derived").iterdir())
+
+
+def test_scan_reports_a_missing_root_without_a_traceback(tmp_path):
+    result = runner.invoke(
+        app,
+        [
+            "--config",
+            str(PROJECT_ROOT / "contextfs.toml"),
+            "--root",
+            str(tmp_path / "nope"),
+            "--data-dir",
+            str(tmp_path / "derived"),
+            "scan",
+        ],
+    )
+    assert result.exit_code == 2
+    assert "does not exist" in result.output
+    assert "Traceback" not in result.output
 
 
 def test_module_invocation_works():

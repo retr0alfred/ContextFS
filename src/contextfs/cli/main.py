@@ -172,16 +172,88 @@ def scan(
     dry_run: Annotated[
         bool, typer.Option("--dry-run", help="Report what would change without indexing.")
     ] = False,
+    rehash: Annotated[
+        bool,
+        typer.Option(
+            "--rehash",
+            help="Hash every file even if its size and timestamp are unchanged. Slower, "
+            "but detects content edits that preserved the timestamp.",
+        ),
+    ] = False,
+    show_files: Annotated[
+        bool, typer.Option("--show-files", help="List the changed files, not just counts.")
+    ] = False,
 ) -> None:
     """Index the configured root directory (read-only, incremental by default)."""
-    _ = (full, dry_run)
-    _not_implemented(
-        "scan",
-        4,
-        "Will walk the configured root, classify files as new/modified/unchanged/deleted, "
-        "then run extraction, entities, embeddings, graph, timeline and sessions over "
-        "only what changed.",
+    from contextfs.scanner import Scanner
+    from contextfs.store import Store
+
+    cfg = state.config()
+    if not cfg.paths.root.is_dir():
+        err_console.print(
+            f"[bold red]Scan root does not exist:[/bold red] {cfg.paths.root}\n"
+            "Set [cyan]paths.root[/cyan] in contextfs.toml, or pass --root."
+        )
+        raise typer.Exit(EXIT_CONFIG_ERROR)
+
+    if dry_run:
+        # Read the existing index if there is one; otherwise use a throwaway
+        # in-memory store so a dry run creates nothing on disk.
+        store_ctx = (
+            Store(cfg.db_path, read_only=True) if cfg.db_path.is_file() else Store.ephemeral()
+        )
+    else:
+        cfg.ensure_data_dir()
+        store_ctx = Store(cfg.db_path)
+
+    with store_ctx as store:
+        scanner = Scanner(cfg)
+        result = scanner.scan(store, full=full, dry_run=dry_run, rehash=rehash)
+
+    table = Table(
+        title=f"Scan of {cfg.paths.root}" + (" [dry run]" if dry_run else ""),
+        show_header=True,
+        header_style="bold cyan",
     )
+    table.add_column("Classification")
+    table.add_column("Files", justify="right")
+    table.add_row("[green]new[/green]", str(len(result.new)))
+    table.add_row("[yellow]modified[/yellow]", str(len(result.modified)))
+    table.add_row("[dim]unchanged[/dim]", str(len(result.unchanged)))
+    table.add_row("[red]deleted[/red]", str(len(result.deleted)))
+    table.add_section()
+    table.add_row("[bold]total present[/bold]", f"[bold]{result.seen}[/bold]")
+    console.print(table)
+
+    mib = result.bytes_hashed / (1024 * 1024)
+    console.print(
+        f"hashed {result.files_hashed}/{result.seen} files ({mib:.2f} MiB) "
+        f"in {result.duration_ms:.0f} ms  |  "
+        f"reprocessing {len(result.changed)}/{result.seen} "
+        f"({result.touched_fraction:.1%} of corpus)"
+    )
+    if result.skipped_too_large:
+        console.print(
+            f"[dim]{result.skipped_too_large} file(s) over the size limit, not hashed[/dim]"
+        )
+
+    if show_files:
+        for label, style, items in (
+            ("new", "green", [r.path for r in result.new]),
+            ("modified", "yellow", [r.path for r in result.modified]),
+            ("deleted", "red", result.deleted),
+        ):
+            for item in items:
+                console.print(f"  [{style}]{label:<9}[/{style}] {item}")
+
+    if result.errors:
+        err_console.print(f"[yellow]{len(result.errors)} error(s) during scan:[/yellow]")
+        for path, stage, message in result.errors[:10]:
+            err_console.print(f"  [{stage}] {path}: {message}")
+
+    if dry_run:
+        console.print("[dim]Dry run: nothing was written to the index.[/dim]")
+    console.print("[dim]Content extraction and downstream layers land in Phase 5 onward.[/dim]")
 
 
 @app.command()

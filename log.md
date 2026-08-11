@@ -551,3 +551,174 @@ $ black --check . clean
 - Committed ground truth at `cfg.eval.ground_truth`.
 
 ---
+
+## Phase 4 — File scanner (Layer 1) & SQLite store
+
+### What was built
+
+**`src/contextfs/store.py`** — the SQLite metadata store. Tables at schema v1:
+`meta`, `files`, `scan_runs`, `scan_errors`. Opened with WAL journaling,
+`synchronous=NORMAL`, an 8 MB page cache, and `foreign_keys=ON`.
+
+**`src/contextfs/scanner.py`** — `os.walk` traversal with in-place directory
+pruning, ignore rules from config, and four-way change classification.
+
+**`contextfs scan`** — wired live, with `--full`, `--dry-run`, `--rehash`,
+`--show-files`.
+
+**`scripts/bench_scan.py`** — repeated-median benchmark harness.
+
+### How change detection works
+
+A two-tier test, because hashing everything every scan would make incremental
+update time proportional to *corpus* size — destroying the very metric Phase 18
+reports.
+
+1. **Cheap tier (stat only).** If `size` **and** `mtime_ns` both match the
+   stored values, the file is presumed unchanged and is *never opened*.
+2. **Expensive tier (hash).** Otherwise the file is read and hashed. If the hash
+   matches the stored one, the file is classified **unchanged** despite the
+   moved timestamp — so `touch`, a backup restore, or a sync tool rewriting
+   mtimes does not trigger a full reindex.
+
+`--rehash` forces tier 2 for every file; `--full` marks everything modified.
+
+**Stated limitation, not hidden:** tier 1 cannot detect a content change that
+preserves both size and mtime exactly. That requires deliberate timestamp
+forgery. `--rehash` closes it when it matters. The alternative — always hashing —
+was rejected because it costs 4× on this corpus (76 ms vs 18 ms) and that ratio
+grows with corpus size.
+
+### Decisions & reasoning
+
+#### Decision 19 — Schema migrations from the first table
+
+**What:** `MIGRATIONS` is an ordered list of statement batches; the applied
+version lives in `PRAGMA user_version`; opening an old database upgrades it.
+
+**Why:** the schema will gain tables in Phases 5, 6, 10, 12, and 19. Without
+migrations, each of those would either require a full reindex (violating the
+incrementality constraint at the storage layer, not just the retrieval layer)
+or an ad-hoc `ALTER TABLE` scattered through unrelated modules. One append-only
+list keeps the upgrade path legible and testable.
+
+#### Decision 20 — xxh3_128 rather than SHA-256 for content hashing
+
+**What:** file fingerprints use `xxhash.xxh3_128`, a non-cryptographic hash.
+
+**Why:** the hash answers exactly one question — "did these bytes change?" —
+against a local, single-user, non-adversarial corpus. There is no threat model
+in which an attacker crafts a collision against a student's own Documents
+folder. xxh3 is roughly an order of magnitude faster than SHA-256 on this CPU,
+and hashing is the dominant cost of a cold scan (76 ms of which is nearly all
+I/O + hashing for 333 KiB). 128 bits makes accidental collision irrelevant at
+any plausible corpus size.
+
+**Note for the write-up:** the *tests* deliberately verify the read-only
+guarantee with `hashlib.sha256`, not xxhash. An audit must not share an
+implementation with the thing it audits, or a bug in that implementation is
+invisible to the audit.
+
+#### Decision 21 — Deleted files are tombstoned, not removed
+
+**What:** a vanished file gets `status='deleted'`, keeping its row.
+
+**Why:** by Phase 13 a file owns embeddings in LanceDB, nodes and edges in the
+graph, timeline nodes, and session membership. Hard-deleting the SQLite row
+would orphan all of it with no way to find what to unwind. The tombstone is the
+handle incremental deletion needs. A restored file is revived in place rather
+than duplicated — `test_restored_file_is_revived_not_duplicated` asserts the row
+count stays at 40 across delete → scan → restore → scan.
+
+#### Decision 22 — `--dry-run` creates nothing at all [changed mid-phase]
+
+**What:** a dry run opens no scan-run record, writes no rows, and — if no index
+exists yet — uses an in-memory store so the `.contextfs/` directory is never
+created.
+
+**Why:** the first implementation still created the database and a `scan_runs`
+row. A test caught it. "What would happen if I indexed this folder?" is exactly
+the question a cautious user asks *before* consenting to an index; answering it
+by silently creating one is the wrong answer. Verified: after
+`contextfs scan --dry-run` on a clean tree, `Test-Path .contextfs` → `False`.
+
+#### Decision 23 — Unchanged files get a one-column update, not a full upsert
+[performance fix found by benchmarking]
+
+**What:** `Store.touch_seen()` issues a single chunked
+`UPDATE files SET last_seen=? WHERE path IN (...)` for unchanged files, instead
+of running the full upsert for every file seen.
+
+**Why:** the first implementation upserted all 40 rows on every scan. Measured
+consequence: the *second* scan (which does zero hashing) took **522 ms** while
+the *first* (which hashed everything) took 183 ms — the incremental path was
+slower than the full path, which is the exact opposite of the property the
+architecture claims. Rewriting every column also rewrites all five indexes.
+
+After the fix (7 repetitions, median):
+
+| Scan | Median | Min | Max | Files hashed |
+|---|---|---|---|---|
+| Cold (all hashed) | **76.1 ms** | 71.2 | 95.2 | 40/40 |
+| Warm (no changes) | **18.2 ms** | 17.2 | 20.5 | 0/40 |
+| Incremental (1 file changed) | **37.4 ms** | 35.7 | 42.9 | 1/40 |
+
+Cold throughput: 526 files/s, 4.3 MiB/s. Warm scan is **4.2× faster** than cold.
+
+**Honesty caveat carried into the paper:** this corpus is 333 KiB and sits
+entirely in the OS page cache. These numbers measure *per-file overhead*, not
+disk throughput, and say nothing about behaviour at 100k files. The benchmark
+script prints that caveat itself so it cannot be quoted without it.
+
+### Verification — actual output
+
+```
+$ pytest -q
+103 passed in 13.00s
+
+$ ruff check .    All checks passed!
+$ black --check . clean
+```
+
+CLI walkthrough from a clean state:
+
+```
+$ contextfs scan --dry-run        new 40, modified 0, unchanged 0, deleted 0
+                                  hashed 40/40 (0.33 MiB) in 71 ms
+                                  Dry run: nothing was written to the index.
+  data dir created?  False        <-- dry run left no trace
+
+$ contextfs scan                  new 40 | reprocessing 40/40 (100.0% of corpus)
+$ contextfs scan                  unchanged 40 | hashed 0/40 | reprocessing 0/40 (0.0%)
+```
+
+**Read-only guarantee — the critical test.**
+`test_scanning_does_not_modify_any_file` fingerprints all 40 files with
+**SHA-256 + size + mtime_ns**, runs five scans (normal, repeat, `--full`,
+`--rehash`, `--dry-run`), re-fingerprints, and asserts equality. Passing.
+Two further tests assert no file is *created* under the root and that all
+derived data lands under `paths.data_dir`.
+
+Classification tests, all passing: first scan → 40 new; second → 40 unchanged
+with 0 files hashed; edit one file → 1 modified / 39 unchanged / 1 hashed; add
+one → 1 new; delete one → 1 deleted and tombstoned, `file_count()` 39 but 40
+including deleted; restore → revived, still 40 rows; `touch` with identical
+bytes → 0 modified; `--full` → 40 modified; oversized files inventoried but not
+hashed.
+
+### Known-broken / deferred after Phase 4
+
+- No content is read yet beyond hashing — Phase 5.
+- `files.ext` is recorded but nothing decides *extractability* from it yet.
+- Symlink loops: `follow_symlinks` defaults to false, so cycles are impossible
+  by default. If a user enables it, `os.walk` can loop. Not handled; flagged.
+- `stats` still stubbed even though the data it needs now exists — Phase 17.
+
+### What Phase 5 needs from this phase
+
+- `Store` with `known_files()` / `all_files()` and the migration mechanism to
+  add an `extracted_documents` table.
+- `ScanResult.changed` — the exact set of files extraction must process.
+- `FileRecord.ext` and `abs_path` for extractor dispatch.
+
+---
