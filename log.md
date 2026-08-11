@@ -354,3 +354,200 @@ validation, local-first enforcement, ablation re-normalisation) and 12 CLI tests
   corpus generator writes to the same location the scanner will later read.
 
 ---
+
+## Phase 3 — Synthetic corpus & ground-truth benchmark
+
+### What was built
+
+| Module | Role |
+|---|---|
+| `src/contextfs/datagen/corpus_spec.py` | The benchmark *specification*: 40 authored files, 6 sessions, 65 labelled dates, 17 queries |
+| `src/contextfs/datagen/writers.py` | Format writers producing genuine PDF / DOCX / PPTX / XLSX / text files |
+| `src/contextfs/datagen/generate.py` | Materialises the corpus and builds the ground-truth JSON from the same source |
+| `scripts/generate_corpus.py` | CLI: regenerate corpus + ground truth |
+| `scripts/verify_corpus.py` | 11-check integrity and determinism verifier |
+| `tests/test_corpus_spec.py` | 32 tests guarding the benchmark's invariants |
+
+### Corpus composition (measured, from `verify_corpus.py`)
+
+```
+files                                    40
+sessions                                 5   (+1 negative control = 6)
+unsessioned_files                        3
+queries                                  17
+dates_total                              65
+dates_meaningful                         35
+dates_incidental                         30
+near_duplicate_pairs                     2
+by_kind        {'code': 5, 'docx': 5, 'md': 10, 'pdf': 4, 'pptx': 2, 'txt': 8, 'xlsx': 6}
+by_query_kind  {'activity': 4, 'entity': 2, 'hybrid': 4, 'semantic': 4, 'temporal': 3}
+by_difficulty  {'easy': 7, 'hard': 10}
+```
+
+The persona is a final-year CS student across Aug 2025 – Mar 2026: internship
+applications, a hackathon weekend, a DBMS assignment, ML exam revision, capstone
+project work, and scattered personal notes.
+
+### Decisions & reasoning
+
+#### Decision 13 — The corpus is *authored*, not randomly generated [BETTER-THAN-SPEC]
+
+**What:** every file's text is written by hand in `corpus_spec.py`. Nothing is
+sampled from a template or a word list.
+
+**Why:** a randomly generated corpus can only test that the code runs. The
+hypothesis under test is about *specific adversarial relationships between
+files* — a timetable naming a PDF that never says "exam"; a deadline and a
+birthday a month apart; two drafts of one assignment. Those relationships have
+to be planted deliberately and the ground truth has to record where. Random
+generation cannot produce them, and a corpus that cannot embarrass the system
+cannot support a claim about it.
+
+**Cost:** the specification file is large (~1,900 lines) and every future corpus
+change is a manual edit. Accepted: this file *is* the benchmark, and a benchmark
+should be readable by a reviewer.
+
+#### Decision 14 — The corpus is adversarial by construction
+
+Concretely planted, each with a ground-truth label and a guarding test:
+
+| Planted case | Where | What it defeats |
+|---|---|---|
+| Lecture PDF containing zero exam vocabulary | `Unit4_Ensemble_Methods.pdf` | Semantic-only retrieval on q01 |
+| Timetable naming that PDF by filename | `Exam_Timetable_Sem7.xlsx` | Provides the only lexical bridge — external to the target |
+| Spreadsheet full of **incidental** dates | `ml_lab_attendance.xlsx` | "Dates in tables are meaningful" as a sufficient rule |
+| Bibliography of publication years | `references.txt` | Naive date extraction |
+| Historical essay (1946–48) | `history_essay_partition.md` | Same |
+| Birthday list | `birthday_list.txt` | Cross-file recurrence being naively applied |
+| Draft/final near-duplicate pair ×2 | DBMS docx, annotated PDF | Byte-identical-only duplicate detection |
+| Scattered personal files as a **negative control** | `personal_misc` (spans 223 days) | Over-clustering in session reconstruction |
+| A meaningful deadline in an **unsessioned** file | `scholarship_form_notes.txt` | Confounding the timeline layer with the activity layer |
+| Distractor Python files in three sessions | `prototype_scanner.py` etc. | "Any .py in the corpus" as an answer to q14 |
+
+`test_key_pdf_never_mentions_exam_or_revision` fails the build if the target PDF
+ever acquires the words `exam`, `test`, `revision`, `studied`, `syllabus`,
+`timetable`, `semester`, or `deadline`. Without that guard, a future edit could
+quietly make the central query easy, and every number would still look fine.
+
+#### Decision 15 — Queries carry `kind` and `difficulty` labels [BETTER-THAN-SPEC]
+
+**What:** each query is tagged `semantic | activity | temporal | entity | hybrid`
+and `easy | hard`, with a written rationale.
+
+**Why:** the prompt asks for queries with correct targets. That supports the
+claim "the full system scores higher overall". Tagging supports a much stronger
+and more defensible claim: *"activity modelling is what fixes activity-shaped
+queries, and it costs nothing on semantic ones."* A per-kind breakdown in Phase
+22 maps ablation rows directly onto RQ1–RQ4 instead of leaving the reader to
+infer the connection. It also creates an honest failure channel — if the
+activity layer helps semantic queries and not activity queries, something is
+wrong with the explanation, not just the score.
+
+**The paired queries q01 / q15** exist for this reason: identical target
+(`Unit4_Ensemble_Methods.pdf`), one phrased from memory ("the pdf I studied
+before my machine learning exam"), one from content ("how do bagging and
+boosting differ"). If the baseline wins q15 and loses q01, the thesis is
+demonstrated in a single two-row table.
+
+#### Decision 16 — Ground truth lives *outside* the corpus root
+
+**What:** `data/synthetic/ground_truth.json` sits beside, not inside,
+`data/synthetic/corpus/`.
+
+**Why:** it contains the answers. If it were inside the scan root it would be
+indexed, embedded, and retrievable — a file stating "q01's target is
+Unit4_Ensemble_Methods.pdf" would sit in the vector store during evaluation.
+That is label leakage, it would inflate every metric, and it would be almost
+invisible in the results. `verify_corpus.py` check 3 asserts no undeclared file
+exists under the corpus root.
+
+#### Decision 17 — Every date label carries a written justification
+
+**What:** `DateLabel` has a required `why` field; a test fails on any empty one.
+
+**Why:** Phase 10's precision/recall against these labels is a headline number.
+An examiner is entitled to ask "why is *this* date meaningful?" about any
+individual case. "Because the annotation file says so" is not an answer. With
+this field, every one of the 65 labels has a stated reason, and the annotation
+scheme is auditable rather than asserted.
+
+#### Decision 18 — Content-level determinism, honestly scoped
+
+**What:** `verify_corpus.py` regenerates the whole corpus into a temp directory
+and compares. PDFs use ReportLab `invariant=1` and are byte-identical. OOXML
+files are ZIP containers whose entries embed write timestamps, so they are
+compared **entry-by-entry excluding `docProps/core.xml` and `docProps/app.xml`**.
+
+**Why the caveat is stated rather than hidden:** claiming "byte-reproducible"
+would be false for 13 of 40 files. The property that actually matters for
+reproducing evaluation numbers is that the *extracted content* and the *mtimes*
+are identical, and that is what is verified. Result: `all 40 files reproduce
+identically`.
+
+#### Bug found by the new tests
+
+`test_date_surfaces_actually_occur_in_their_documents` failed on
+`College/Capstone/references.txt`: the ground truth labelled a publication year
+`2020` that does not appear anywhere in the file. Three further years present in
+the text (2019, 2004, 2003, 2007) were unlabelled. Both fixed; incidental-date
+count rose 27 → 30.
+
+This is exactly the class of error that would otherwise have shown up as an
+unexplained dip in Phase 10 recall, and been misattributed to the classifier.
+Worth noting for the write-up: **the ground truth needs tests as much as the
+code does.**
+
+### Verification — actual output
+
+```
+$ python scripts/generate_corpus.py
+generated 40 files | 5 sessions (+1 negative control) | 17 queries
+| 35 meaningful / 30 incidental dates | 2 near-duplicate pairs
+
+$ python scripts/verify_corpus.py
+1. Ground truth is valid JSON ......... PASS (43k, schema_version 1.0)
+2. Every referenced path exists ....... PASS (40/40)
+3. No stray files on disk ............. PASS (40 on disk, all declared)
+4. Modification times match spec ...... PASS (all within 2s)
+5. Label sanity ....................... PASS (5 sub-checks)
+6. Determinism ........................ PASS (40/40 reproduce identically)
+OK: all 11 checks passed
+
+$ pytest -q
+70 passed in 6.29s
+
+$ ruff check .   All checks passed!
+$ black --check . clean
+```
+
+### Honest limitations of this benchmark (carried forward to the paper)
+
+1. **40 files is small.** Enough to test correctness, far too small for
+   statistical significance. Per-query-kind cells hold 2–4 queries each; those
+   breakdowns are directional, not significant. This must be stated in Phase 21,
+   not implied away.
+2. **17 queries is small.** MRR over 17 queries has wide error bars. Reported
+   as-is; no significance test would be honest at this n.
+3. **The corpus author is the system author.** Unavoidable bias: the files were
+   written knowing what the system does well. Phase 23's real-data migration
+   plan exists specifically because of this, and no external-validity claim can
+   rest on this corpus alone.
+4. **The persona is a single Indian engineering student.** File-naming habits,
+   date formats (`DD-MM-YYYY`), and folder conventions are culture- and
+   domain-specific. Generalisation to other users is untested.
+
+### Known-broken / deferred after Phase 3
+
+- Generated corpus is git-ignored (`data/synthetic/corpus/`) and regenerated by
+  script; the ground truth **is** committed, since it is the benchmark.
+- Image files are absent — the spec lists images as partial-support only, and
+  metadata-only extraction adds nothing testable here. Revisit in Phase 5.
+
+### What Phase 4 needs from this phase
+
+- A populated corpus at `cfg.paths.root` with correct, non-uniform mtimes.
+- `contextfs.datagen.generate.missing_files()` and `corpus_manifest()` for
+  scanner tests to assert against.
+- Committed ground truth at `cfg.eval.ground_truth`.
+
+---

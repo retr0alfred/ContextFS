@@ -1,0 +1,1254 @@
+{
+  "schema_version": "1.0",
+  "generator": "contextfs.datagen.generate:generate_corpus",
+  "seed": 20260811,
+  "corpus_root": "corpus",
+  "provenance": "Fully synthetic. Authored in contextfs/datagen/corpus_spec.py. No file from any real user machine was read, copied, or derived from.",
+  "counts": {
+    "files": 40,
+    "sessions": 5,
+    "sessions_including_negative_control": 6,
+    "unsessioned_files": 3,
+    "queries": 17,
+    "dates_total": 65,
+    "dates_meaningful": 35,
+    "dates_incidental": 30,
+    "near_duplicate_pairs": 2,
+    "by_kind": {
+      "code": 5,
+      "docx": 5,
+      "md": 10,
+      "pdf": 4,
+      "pptx": 2,
+      "txt": 8,
+      "xlsx": 6
+    },
+    "by_query_kind": {
+      "activity": 4,
+      "entity": 2,
+      "hybrid": 4,
+      "semantic": 4,
+      "temporal": 3
+    },
+    "by_query_difficulty": {
+      "easy": 7,
+      "hard": 10
+    }
+  },
+  "sessions": [
+    {
+      "id": "internship_apps",
+      "label": "Internship applications",
+      "kind": "career",
+      "start": "2025-08-04",
+      "end": "2025-08-22",
+      "description": "Three weeks of applying for summer internships: CV revisions, cover letters, a tracking sheet, and interview preparation.",
+      "files": [
+        "Personal/Career/Resume_Alfred_Mathew.docx",
+        "Personal/Career/cover_letter_zoho.docx",
+        "Personal/Career/application_tracker.xlsx",
+        "Personal/Career/interview_prep_notes.md",
+        "Personal/Career/company_research.md"
+      ],
+      "size": 5
+    },
+    {
+      "id": "hackathon_urbanflow",
+      "label": "UrbanFlow hackathon",
+      "kind": "hackathon",
+      "start": "2025-09-12",
+      "end": "2025-09-15",
+      "description": "A 36-hour inter-college hackathon. Dense burst of activity across code, slides, notes and data in a single weekend - the clearest temporal-proximity signal in the corpus.",
+      "files": [
+        "Projects/UrbanFlow/README.md",
+        "Projects/UrbanFlow/app.py",
+        "Projects/UrbanFlow/traffic_model.py",
+        "Projects/UrbanFlow/pitch_deck.pptx",
+        "Projects/UrbanFlow/team_notes.md",
+        "Projects/UrbanFlow/submission_checklist.txt",
+        "Projects/UrbanFlow/sensor_data_sample.xlsx",
+        "Projects/UrbanFlow/demo_script.md"
+      ],
+      "size": 8
+    },
+    {
+      "id": "dbms_assignment",
+      "label": "DBMS normalization assignment",
+      "kind": "assignment",
+      "start": "2025-10-06",
+      "end": "2025-10-18",
+      "description": "A database normalization assignment written over two weeks, including a deliberately planted draft/final near-duplicate pair.",
+      "files": [
+        "College/Semester7/DBMS/assignment_brief.pdf",
+        "College/Semester7/DBMS/Assignment2_Normalization_draft.docx",
+        "College/Semester7/DBMS/Assignment2_Normalization_final.docx",
+        "College/Semester7/DBMS/normalization_examples.sql",
+        "College/Semester7/DBMS/dbms_lab_record.xlsx"
+      ],
+      "size": 5
+    },
+    {
+      "id": "ml_exam_prep",
+      "label": "Machine Learning exam preparation",
+      "kind": "exam_prep",
+      "start": "2025-11-10",
+      "end": "2025-11-24",
+      "description": "Revision for the Semester 7 ML end-semester exam. Contains the corpus's central adversarial case: the timetable knows about the exam, the lecture PDFs the student actually revised do not.",
+      "files": [
+        "College/Semester7/MachineLearning/Exam_Timetable_Sem7.xlsx",
+        "College/Semester7/MachineLearning/Unit4_Ensemble_Methods.pdf",
+        "College/Semester7/MachineLearning/Unit4_Ensemble_Methods_annotated.pdf",
+        "College/Semester7/MachineLearning/Unit3_SVM_Notes.md",
+        "College/Semester7/MachineLearning/ml_revision_checklist.txt",
+        "College/Semester7/MachineLearning/confusion_matrix_practice.py",
+        "College/Semester7/MachineLearning/ml_lab_attendance.xlsx"
+      ],
+      "size": 7
+    },
+    {
+      "id": "capstone_contextfs",
+      "label": "Capstone project (ContextFS)",
+      "kind": "project",
+      "start": "2026-01-12",
+      "end": "2026-03-20",
+      "description": "Final-year project work: proposal, literature survey, review presentations, supervisor meetings, and prototype code. The longest-running session, testing that sessions are not merely 'files touched on the same day'.",
+      "files": [
+        "College/Capstone/ContextFS_Proposal.docx",
+        "College/Capstone/literature_survey.md",
+        "College/Capstone/supervisor_meeting_notes.md",
+        "College/Capstone/review1_slides.pptx",
+        "College/Capstone/evaluation_plan.xlsx",
+        "College/Capstone/prototype_scanner.py",
+        "College/Capstone/references.txt"
+      ],
+      "size": 7
+    },
+    {
+      "id": "personal_misc",
+      "label": "Personal notes (no coherent work session)",
+      "kind": "none",
+      "start": "2025-07-01",
+      "end": "2026-02-28",
+      "description": "Deliberate negative control. These files are scattered in time and topic and must NOT be clustered into a session. A session reconstructor that groups them is over-clustering, and the session accuracy metric is designed to catch that.",
+      "files": [
+        "Personal/Misc/history_essay_partition.md",
+        "Personal/Misc/birthday_list.txt",
+        "Personal/Misc/movie_watchlist.txt",
+        "Personal/Misc/book_notes_sapiens.md",
+        "Personal/Misc/recipe_biryani.txt"
+      ],
+      "size": 5
+    }
+  ],
+  "files": [
+    {
+      "path": "College/Semester7/MachineLearning/Exam_Timetable_Sem7.xlsx",
+      "kind": "xlsx",
+      "session": "ml_exam_prep",
+      "mtime": "2025-11-10T18:22:00",
+      "near_duplicate_of": null,
+      "meaningful_dates": [
+        {
+          "date": "2025-11-18",
+          "kind": "meaningful",
+          "surface": "18-11-2025",
+          "why": "Scheduled end-semester examination date in a timetable table."
+        },
+        {
+          "date": "2025-11-21",
+          "kind": "meaningful",
+          "surface": "21-11-2025",
+          "why": "Scheduled end-semester examination date in a timetable table."
+        },
+        {
+          "date": "2025-11-24",
+          "kind": "meaningful",
+          "surface": "24-11-2025",
+          "why": "The Machine Learning exam date - target of several queries."
+        },
+        {
+          "date": "2025-11-26",
+          "kind": "meaningful",
+          "surface": "26-11-2025",
+          "why": "Scheduled end-semester examination date in a timetable table."
+        }
+      ],
+      "incidental_dates": [],
+      "notes": "THE BRIDGE FILE. It is the only document that connects the word 'exam' to the lecture PDFs. Every date here sits in a table, which is exactly the structured-context signal Phase 10 must reward."
+    },
+    {
+      "path": "College/Semester7/MachineLearning/Unit4_Ensemble_Methods.pdf",
+      "kind": "pdf",
+      "session": "ml_exam_prep",
+      "mtime": "2025-11-19T21:47:00",
+      "near_duplicate_of": null,
+      "meaningful_dates": [],
+      "incidental_dates": [],
+      "notes": "CRITICAL NEGATIVE CASE. This is the file the student means by 'the PDF I studied before my ML exam', and it contains none of the words 'exam', 'test', 'revision', 'timetable', 'syllabus' or 'semester'. A pure-semantic system cannot connect this file to an exam query. Only the activity session (co-edited with the timetable and the revision checklist) or the graph path through the timetable's filename reference can recover it."
+    },
+    {
+      "path": "College/Semester7/MachineLearning/Unit4_Ensemble_Methods_annotated.pdf",
+      "kind": "pdf",
+      "session": "ml_exam_prep",
+      "mtime": "2025-11-22T23:05:00",
+      "near_duplicate_of": "College/Semester7/MachineLearning/Unit4_Ensemble_Methods.pdf",
+      "meaningful_dates": [],
+      "incidental_dates": [],
+      "notes": "PLANTED NEAR-DUPLICATE. Same lecture PDF with a handful of margin notes added. Phase 9 must link it to the original with a duplicate edge; Phase 20's near-duplicate detector must surface the pair."
+    },
+    {
+      "path": "College/Semester7/MachineLearning/Unit3_SVM_Notes.md",
+      "kind": "md",
+      "session": "ml_exam_prep",
+      "mtime": "2025-11-16T20:12:00",
+      "near_duplicate_of": null,
+      "meaningful_dates": [],
+      "incidental_dates": [],
+      "notes": "Second instance of the adversarial case: revision notes that never say 'exam'. Directly retrievable by a semantic query about SVMs (q03), so it also tests that context-awareness does not *hurt* straightforward semantic queries."
+    },
+    {
+      "path": "College/Semester7/MachineLearning/ml_revision_checklist.txt",
+      "kind": "txt",
+      "session": "ml_exam_prep",
+      "mtime": "2025-11-20T22:30:00",
+      "near_duplicate_of": null,
+      "meaningful_dates": [
+        {
+          "date": "2025-11-24",
+          "kind": "meaningful",
+          "surface": "24 Nov",
+          "why": "The ML exam date, stated next to the word 'exam'."
+        },
+        {
+          "date": "2025-11-23",
+          "kind": "meaningful",
+          "surface": "23 Nov",
+          "why": "Self-imposed deadline for finishing revision - actionable."
+        }
+      ],
+      "incidental_dates": [],
+      "notes": "Uses the word 'exam' explicitly and names the PDFs. This is the second bridge between the vocabulary of the query and the vocabulary of the target files."
+    },
+    {
+      "path": "College/Semester7/MachineLearning/confusion_matrix_practice.py",
+      "kind": "code",
+      "session": "ml_exam_prep",
+      "mtime": "2025-11-17T19:05:00",
+      "near_duplicate_of": null,
+      "meaningful_dates": [],
+      "incidental_dates": [],
+      "notes": "Source-code file inside an exam-prep session; tests code extraction."
+    },
+    {
+      "path": "College/Semester7/MachineLearning/ml_lab_attendance.xlsx",
+      "kind": "xlsx",
+      "session": "ml_exam_prep",
+      "mtime": "2025-11-11T09:15:00",
+      "near_duplicate_of": null,
+      "meaningful_dates": [],
+      "incidental_dates": [
+        {
+          "date": "2025-08-11",
+          "kind": "incidental",
+          "surface": "11-08-2025",
+          "why": "A past lab attendance record."
+        },
+        {
+          "date": "2025-08-18",
+          "kind": "incidental",
+          "surface": "18-08-2025",
+          "why": "A past lab attendance record."
+        },
+        {
+          "date": "2025-09-01",
+          "kind": "incidental",
+          "surface": "01-09-2025",
+          "why": "A past lab attendance record."
+        },
+        {
+          "date": "2025-09-08",
+          "kind": "incidental",
+          "surface": "08-09-2025",
+          "why": "A past lab attendance record."
+        },
+        {
+          "date": "2025-10-06",
+          "kind": "incidental",
+          "surface": "06-10-2025",
+          "why": "A past lab attendance record."
+        }
+      ],
+      "notes": "Contains many dates in a table, but they are attendance records - not actionable. A naive 'dates in tables are meaningful' rule would mark all of these meaningful, so this file is the control that stops the structured-context signal from dominating alone."
+    },
+    {
+      "path": "Projects/UrbanFlow/README.md",
+      "kind": "md",
+      "session": "hackathon_urbanflow",
+      "mtime": "2025-09-13T02:40:00",
+      "near_duplicate_of": null,
+      "meaningful_dates": [
+        {
+          "date": "2025-09-14",
+          "kind": "meaningful",
+          "surface": "14 September 2025",
+          "why": "Hackathon submission deadline - stated as a deadline."
+        }
+      ],
+      "incidental_dates": [],
+      "notes": ""
+    },
+    {
+      "path": "Projects/UrbanFlow/app.py",
+      "kind": "code",
+      "session": "hackathon_urbanflow",
+      "mtime": "2025-09-13T04:18:00",
+      "near_duplicate_of": null,
+      "meaningful_dates": [],
+      "incidental_dates": [],
+      "notes": ""
+    },
+    {
+      "path": "Projects/UrbanFlow/traffic_model.py",
+      "kind": "code",
+      "session": "hackathon_urbanflow",
+      "mtime": "2025-09-13T05:52:00",
+      "near_duplicate_of": null,
+      "meaningful_dates": [],
+      "incidental_dates": [],
+      "notes": ""
+    },
+    {
+      "path": "Projects/UrbanFlow/pitch_deck.pptx",
+      "kind": "pptx",
+      "session": "hackathon_urbanflow",
+      "mtime": "2025-09-14T07:10:00",
+      "near_duplicate_of": null,
+      "meaningful_dates": [
+        {
+          "date": "2025-09-14",
+          "kind": "meaningful",
+          "surface": "14 Sept 2025",
+          "why": "Presentation/judging date stated on the title slide."
+        }
+      ],
+      "incidental_dates": [],
+      "notes": ""
+    },
+    {
+      "path": "Projects/UrbanFlow/team_notes.md",
+      "kind": "md",
+      "session": "hackathon_urbanflow",
+      "mtime": "2025-09-12T23:15:00",
+      "near_duplicate_of": null,
+      "meaningful_dates": [
+        {
+          "date": "2025-09-12",
+          "kind": "meaningful",
+          "surface": "12 September",
+          "why": "Kickoff meeting, stated with a time and attendees."
+        },
+        {
+          "date": "2025-09-14",
+          "kind": "meaningful",
+          "surface": "14 September",
+          "why": "Submission deadline restated in the plan."
+        }
+      ],
+      "incidental_dates": [],
+      "notes": ""
+    },
+    {
+      "path": "Projects/UrbanFlow/submission_checklist.txt",
+      "kind": "txt",
+      "session": "hackathon_urbanflow",
+      "mtime": "2025-09-14T06:05:00",
+      "near_duplicate_of": null,
+      "meaningful_dates": [
+        {
+          "date": "2025-09-14",
+          "kind": "meaningful",
+          "surface": "14 Sep",
+          "why": "Hard submission deadline with a time - the most actionable date in this session."
+        }
+      ],
+      "incidental_dates": [],
+      "notes": ""
+    },
+    {
+      "path": "Projects/UrbanFlow/sensor_data_sample.xlsx",
+      "kind": "xlsx",
+      "session": "hackathon_urbanflow",
+      "mtime": "2025-09-13T01:22:00",
+      "near_duplicate_of": null,
+      "meaningful_dates": [],
+      "incidental_dates": [
+        {
+          "date": "2025-09-13",
+          "kind": "incidental",
+          "surface": "13-09-2025",
+          "why": "Timestamp on a sensor reading - a record of the past, not an obligation."
+        }
+      ],
+      "notes": "Structured data with timestamps that are observations, not commitments."
+    },
+    {
+      "path": "Projects/UrbanFlow/demo_script.md",
+      "kind": "md",
+      "session": "hackathon_urbanflow",
+      "mtime": "2025-09-14T07:45:00",
+      "near_duplicate_of": null,
+      "meaningful_dates": [],
+      "incidental_dates": [],
+      "notes": ""
+    },
+    {
+      "path": "College/Semester7/DBMS/assignment_brief.pdf",
+      "kind": "pdf",
+      "session": "dbms_assignment",
+      "mtime": "2025-10-06T11:30:00",
+      "near_duplicate_of": null,
+      "meaningful_dates": [
+        {
+          "date": "2025-10-18",
+          "kind": "meaningful",
+          "surface": "18 October 2025",
+          "why": "Assignment submission deadline, stated as 'due'."
+        },
+        {
+          "date": "2025-10-06",
+          "kind": "meaningful",
+          "surface": "6 October 2025",
+          "why": "Date the assignment was issued - bounds the work period."
+        }
+      ],
+      "incidental_dates": [],
+      "notes": ""
+    },
+    {
+      "path": "College/Semester7/DBMS/Assignment2_Normalization_draft.docx",
+      "kind": "docx",
+      "session": "dbms_assignment",
+      "mtime": "2025-10-12T16:40:00",
+      "near_duplicate_of": null,
+      "meaningful_dates": [
+        {
+          "date": "2025-10-18",
+          "kind": "meaningful",
+          "surface": "18 October 2025",
+          "why": "The submission deadline, restated in the cover block."
+        }
+      ],
+      "incidental_dates": [],
+      "notes": "Draft half of the planted near-duplicate pair."
+    },
+    {
+      "path": "College/Semester7/DBMS/Assignment2_Normalization_final.docx",
+      "kind": "docx",
+      "session": "dbms_assignment",
+      "mtime": "2025-10-17T22:55:00",
+      "near_duplicate_of": "College/Semester7/DBMS/Assignment2_Normalization_draft.docx",
+      "meaningful_dates": [
+        {
+          "date": "2025-10-18",
+          "kind": "meaningful",
+          "surface": "18 October 2025",
+          "why": "The submission deadline, restated in the cover block."
+        }
+      ],
+      "incidental_dates": [],
+      "notes": "PLANTED NEAR-DUPLICATE. Substantially the same document as the draft with the TODOs resolved. Tests that duplicate detection is not so strict it only catches byte-identical copies."
+    },
+    {
+      "path": "College/Semester7/DBMS/normalization_examples.sql",
+      "kind": "code",
+      "session": "dbms_assignment",
+      "mtime": "2025-10-16T20:10:00",
+      "near_duplicate_of": null,
+      "meaningful_dates": [],
+      "incidental_dates": [],
+      "notes": ""
+    },
+    {
+      "path": "College/Semester7/DBMS/dbms_lab_record.xlsx",
+      "kind": "xlsx",
+      "session": "dbms_assignment",
+      "mtime": "2025-10-08T14:20:00",
+      "near_duplicate_of": null,
+      "meaningful_dates": [
+        {
+          "date": "2025-10-21",
+          "kind": "meaningful",
+          "surface": "21-10-2025",
+          "why": "Lab record submission deadline - forward-looking and actionable."
+        }
+      ],
+      "incidental_dates": [
+        {
+          "date": "2025-08-05",
+          "kind": "incidental",
+          "surface": "05-08-2025",
+          "why": "Past lab session record."
+        },
+        {
+          "date": "2025-08-19",
+          "kind": "incidental",
+          "surface": "19-08-2025",
+          "why": "Past lab session record."
+        },
+        {
+          "date": "2025-09-16",
+          "kind": "incidental",
+          "surface": "16-09-2025",
+          "why": "Past lab session record."
+        }
+      ],
+      "notes": ""
+    },
+    {
+      "path": "College/Capstone/ContextFS_Proposal.docx",
+      "kind": "docx",
+      "session": "capstone_contextfs",
+      "mtime": "2026-01-19T15:30:00",
+      "near_duplicate_of": null,
+      "meaningful_dates": [
+        {
+          "date": "2026-01-23",
+          "kind": "meaningful",
+          "surface": "23 January 2026",
+          "why": "Proposal submission deadline stated in the cover block."
+        },
+        {
+          "date": "2026-02-06",
+          "kind": "meaningful",
+          "surface": "6 February 2026",
+          "why": "Scheduled Review 1 date."
+        }
+      ],
+      "incidental_dates": [],
+      "notes": ""
+    },
+    {
+      "path": "College/Capstone/literature_survey.md",
+      "kind": "md",
+      "session": "capstone_contextfs",
+      "mtime": "2026-01-28T18:05:00",
+      "near_duplicate_of": null,
+      "meaningful_dates": [],
+      "incidental_dates": [],
+      "notes": ""
+    },
+    {
+      "path": "College/Capstone/supervisor_meeting_notes.md",
+      "kind": "md",
+      "session": "capstone_contextfs",
+      "mtime": "2026-02-11T17:20:00",
+      "near_duplicate_of": null,
+      "meaningful_dates": [
+        {
+          "date": "2026-01-16",
+          "kind": "meaningful",
+          "surface": "16 January 2026",
+          "why": "A supervisor meeting that took place - an attended appointment."
+        },
+        {
+          "date": "2026-02-06",
+          "kind": "meaningful",
+          "surface": "6 February 2026",
+          "why": "Review 1 presentation date."
+        },
+        {
+          "date": "2026-02-11",
+          "kind": "meaningful",
+          "surface": "11 February 2026",
+          "why": "A supervisor meeting with an agenda and action items."
+        },
+        {
+          "date": "2026-03-13",
+          "kind": "meaningful",
+          "surface": "13 March 2026",
+          "why": "Review 2 date, agreed in the meeting."
+        }
+      ],
+      "incidental_dates": [],
+      "notes": ""
+    },
+    {
+      "path": "College/Capstone/review1_slides.pptx",
+      "kind": "pptx",
+      "session": "capstone_contextfs",
+      "mtime": "2026-02-05T21:40:00",
+      "near_duplicate_of": null,
+      "meaningful_dates": [
+        {
+          "date": "2026-02-06",
+          "kind": "meaningful",
+          "surface": "6 February 2026",
+          "why": "The review presentation date, on the title slide."
+        }
+      ],
+      "incidental_dates": [],
+      "notes": ""
+    },
+    {
+      "path": "College/Capstone/evaluation_plan.xlsx",
+      "kind": "xlsx",
+      "session": "capstone_contextfs",
+      "mtime": "2026-02-14T12:10:00",
+      "near_duplicate_of": null,
+      "meaningful_dates": [
+        {
+          "date": "2026-02-20",
+          "kind": "meaningful",
+          "surface": "20-02-2026",
+          "why": "Milestone due date in a project plan table."
+        },
+        {
+          "date": "2026-03-02",
+          "kind": "meaningful",
+          "surface": "02-03-2026",
+          "why": "Milestone due date in a project plan table."
+        },
+        {
+          "date": "2026-03-13",
+          "kind": "meaningful",
+          "surface": "13-03-2026",
+          "why": "Review 2 date - a hard external commitment."
+        },
+        {
+          "date": "2026-03-20",
+          "kind": "meaningful",
+          "surface": "20-03-2026",
+          "why": "Final report submission date."
+        }
+      ],
+      "incidental_dates": [],
+      "notes": ""
+    },
+    {
+      "path": "College/Capstone/prototype_scanner.py",
+      "kind": "code",
+      "session": "capstone_contextfs",
+      "mtime": "2026-02-02T23:12:00",
+      "near_duplicate_of": null,
+      "meaningful_dates": [],
+      "incidental_dates": [],
+      "notes": ""
+    },
+    {
+      "path": "College/Capstone/references.txt",
+      "kind": "txt",
+      "session": "capstone_contextfs",
+      "mtime": "2026-01-30T13:45:00",
+      "near_duplicate_of": null,
+      "meaningful_dates": [],
+      "incidental_dates": [
+        {
+          "date": "2024-01-01",
+          "kind": "incidental",
+          "surface": "2024",
+          "why": "A paper's publication year."
+        },
+        {
+          "date": "2019-01-01",
+          "kind": "incidental",
+          "surface": "2019",
+          "why": "A paper's publication year."
+        },
+        {
+          "date": "2004-01-01",
+          "kind": "incidental",
+          "surface": "2004",
+          "why": "A paper's publication year."
+        },
+        {
+          "date": "2003-01-01",
+          "kind": "incidental",
+          "surface": "2003",
+          "why": "A paper's publication year."
+        },
+        {
+          "date": "2007-01-01",
+          "kind": "incidental",
+          "surface": "2007",
+          "why": "A paper's publication year."
+        },
+        {
+          "date": "2005-01-01",
+          "kind": "incidental",
+          "surface": "2005",
+          "why": "A paper's publication year."
+        },
+        {
+          "date": "1998-01-01",
+          "kind": "incidental",
+          "surface": "1998",
+          "why": "A paper's publication year."
+        }
+      ],
+      "notes": "Contains publication years - the archetypal incidental date. A bibliography is dense with dates and none of them are actionable."
+    },
+    {
+      "path": "Personal/Career/Resume_Alfred_Mathew.docx",
+      "kind": "docx",
+      "session": "internship_apps",
+      "mtime": "2025-08-06T19:30:00",
+      "near_duplicate_of": null,
+      "meaningful_dates": [],
+      "incidental_dates": [],
+      "notes": ""
+    },
+    {
+      "path": "Personal/Career/cover_letter_zoho.docx",
+      "kind": "docx",
+      "session": "internship_apps",
+      "mtime": "2025-08-12T21:05:00",
+      "near_duplicate_of": null,
+      "meaningful_dates": [
+        {
+          "date": "2025-08-18",
+          "kind": "meaningful",
+          "surface": "18 August 2025",
+          "why": "Application closing date, stated as a deadline."
+        }
+      ],
+      "incidental_dates": [],
+      "notes": ""
+    },
+    {
+      "path": "Personal/Career/application_tracker.xlsx",
+      "kind": "xlsx",
+      "session": "internship_apps",
+      "mtime": "2025-08-20T18:45:00",
+      "near_duplicate_of": null,
+      "meaningful_dates": [
+        {
+          "date": "2025-08-18",
+          "kind": "meaningful",
+          "surface": "18-08-2025",
+          "why": "Application closing date in a deadline column."
+        },
+        {
+          "date": "2025-08-25",
+          "kind": "meaningful",
+          "surface": "25-08-2025",
+          "why": "Application closing date in a deadline column."
+        },
+        {
+          "date": "2025-09-01",
+          "kind": "meaningful",
+          "surface": "01-09-2025",
+          "why": "Application closing date in a deadline column."
+        },
+        {
+          "date": "2025-08-27",
+          "kind": "meaningful",
+          "surface": "27-08-2025",
+          "why": "A scheduled interview - an appointment."
+        }
+      ],
+      "incidental_dates": [],
+      "notes": ""
+    },
+    {
+      "path": "Personal/Career/interview_prep_notes.md",
+      "kind": "md",
+      "session": "internship_apps",
+      "mtime": "2025-08-21T22:15:00",
+      "near_duplicate_of": null,
+      "meaningful_dates": [
+        {
+          "date": "2025-08-27",
+          "kind": "meaningful",
+          "surface": "27 August",
+          "why": "The scheduled online test - an appointment being prepared for."
+        }
+      ],
+      "incidental_dates": [],
+      "notes": ""
+    },
+    {
+      "path": "Personal/Career/company_research.md",
+      "kind": "md",
+      "session": "internship_apps",
+      "mtime": "2025-08-08T20:50:00",
+      "near_duplicate_of": null,
+      "meaningful_dates": [],
+      "incidental_dates": [],
+      "notes": ""
+    },
+    {
+      "path": "Personal/Misc/history_essay_partition.md",
+      "kind": "md",
+      "session": "personal_misc",
+      "mtime": "2025-07-14T16:20:00",
+      "near_duplicate_of": null,
+      "meaningful_dates": [],
+      "incidental_dates": [
+        {
+          "date": "1947-08-15",
+          "kind": "incidental",
+          "surface": "15 August 1947",
+          "why": "A historical event date. Nothing is scheduled or due."
+        },
+        {
+          "date": "1947-08-14",
+          "kind": "incidental",
+          "surface": "14 August 1947",
+          "why": "A historical event date."
+        },
+        {
+          "date": "1948-01-30",
+          "kind": "incidental",
+          "surface": "30 January 1948",
+          "why": "A historical event date."
+        },
+        {
+          "date": "1946-08-16",
+          "kind": "incidental",
+          "surface": "16 August 1946",
+          "why": "A historical event date."
+        }
+      ],
+      "notes": "Dense with historical dates, none actionable. This is the primary test that the date classifier does not simply extract every date."
+    },
+    {
+      "path": "Personal/Misc/birthday_list.txt",
+      "kind": "txt",
+      "session": "personal_misc",
+      "mtime": "2025-12-28T11:05:00",
+      "near_duplicate_of": null,
+      "meaningful_dates": [],
+      "incidental_dates": [
+        {
+          "date": "2003-04-11",
+          "kind": "incidental",
+          "surface": "11 April 2003",
+          "why": "A birth date, not an obligation."
+        },
+        {
+          "date": "2002-09-23",
+          "kind": "incidental",
+          "surface": "23 September 2002",
+          "why": "A birth date."
+        },
+        {
+          "date": "1971-06-05",
+          "kind": "incidental",
+          "surface": "5 June 1971",
+          "why": "A birth date."
+        },
+        {
+          "date": "1974-11-30",
+          "kind": "incidental",
+          "surface": "30 November 1974",
+          "why": "A birth date."
+        }
+      ],
+      "notes": "Recurring annual dates with no year-specific commitment. The cross-file recurrence signal must not be fooled into promoting these: they recur *within* a file, not across the corpus."
+    },
+    {
+      "path": "Personal/Misc/movie_watchlist.txt",
+      "kind": "txt",
+      "session": "personal_misc",
+      "mtime": "2026-01-05T23:40:00",
+      "near_duplicate_of": null,
+      "meaningful_dates": [],
+      "incidental_dates": [
+        {
+          "date": "1995-01-01",
+          "kind": "incidental",
+          "surface": "1995",
+          "why": "A film release year."
+        },
+        {
+          "date": "2014-01-01",
+          "kind": "incidental",
+          "surface": "2014",
+          "why": "A film release year."
+        },
+        {
+          "date": "2019-01-01",
+          "kind": "incidental",
+          "surface": "2019",
+          "why": "A film release year."
+        },
+        {
+          "date": "1966-01-01",
+          "kind": "incidental",
+          "surface": "1966",
+          "why": "A film release year."
+        }
+      ],
+      "notes": ""
+    },
+    {
+      "path": "Personal/Misc/book_notes_sapiens.md",
+      "kind": "md",
+      "session": "personal_misc",
+      "mtime": "2025-10-30T22:10:00",
+      "near_duplicate_of": null,
+      "meaningful_dates": [],
+      "incidental_dates": [
+        {
+          "date": "1776-07-04",
+          "kind": "incidental",
+          "surface": "1776",
+          "why": "A historical reference."
+        },
+        {
+          "date": "1492-01-01",
+          "kind": "incidental",
+          "surface": "1492",
+          "why": "A historical reference."
+        }
+      ],
+      "notes": ""
+    },
+    {
+      "path": "Personal/Misc/recipe_biryani.txt",
+      "kind": "txt",
+      "session": "personal_misc",
+      "mtime": "2026-02-22T19:30:00",
+      "near_duplicate_of": null,
+      "meaningful_dates": [],
+      "incidental_dates": [],
+      "notes": "Contains no dates at all. A file with zero temporal content."
+    },
+    {
+      "path": "Downloads/python_cheatsheet.pdf",
+      "kind": "pdf",
+      "session": null,
+      "mtime": "2025-09-29T10:15:00",
+      "near_duplicate_of": null,
+      "meaningful_dates": [],
+      "incidental_dates": [],
+      "notes": "Topical distractor. Overlaps vocabulary with several code files but belongs to no session and answers no query - it should appear in nearest-neighbour results and be correctly de-prioritised."
+    },
+    {
+      "path": "Downloads/wifi_setup_instructions.txt",
+      "kind": "txt",
+      "session": null,
+      "mtime": "2025-08-02T09:00:00",
+      "near_duplicate_of": null,
+      "meaningful_dates": [],
+      "incidental_dates": [],
+      "notes": "Pure noise. Belongs to nothing, answers nothing."
+    },
+    {
+      "path": "Downloads/scholarship_form_notes.txt",
+      "kind": "txt",
+      "session": null,
+      "mtime": "2025-12-11T15:30:00",
+      "near_duplicate_of": null,
+      "meaningful_dates": [
+        {
+          "date": "2025-12-31",
+          "kind": "meaningful",
+          "surface": "31 December 2025",
+          "why": "A hard application deadline, stated as 'last date'."
+        },
+        {
+          "date": "2025-12-20",
+          "kind": "meaningful",
+          "surface": "20 December 2025",
+          "why": "Deadline for obtaining a prerequisite document."
+        }
+      ],
+      "incidental_dates": [],
+      "notes": "Unsessioned file that nevertheless carries a genuinely meaningful date. Tests that the timeline layer is independent of the session layer - a deadline in an orphan file must still become a timeline node."
+    }
+  ],
+  "near_duplicate_pairs": [
+    {
+      "file": "College/Semester7/MachineLearning/Unit4_Ensemble_Methods_annotated.pdf",
+      "duplicate_of": "College/Semester7/MachineLearning/Unit4_Ensemble_Methods.pdf"
+    },
+    {
+      "file": "College/Semester7/DBMS/Assignment2_Normalization_final.docx",
+      "duplicate_of": "College/Semester7/DBMS/Assignment2_Normalization_draft.docx"
+    }
+  ],
+  "unsessioned_files": [
+    "Downloads/python_cheatsheet.pdf",
+    "Downloads/wifi_setup_instructions.txt",
+    "Downloads/scholarship_form_notes.txt"
+  ],
+  "queries": [
+    {
+      "id": "q01",
+      "text": "the pdf I studied before my machine learning exam",
+      "targets": [
+        "College/Semester7/MachineLearning/Unit4_Ensemble_Methods.pdf"
+      ],
+      "relevant": [
+        "College/Semester7/MachineLearning/Unit4_Ensemble_Methods.pdf",
+        "College/Semester7/MachineLearning/Unit4_Ensemble_Methods_annotated.pdf",
+        "College/Semester7/MachineLearning/Unit3_SVM_Notes.md",
+        "College/Semester7/MachineLearning/ml_revision_checklist.txt",
+        "College/Semester7/MachineLearning/Exam_Timetable_Sem7.xlsx"
+      ],
+      "kind": "activity",
+      "difficulty": "hard",
+      "rationale": "THE CENTRAL CASE FOR THE HYPOTHESIS. The target PDF contains no occurrence of 'exam', 'studied', 'revision' or 'machine learning' as a phrase. A pure-semantic system must fail or rank it poorly. Only the activity session (co-edited with the timetable and checklist in the same two-week window) or a graph path through the timetable's explicit filename reference can recover it.",
+      "field_note": "If the full system does not beat the baseline here, the thesis is in trouble."
+    },
+    {
+      "id": "q02",
+      "text": "what was due in the third week of October",
+      "targets": [
+        "College/Semester7/DBMS/assignment_brief.pdf"
+      ],
+      "relevant": [
+        "College/Semester7/DBMS/assignment_brief.pdf",
+        "College/Semester7/DBMS/Assignment2_Normalization_final.docx",
+        "College/Semester7/DBMS/Assignment2_Normalization_draft.docx",
+        "College/Semester7/DBMS/dbms_lab_record.xlsx"
+      ],
+      "kind": "temporal",
+      "difficulty": "hard",
+      "rationale": "Pure date-range retrieval. The phrase 'third week of October' appears nowhere; it must be resolved to 15-21 October 2025 and matched against classified meaningful dates. A semantic system has nothing to match on.",
+      "field_note": ""
+    },
+    {
+      "id": "q03",
+      "text": "my notes on support vector machines and the kernel trick",
+      "targets": [
+        "College/Semester7/MachineLearning/Unit3_SVM_Notes.md"
+      ],
+      "relevant": [
+        "College/Semester7/MachineLearning/Unit3_SVM_Notes.md"
+      ],
+      "kind": "semantic",
+      "difficulty": "easy",
+      "rationale": "Control query. Straight lexical and semantic overlap; the baseline should do well. Included so the evaluation can show the context layers do not *degrade* queries semantic search already handles - a claim reviewers ask for and most papers omit.",
+      "field_note": ""
+    },
+    {
+      "id": "q04",
+      "text": "everything from the hackathon weekend",
+      "targets": [
+        "Projects/UrbanFlow/README.md",
+        "Projects/UrbanFlow/team_notes.md"
+      ],
+      "relevant": [
+        "Projects/UrbanFlow/README.md",
+        "Projects/UrbanFlow/team_notes.md",
+        "Projects/UrbanFlow/app.py",
+        "Projects/UrbanFlow/traffic_model.py",
+        "Projects/UrbanFlow/pitch_deck.pptx",
+        "Projects/UrbanFlow/submission_checklist.txt",
+        "Projects/UrbanFlow/sensor_data_sample.xlsx",
+        "Projects/UrbanFlow/demo_script.md"
+      ],
+      "kind": "activity",
+      "difficulty": "hard",
+      "rationale": "Session-recall query: the user wants a *set*, not a document. Recall@10 is the metric that matters. Files like traffic_model.py never say 'hackathon', so semantic retrieval recovers only the subset that happens to mention it.",
+      "field_note": ""
+    },
+    {
+      "id": "q05",
+      "text": "documents where my supervisor Dr Murari is mentioned",
+      "targets": [
+        "College/Capstone/supervisor_meeting_notes.md"
+      ],
+      "relevant": [
+        "College/Capstone/supervisor_meeting_notes.md",
+        "College/Capstone/ContextFS_Proposal.docx",
+        "College/Capstone/review1_slides.pptx"
+      ],
+      "kind": "entity",
+      "difficulty": "easy",
+      "rationale": "Named-entity query. Tests that the entity layer contributes and that entity edges connect the three capstone documents that share this person.",
+      "field_note": ""
+    },
+    {
+      "id": "q06",
+      "text": "the slides I presented about the traffic project",
+      "targets": [
+        "Projects/UrbanFlow/pitch_deck.pptx"
+      ],
+      "relevant": [
+        "Projects/UrbanFlow/pitch_deck.pptx",
+        "Projects/UrbanFlow/demo_script.md"
+      ],
+      "kind": "hybrid",
+      "difficulty": "easy",
+      "rationale": "Format plus topic. 'Slides' is a format cue rather than content; the target is a PPTX about traffic. Tests that the ranker uses structural signal alongside semantics.",
+      "field_note": ""
+    },
+    {
+      "id": "q07",
+      "text": "deadlines I had in September",
+      "targets": [
+        "Projects/UrbanFlow/submission_checklist.txt"
+      ],
+      "relevant": [
+        "Projects/UrbanFlow/submission_checklist.txt",
+        "Projects/UrbanFlow/README.md",
+        "Projects/UrbanFlow/team_notes.md",
+        "Projects/UrbanFlow/pitch_deck.pptx"
+      ],
+      "kind": "temporal",
+      "difficulty": "hard",
+      "rationale": "Tests meaningful-vs-incidental discrimination directly. September also contains sensor-reading timestamps (13-09-2025) and a lab attendance record (08-09-2025), neither of which is a deadline. A naive date extractor returns those and loses precision.",
+      "field_note": ""
+    },
+    {
+      "id": "q08",
+      "text": "what I was working on while applying for internships",
+      "targets": [
+        "Personal/Career/application_tracker.xlsx"
+      ],
+      "relevant": [
+        "Personal/Career/application_tracker.xlsx",
+        "Personal/Career/Resume_Alfred_Mathew.docx",
+        "Personal/Career/cover_letter_zoho.docx",
+        "Personal/Career/interview_prep_notes.md",
+        "Personal/Career/company_research.md"
+      ],
+      "kind": "activity",
+      "difficulty": "hard",
+      "rationale": "Session-scoped query where the linking concept ('internships') appears in only some members. Resume and company_research never say 'applying'; they belong by co-activity.",
+      "field_note": ""
+    },
+    {
+      "id": "q09",
+      "text": "database normalization with BCNF decomposition examples",
+      "targets": [
+        "College/Semester7/DBMS/Assignment2_Normalization_final.docx"
+      ],
+      "relevant": [
+        "College/Semester7/DBMS/Assignment2_Normalization_final.docx",
+        "College/Semester7/DBMS/normalization_examples.sql",
+        "College/Semester7/DBMS/Assignment2_Normalization_draft.docx",
+        "College/Semester7/DBMS/assignment_brief.pdf"
+      ],
+      "kind": "semantic",
+      "difficulty": "easy",
+      "rationale": "Second control query. Also probes near-duplicate handling: the draft and final are nearly identical, and a good system should rank the final above the draft rather than treating them as interchangeable.",
+      "field_note": ""
+    },
+    {
+      "id": "q10",
+      "text": "the spreadsheet that told me when my exams were",
+      "targets": [
+        "College/Semester7/MachineLearning/Exam_Timetable_Sem7.xlsx"
+      ],
+      "relevant": [
+        "College/Semester7/MachineLearning/Exam_Timetable_Sem7.xlsx"
+      ],
+      "kind": "hybrid",
+      "difficulty": "easy",
+      "rationale": "Direct hit for both systems, but a useful discriminator: ml_lab_attendance.xlsx is also a spreadsheet in the same folder full of dates. Ranking it above the timetable is a precision failure the metric will catch.",
+      "field_note": ""
+    },
+    {
+      "id": "q11",
+      "text": "my final year project proposal document",
+      "targets": [
+        "College/Capstone/ContextFS_Proposal.docx"
+      ],
+      "relevant": [
+        "College/Capstone/ContextFS_Proposal.docx",
+        "College/Capstone/review1_slides.pptx",
+        "College/Capstone/literature_survey.md"
+      ],
+      "kind": "semantic",
+      "difficulty": "easy",
+      "rationale": "Control query with a strong lexical signal ('proposal').",
+      "field_note": ""
+    },
+    {
+      "id": "q12",
+      "text": "meetings I had with my guide in February",
+      "targets": [
+        "College/Capstone/supervisor_meeting_notes.md"
+      ],
+      "relevant": [
+        "College/Capstone/supervisor_meeting_notes.md",
+        "College/Capstone/review1_slides.pptx"
+      ],
+      "kind": "hybrid",
+      "difficulty": "hard",
+      "rationale": "Requires all three of entity ('guide' -> supervisor), temporal ('February' -> 2026-02), and semantic ('meetings'). The single best test of whether the layers compose rather than merely coexist.",
+      "field_note": ""
+    },
+    {
+      "id": "q13",
+      "text": "anything related to my Zoho application",
+      "targets": [
+        "Personal/Career/cover_letter_zoho.docx"
+      ],
+      "relevant": [
+        "Personal/Career/cover_letter_zoho.docx",
+        "Personal/Career/application_tracker.xlsx",
+        "Personal/Career/interview_prep_notes.md",
+        "Personal/Career/company_research.md"
+      ],
+      "kind": "entity",
+      "difficulty": "hard",
+      "rationale": "Organisation-entity query. interview_prep_notes.md mentions Zoho once in passing; company_research.md has a Zoho section. Entity edges should pull in the whole cluster where semantics alone recovers only the strongest lexical matches.",
+      "field_note": ""
+    },
+    {
+      "id": "q14",
+      "text": "the code I wrote during the hackathon",
+      "targets": [
+        "Projects/UrbanFlow/traffic_model.py",
+        "Projects/UrbanFlow/app.py"
+      ],
+      "relevant": [
+        "Projects/UrbanFlow/traffic_model.py",
+        "Projects/UrbanFlow/app.py"
+      ],
+      "kind": "activity",
+      "difficulty": "hard",
+      "rationale": "Neither target contains the word 'hackathon' in prose - only 'HackChennai' in a docstring. The distractor prototype_scanner.py and confusion_matrix_practice.py are also Python. Session membership is what separates them.",
+      "field_note": ""
+    },
+    {
+      "id": "q15",
+      "text": "how do bagging and boosting differ",
+      "targets": [
+        "College/Semester7/MachineLearning/Unit4_Ensemble_Methods.pdf"
+      ],
+      "relevant": [
+        "College/Semester7/MachineLearning/Unit4_Ensemble_Methods.pdf",
+        "College/Semester7/MachineLearning/Unit4_Ensemble_Methods_annotated.pdf"
+      ],
+      "kind": "semantic",
+      "difficulty": "easy",
+      "rationale": "The same target as q01 reached by a purely semantic route. The pair (q01, q15) is the cleanest single demonstration in the benchmark: identical target, one query phrased from content and one from memory. If the baseline wins q15 and loses q01, the hypothesis is precisely illustrated.",
+      "field_note": "Pairs with q01. Report these two together in the paper."
+    },
+    {
+      "id": "q16",
+      "text": "the assignment I revised and submitted a version of",
+      "targets": [
+        "College/Semester7/DBMS/Assignment2_Normalization_final.docx"
+      ],
+      "relevant": [
+        "College/Semester7/DBMS/Assignment2_Normalization_final.docx",
+        "College/Semester7/DBMS/Assignment2_Normalization_draft.docx"
+      ],
+      "kind": "hybrid",
+      "difficulty": "hard",
+      "rationale": "Tests duplicate-edge awareness: the user is describing a draft/final relationship, not content. Correct behaviour is to return the final above the draft and to explain the link.",
+      "field_note": ""
+    },
+    {
+      "id": "q17",
+      "text": "what deadline is coming up that I might have forgotten",
+      "targets": [
+        "Downloads/scholarship_form_notes.txt"
+      ],
+      "relevant": [
+        "Downloads/scholarship_form_notes.txt"
+      ],
+      "kind": "temporal",
+      "difficulty": "hard",
+      "rationale": "The target belongs to no session and is topically isolated from everything else in the corpus. Only the timeline layer can reach it. This isolates the temporal contribution from the activity contribution in the ablation - RQ2 without RQ1 confounding it.",
+      "field_note": ""
+    }
+  ]
+}
