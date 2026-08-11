@@ -213,6 +213,21 @@ MIGRATIONS: list[list[str]] = [
         )
         """,
     ],
+    # -- v4: Phase 7, embedding bookkeeping --------------------------------
+    # The vectors themselves live in LanceDB; this table records only which
+    # files have current vectors, so staleness is decided by the same
+    # content-hash rule used for extraction and entities.
+    [
+        """
+        CREATE TABLE IF NOT EXISTS embeddings (
+            file_id      INTEGER PRIMARY KEY REFERENCES files(id) ON DELETE CASCADE,
+            content_hash TEXT,
+            chunk_count  INTEGER NOT NULL DEFAULT 0,
+            model        TEXT    NOT NULL DEFAULT '',
+            embedded_at  TEXT    NOT NULL
+        )
+        """,
+    ],
 ]
 
 #: The schema version this build of ContextFS writes.
@@ -817,6 +832,55 @@ class Store:
             "SELECT COUNT(*) FROM date_mentions dm JOIN files f ON f.id = dm.file_id "
             "WHERE f.status = 'present'"
         ).fetchone()[0]
+
+    # -- embeddings (Phase 7) ----------------------------------------------
+
+    def mark_embedded(
+        self, file_id: int, content_hash: str | None, chunk_count: int, model: str = ""
+    ) -> None:
+        """Record that a file's vectors are current for a given content hash."""
+        self.conn.execute(
+            "INSERT INTO embeddings (file_id, content_hash, chunk_count, model, embedded_at) "
+            "VALUES (?,?,?,?,?) ON CONFLICT(file_id) DO UPDATE SET "
+            "content_hash=excluded.content_hash, chunk_count=excluded.chunk_count, "
+            "model=excluded.model, embedded_at=excluded.embedded_at",
+            (file_id, content_hash, chunk_count, model, utc_now()),
+        )
+        self.conn.commit()
+
+    def files_needing_embedding(self) -> list[sqlite3.Row]:
+        """Return present, successfully-extracted files with missing/stale vectors."""
+        return self.conn.execute(
+            """
+            SELECT f.* FROM files f
+            JOIN documents d ON d.file_id = f.id AND d.ok = 1 AND d.char_count > 0
+            LEFT JOIN embeddings e ON e.file_id = f.id
+            WHERE f.status = 'present'
+              AND (e.file_id IS NULL OR e.content_hash IS NOT f.content_hash)
+            ORDER BY f.path
+            """
+        ).fetchall()
+
+    def embedded_count(self) -> int:
+        """Number of present files with current vectors."""
+        return self.conn.execute(
+            "SELECT COUNT(*) FROM embeddings e JOIN files f ON f.id = e.file_id "
+            "WHERE f.status = 'present'"
+        ).fetchone()[0]
+
+    def clear_embeddings(self, file_ids: Iterable[int]) -> None:
+        """Forget embedding bookkeeping for the given files."""
+        ids = list(file_ids)
+        if not ids:
+            return
+        with self.transaction() as cursor:
+            marks = ",".join("?" * len(ids))
+            cursor.execute(f"DELETE FROM embeddings WHERE file_id IN ({marks})", ids)
+
+    def path_by_file_id(self) -> dict[int, str]:
+        """Return ``{file_id: relative_path}`` for present files."""
+        rows = self.conn.execute("SELECT id, path FROM files WHERE status = 'present'").fetchall()
+        return {row["id"]: row["path"] for row in rows}
 
     # -- scan runs ---------------------------------------------------------
 

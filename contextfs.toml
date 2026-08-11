@@ -117,6 +117,18 @@ batch_size = 16
 # Force CPU inference. The target machine has no CUDA device.
 device = "cpu"
 
+# Encoder backend. Both produce identical vectors (verified by test to 1e-5).
+#   "transformers"          - default. Same weights, same mean-pooling, but
+#                             avoids sentence-transformers' ~11.6 s package
+#                             import on every indexing run (measured).
+#   "sentence-transformers" - the reference implementation, kept as the oracle.
+backend = "transformers"
+
+# PyTorch intra-op threads. 0 = every logical processor.
+# PyTorch defaults to physical cores only (4 of 8 here); using all 8 measured
+# 19.5 -> 34.5 chunks/s on this CPU.
+num_threads = 0
+
 [summarization]
 # Optional local LLM for semantic-tree summaries. ContextFS MUST remain
 # fully functional with this disabled; an extractive fallback is used.

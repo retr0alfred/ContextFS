@@ -124,6 +124,17 @@ class EmbeddingsConfig(_Section):
     chunk_overlap_tokens: int = 48
     batch_size: int = 16
     device: str = "cpu"
+    backend: str = "transformers"
+    num_threads: int = 0
+
+    @model_validator(mode="after")
+    def _check_backend(self) -> EmbeddingsConfig:
+        if self.backend not in {"transformers", "sentence-transformers"}:
+            raise ConfigError(
+                f"[embeddings] backend must be 'transformers' or "
+                f"'sentence-transformers', got {self.backend!r}"
+            )
+        return self
 
     @model_validator(mode="after")
     def _check_chunking(self) -> EmbeddingsConfig:

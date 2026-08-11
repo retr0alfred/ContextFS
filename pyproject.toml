@@ -142,6 +142,10 @@ markers = [
 ]
 filterwarnings = [
     "ignore::DeprecationWarning:pkg_resources.*",
+    # LanceDB deprecated table_names() in favour of list_tables(), but the
+    # replacement returns a different shape in the pinned version. See
+    # VectorStore._table_names.
+    "ignore:table_names\\(\\) is deprecated:DeprecationWarning",
 ]
 
 [tool.coverage.run]

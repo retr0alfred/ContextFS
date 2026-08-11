@@ -253,6 +253,53 @@ def _run_entities(store, cfg):
     return stats
 
 
+def _open_vector_store(cfg):
+    """Open the LanceDB vector store for this configuration."""
+    from contextfs.embed import VectorStore
+
+    return VectorStore(cfg.vector_dir, cfg.embeddings.dimension)
+
+
+def _run_embeddings(store, cfg):
+    """Chunk and embed files whose vectors are missing or stale."""
+    from contextfs.embed import Embedder, embed_documents
+
+    embedder = Embedder(
+        cfg.embeddings.model,
+        device=cfg.embeddings.device,
+        batch_size=cfg.embeddings.batch_size,
+        expected_dimension=cfg.embeddings.dimension,
+        backend=cfg.embeddings.backend,
+        num_threads=cfg.embeddings.num_threads,
+    )
+    from contextfs.embed import ModelNotCachedError
+
+    try:
+        return embed_documents(store, _open_vector_store(cfg), embedder, cfg)
+    except ModelNotCachedError as exc:
+        err_console.print(f"[bold red]{exc}[/bold red]")
+        raise typer.Exit(EXIT_CONFIG_ERROR) from exc
+
+
+def _forget_deleted(store, cfg, deleted_paths):
+    """Remove derived data belonging to files that vanished from disk.
+
+    Deletion has to reach every store, not just SQLite. A vector left behind in
+    LanceDB stays searchable and would return text for a file that no longer
+    exists - a wrong answer rather than a missing one.
+    """
+    ids = []
+    for path in deleted_paths:
+        row = store.get_file(path)
+        if row is not None:
+            ids.append(row["id"])
+    if not ids:
+        return
+    _open_vector_store(cfg).delete_files(ids)
+    store.clear_embeddings(ids)
+    store.delete_documents(ids)
+
+
 def _tabular_spans_from_store(store, file_id):
     """Rebuild tabular character spans for a file from its stored blocks."""
     return [
@@ -318,9 +365,13 @@ def scan(
         scanner = Scanner(cfg)
         result = scanner.scan(store, full=full, dry_run=dry_run, rehash=rehash)
         entity_stats = None
+        embedding = None
         if not dry_run and not no_extract:
             extraction = _run_extraction(store, cfg)
             entity_stats = _run_entities(store, cfg)
+            if result.deleted:
+                _forget_deleted(store, cfg, result.deleted)
+            embedding = _run_embeddings(store, cfg)
 
     table = Table(
         title=f"Scan of {cfg.paths.root}" + (" [dry run]" if dry_run else ""),
@@ -387,6 +438,18 @@ def scan(
             err_console.print(f"  [red]entities failed[/red] {path}: {error}")
     elif entity_stats is not None:
         console.print("[dim]entities: nothing to do, all analyses current[/dim]")
+
+    if embedding is not None and embedding.files:
+        summary = embedding.summary()
+        console.print(
+            f"embeddings: {embedding.chunks} chunks over {embedding.files} files "
+            f"in {embedding.duration_ms:.0f} ms "
+            f"({summary['chunks_per_second']} chunks/s)"
+        )
+        for path, error in embedding.errors:
+            err_console.print(f"  [red]embedding failed[/red] {path}: {error}")
+    elif embedding is not None:
+        console.print("[dim]embeddings: nothing to do, all vectors current[/dim]")
 
     if result.errors:
         err_console.print(f"[yellow]{len(result.errors)} error(s) during scan:[/yellow]")
@@ -480,6 +543,32 @@ def reset(
         "Will delete only the ContextFS data directory (SQLite, LanceDB, graph). Scanned "
         "files are never touched - ContextFS opens them read-only.",
     )
+
+
+@app.command(name="fetch-models")
+def fetch_models() -> None:
+    """Download the local models ContextFS needs. The only networked command.
+
+    Indexing never contacts the network: model loading is forced offline so a
+    scan cannot silently make an outbound request. This command exists so that
+    the one-time download is explicit, announced, and separable from everyday
+    use - which is what "local-first" has to mean in practice.
+    """
+    from contextfs.embed import download_models
+
+    cfg = state.config()
+    console.print(
+        Panel(
+            "This is the only ContextFS command that uses the network.\n"
+            f"Fetching [cyan]{cfg.embeddings.model}[/cyan] into the local model cache.\n"
+            "Nothing about your files is sent anywhere.",
+            title="Fetching models",
+            border_style="cyan",
+        )
+    )
+    for line in download_models(cfg.embeddings.model, cfg.entities.spacy_model):
+        console.print(f"  {line}")
+    console.print("[green]Done.[/green] Indexing will now run fully offline.")
 
 
 @app.command(name="config")

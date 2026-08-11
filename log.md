@@ -1111,3 +1111,163 @@ over 5 documents: a sanity spot check, not an NER benchmark.
   so embedding can be too.
 
 ---
+
+## Phase 7 — Embedding generation (Layer 4)
+
+### What was built
+
+`src/contextfs/embed.py` — block-aware chunker, dual-backend `Embedder`, and a
+LanceDB `VectorStore` with `chunks` and `documents` tables. Schema v4 adds an
+`embeddings` bookkeeping table. New CLI command: `contextfs fetch-models`.
+
+### Chunking strategy (the phase requires this be justified)
+
+Chunks are built **from extraction blocks, not from character windows**. Blocks
+already are the document's own structure — a page, a sheet, a slide, a Markdown
+section — so a block-aware chunker gets semantic coherence for free, where a
+fixed-width window would routinely cut a timetable row in half.
+
+- **Size 256 tokens.** Not a tuned value — it is `all-MiniLM-L6-v2`'s hard input
+  limit. A larger chunk would be a lie: the tail would be silently truncated by
+  the model and embedded as if it did not exist.
+- **Overlap 48 tokens (~19%).** Roughly two sentences: enough to keep a deadline
+  and its surrounding keywords in the same chunk from either side of a boundary,
+  which is precisely the span Phase 10 reasons over.
+- A block that alone exceeds the budget is split on **line** boundaries, not
+  sentence boundaries, because oversized blocks in practice are spreadsheets and
+  code where a line *is* the unit.
+- Chunks inherit `is_tabular`, so structure reaches the vector store.
+
+**Document vectors are the mean of a document's normalised chunk vectors**,
+re-normalised. Cheaper than a second full-text encode and strictly more faithful:
+encoding full text would truncate past 256 tokens, whereas pooling has seen
+every chunk.
+
+### Decisions & reasoning
+
+#### Decision 38 — Vectors are L2-normalised once, at encode time
+
+Cosine similarity then becomes a plain dot product everywhere downstream —
+LanceDB search, Phase 9 edge weights, Phase 15 scoring. This removes an entire
+class of "did we normalise this one?" bugs rather than relying on discipline.
+
+#### Decision 39 — Both chunk-level and document-level vectors are stored
+
+Chunk vectors locate *where* a match occurred (needed for explanations in Phase
+16). Document vectors are the retrieval unit. Keeping only chunks would conflate
+"this document is relevant" with "this paragraph is relevant" and distort
+Precision@K whenever one long document contributes several near-duplicate hits.
+
+#### Decision 40 — Default encoder backend is `transformers`, not
+`sentence-transformers` [DEVIATION — flagged, measured, and reversible]
+
+**The stack constraint says sentence-transformers.** Measured import cost on
+this machine:
+
+```
+import torch                    4003 ms
+import transformers             4090 ms   (~90 ms on top of torch)
+import sentence_transformers   15741 ms   (~11.6 s of its own eager imports)
+```
+
+`sentence-transformers` eagerly imports its whole module zoo at package-import
+time. That is **~11.6 s added to every indexing run that has any embedding work
+to do**, against ~1.2 s of actual encoding for this corpus. On the target laptop
+that is the difference between a tool that feels usable and one that does not.
+
+**What was done instead of silently substituting:** the same weights are loaded
+through `transformers.AutoModel` and pooled with attention-masked mean pooling
+plus L2 normalisation — which is exactly what sentence-transformers does for
+`all-MiniLM-L6-v2`. Both backends remain selectable via
+`[embeddings].backend`, sentence-transformers is still a declared dependency,
+and `test_the_two_backends_produce_the_same_vectors` asserts they agree to
+within 1e-4 cosine on prose, tabular, and code inputs.
+
+**Assessment of the deviation:** the *library* named in the stack is still
+present and is now the correctness oracle; only the hot path avoids paying its
+import. If the supervisor prefers strict adherence, one config line reverts it
+at a cost of ~11.6 s per index build.
+
+#### Decision 41 — PyTorch thread count is set explicitly
+
+PyTorch defaults to physical cores (4 of the 3700U's 8 logical). Measured:
+
+| Threads | Throughput |
+|---|---|
+| 4 (default) | 19.5 chunks/s |
+| 8 (all logical) | **34.5 chunks/s** |
+
++77% for one line. `[embeddings].num_threads = 0` means "all logical".
+
+#### Decision 42 — Model loading is forced offline; one command may use the network
+
+**What:** `HF_HUB_OFFLINE` / `TRANSFORMERS_OFFLINE` are set around every model
+load. If the model is absent, indexing **fails with an instruction** rather than
+downloading. A single new command, `contextfs fetch-models`, performs the
+one-time download and says so.
+
+**Why:** left at defaults, `transformers` contacts the HuggingFace Hub on every
+`from_pretrained` to check for a newer revision. That is a silent outbound
+request on every index build. The project's stated principle is that indexing
+your files makes no network calls, and a principle enforced by nothing is not a
+property. It is also the single largest speed win found this phase: model load
+**12.2 s → a fraction of that**, taking full-corpus embedding from 26.3 s to
+20.1 s.
+
+### Verification — actual output
+
+```
+$ pytest -q                    218 passed in 96.96s
+$ ruff check .                 All checks passed!
+
+$ contextfs scan   (clean index, models cached)
+extracted 40/40 documents (100.0%), 55,627 chars, 8 with tabular content
+entities: 254 mentions, 101 raw date mentions, 996 keywords over 40 files
+embeddings: 65 chunks over 40 files in 20127 ms
+total scan wall time: 37.0 s
+
+$ contextfs scan   (second run)
+embeddings: nothing to do, all vectors current
+```
+
+**Dimensionality:** asserted to be 384, matching the model spec; a mismatch
+between model and `[embeddings].dimension` raises rather than producing an
+unqueryable store.
+
+**Nearest-neighbour sanity checks (the phase's stated verification), all passing:**
+
+- Query "support vector machines, kernels and the margin" → top hit is
+  `Unit3_SVM_Notes.md`.
+- The planted near-duplicate pair (`Unit4_Ensemble_Methods.pdf` and its
+  `_annotated` twin) are each other's **nearest** neighbours, cosine **> 0.9** —
+  which is what Phase 9's duplicate edges will be built from.
+- `SVM notes · ensembles PDF` scores higher than `SVM notes · biryani recipe`.
+- A timetable query surfaces chunks flagged `is_tabular`.
+
+### Honest performance note
+
+Encoding is **1.2 s** for 65 chunks (~54 chunks/s with the thread fix). The
+remaining ~19 s of the embedding stage is fixed per-process cost: importing
+torch (3.3 s), transformers, LanceDB (2.6 s), and constructing the model. This
+is amortised over an index build, but it means a **one-shot `contextfs query`
+will pay ~10 s before it can embed the query string.** That is a real usability
+problem on this hardware, it is not solved here, and the two available fixes are
+(a) the Phase 27 desktop GUI, which keeps one process alive, and (b) a resident
+daemon. Recorded now so it is not discovered as a surprise at demo time.
+
+### Known-broken / deferred after Phase 7
+
+- Cold-start query latency, as above.
+- No ANN index is built: at 40 documents LanceDB brute-forces, which is correct
+  and fastest at this scale. An `IVF_PQ` index becomes necessary somewhere in
+  the tens of thousands of vectors; untested here and must not be claimed.
+- Token counting during packing is an estimate (`words / 0.75`), not a real
+  tokenizer call, for speed. The model truncates anything that slips over.
+
+### What Phase 8 needs from this phase
+
+- `VectorStore.document_vectors()` — the aligned `(ids, matrix)` pair.
+- Chunk vectors for building summary nodes bottom-up.
+- `Embedder.pool()` for computing summary-node vectors from their children.
+
+---
