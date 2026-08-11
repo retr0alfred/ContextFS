@@ -76,8 +76,34 @@ follow_symlinks = false
 max_chars_per_document = 400000
 
 [entities]
-# spaCy model. Small model is the default: it runs comfortably on CPU.
-spacy_model = "en_core_web_sm"
+# spaCy model. en_core_web_md is the default because it was MEASURED to be
+# substantially better on this corpus, not because it is bigger:
+#
+#   model            entity F1   recall   location F1   time/40 docs   on disk
+#   en_core_web_sm     0.472     0.586      0.333         2337 ms      14.5 MB
+#   en_core_web_md     0.595     0.759      0.857         2794 ms      53.9 MB
+#
+# The md model carries word vectors, which is what lets it recognise rare
+# proper nouns (company names, Indian place names) that the sm model misses
+# entirely. 20% slower on a cost paid only for files that changed.
+# Switch to en_core_web_sm if disk or install size matters more than accuracy.
+spacy_model = "en_core_web_md"
+
+# Maximum keywords kept per document.
+max_keywords = 25
+
+# Suppress short ALL-CAPS tokens typed as organisations (API, SQL, DBMS, FYP).
+# On technical personal corpora these are overwhelmingly domain acronyms, not
+# organisations, and they dominated organisation false positives in the Phase 6
+# evaluation. TRADE-OFF: this also discards genuine short acronym organisations
+# such as IBM or NASA. Turn it off for a corpus where those matter.
+drop_acronym_orgs = true
+
+# Propagate entities confidently detected in prose to documents where the
+# statistical model has too little context to find them (headings, spreadsheet
+# cells, bullet lists). Only terms containing a lowercase letter propagate.
+gazetteer_propagation = true
+gazetteer_min_length = 4
 
 [embeddings]
 # sentence-transformers model. all-MiniLM-L6-v2 is 384-dim, ~90 MB, and

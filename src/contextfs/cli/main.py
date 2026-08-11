@@ -190,6 +190,78 @@ def _run_extraction(store, cfg):
     return report
 
 
+def _run_entities(store, cfg):
+    """Run Layer 3 over files whose entity analysis is missing or stale.
+
+    Returns:
+        A dict of aggregate counts, or one with ``files=0`` if nothing was due.
+    """
+    import time
+
+    from contextfs.entities import EntityExtractor
+
+    pending = store.files_needing_entities()
+    stats = {
+        "files": 0,
+        "entities": 0,
+        "people": 0,
+        "orgs": 0,
+        "locations": 0,
+        "dates": 0,
+        "keywords": 0,
+        "duration_ms": 0.0,
+        "errors": [],
+    }
+    if not pending:
+        return stats
+
+    started = time.perf_counter()
+    extractor = EntityExtractor(
+        cfg.entities.spacy_model,
+        max_keywords=cfg.entities.max_keywords,
+        drop_acronym_orgs=cfg.entities.drop_acronym_orgs,
+    )
+
+    from datetime import datetime
+
+    for row in pending:
+        # The file's own mtime anchors year-less date mentions ("24 Nov").
+        try:
+            reference = datetime.fromisoformat(row["mtime"])
+        except (TypeError, ValueError):
+            reference = None
+        result = extractor.extract(row["path"], row["doc_text"] or "", reference_date=reference)
+        spans = _tabular_spans_from_store(store, row["id"])
+        store.save_entities(
+            row["id"], result, content_hash=row["content_hash"], tabular_spans=spans
+        )
+
+        stats["files"] += 1
+        stats["entities"] += len(result.entities)
+        stats["people"] += len(result.people)
+        stats["orgs"] += len(result.orgs)
+        stats["locations"] += len(result.locations)
+        stats["dates"] += len(result.dates)
+        stats["keywords"] += len(result.keywords)
+        if result.error:
+            stats["errors"].append((row["path"], result.error))
+
+    # Corpus-level pass: the same entity string typed differently in different
+    # documents is resolved to the category most files agree on.
+    stats["reconciled"] = store.reconcile_entity_categories()
+    stats["duration_ms"] = (time.perf_counter() - started) * 1000
+    return stats
+
+
+def _tabular_spans_from_store(store, file_id):
+    """Rebuild tabular character spans for a file from its stored blocks."""
+    return [
+        (block["char_start"], block["char_end"])
+        for block in store.get_blocks(file_id)
+        if block["is_tabular"]
+    ]
+
+
 # ---------------------------------------------------------------------------
 # Commands
 # ---------------------------------------------------------------------------
@@ -245,8 +317,10 @@ def scan(
     with store_ctx as store:
         scanner = Scanner(cfg)
         result = scanner.scan(store, full=full, dry_run=dry_run, rehash=rehash)
+        entity_stats = None
         if not dry_run and not no_extract:
             extraction = _run_extraction(store, cfg)
+            entity_stats = _run_entities(store, cfg)
 
     table = Table(
         title=f"Scan of {cfg.paths.root}" + (" [dry run]" if dry_run else ""),
@@ -299,6 +373,20 @@ def scan(
                     err_console.print(f"  [yellow]warn[/yellow] {doc.rel_path}: {warning}")
     elif extraction is not None:
         console.print("[dim]extraction: nothing to do, all documents current[/dim]")
+
+    if entity_stats and entity_stats["files"]:
+        console.print(
+            f"entities: {entity_stats['entities']} mentions "
+            f"({entity_stats['people']} people, {entity_stats['orgs']} orgs, "
+            f"{entity_stats['locations']} locations), "
+            f"{entity_stats['dates']} raw date mentions, "
+            f"{entity_stats['keywords']} keywords "
+            f"over {entity_stats['files']} files in {entity_stats['duration_ms']:.0f} ms"
+        )
+        for path, error in entity_stats["errors"]:
+            err_console.print(f"  [red]entities failed[/red] {path}: {error}")
+    elif entity_stats is not None:
+        console.print("[dim]entities: nothing to do, all analyses current[/dim]")
 
     if result.errors:
         err_console.print(f"[yellow]{len(result.errors)} error(s) during scan:[/yellow]")

@@ -40,6 +40,7 @@ __all__ = [
     "CORPUS_FILES",
     "QUERIES",
     "SESSIONS",
+    "ENTITY_GOLD",
     "DateLabel",
     "FileSpec",
     "QuerySpec",
@@ -2881,3 +2882,56 @@ QUERIES: tuple[QuerySpec, ...] = (
         ),
     ),
 )
+
+
+# ===========================================================================
+# Manually-labelled entity gold set (Phase 6 verification)
+# ===========================================================================
+# Five documents, hand-labelled by reading the authored source text in this
+# file. These are the entities a competent human reader would list - not the
+# entities spaCy happens to produce. That distinction is the whole point: a
+# gold set derived from the system's own output measures nothing.
+#
+# Scope rules used when labelling, stated so the numbers are reproducible:
+#   * people     - named individuals only. Roles ("the supervisor") excluded.
+#   * orgs       - companies, institutions, named events, named products.
+#   * locations  - cities, states, countries, named venues.
+#   * Titles are stripped: "Dr. Murari Devakannan Kamalesh" is labelled by its
+#     name, and a match is credited if the detected span contains that name.
+#
+# Recall is measured against these lists; precision is measured by checking
+# each *detected* entity against the document text and the labeller's judgement
+# (see tests/test_entities.py, which documents the adjudication rule).
+
+ENTITY_GOLD: dict[str, dict[str, tuple[str, ...]]] = {
+    f"{_CAP}/supervisor_meeting_notes.md": {
+        "people": (
+            "Murari Devakannan Kamalesh",
+            "Alfred Mathew",
+            "Abu Ibrahim Mothi",
+            "L. Lakshmanan",
+        ),
+        "orgs": (),
+        "locations": (),
+    },
+    f"{_UF}/team_notes.md": {
+        "people": ("Alfred Mathew", "Abu Ibrahim Mothi", "Nithya Ramanathan", "Karan Velu"),
+        "orgs": ("Nightshift",),
+        "locations": (),
+    },
+    f"{_CAR}/cover_letter_zoho.docx": {
+        "people": ("Alfred Mathew",),
+        "orgs": ("Zoho", "HackChennai", "UrbanFlow", "ContextFS"),
+        "locations": ("Chennai",),
+    },
+    f"{_CAR}/company_research.md": {
+        "people": (),
+        "orgs": ("Zoho", "Freshworks", "Postman", "Chargebee"),
+        "locations": ("Chennai", "Tenkasi", "Bangalore"),
+    },
+    f"{_MISC}/history_essay_partition.md": {
+        "people": ("Mountbatten", "Gandhi", "Radcliffe"),
+        "orgs": ("Muslim League",),
+        "locations": ("Calcutta", "Pakistan", "India"),
+    },
+}

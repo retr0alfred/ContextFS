@@ -159,6 +159,60 @@ MIGRATIONS: list[list[str]] = [
         "CREATE INDEX IF NOT EXISTS idx_blocks_file ON document_blocks(file_id)",
         "CREATE INDEX IF NOT EXISTS idx_blocks_tab  ON document_blocks(is_tabular)",
     ],
+    # -- v3: Phase 6, entities, keywords, raw date mentions ----------------
+    [
+        """
+        CREATE TABLE IF NOT EXISTS entities (
+            id          INTEGER PRIMARY KEY AUTOINCREMENT,
+            file_id     INTEGER NOT NULL REFERENCES files(id) ON DELETE CASCADE,
+            text        TEXT    NOT NULL,
+            normalised  TEXT    NOT NULL,
+            category    TEXT    NOT NULL,
+            spacy_label TEXT    NOT NULL DEFAULT '',
+            char_start  INTEGER NOT NULL DEFAULT 0,
+            char_end    INTEGER NOT NULL DEFAULT 0
+        )
+        """,
+        "CREATE INDEX IF NOT EXISTS idx_entities_file ON entities(file_id)",
+        "CREATE INDEX IF NOT EXISTS idx_entities_norm ON entities(normalised)",
+        "CREATE INDEX IF NOT EXISTS idx_entities_cat  ON entities(category)",
+        """
+        CREATE TABLE IF NOT EXISTS keywords (
+            id       INTEGER PRIMARY KEY AUTOINCREMENT,
+            file_id  INTEGER NOT NULL REFERENCES files(id) ON DELETE CASCADE,
+            term     TEXT    NOT NULL,
+            count    INTEGER NOT NULL DEFAULT 1,
+            rank     INTEGER NOT NULL DEFAULT 0
+        )
+        """,
+        "CREATE INDEX IF NOT EXISTS idx_keywords_file ON keywords(file_id)",
+        "CREATE INDEX IF NOT EXISTS idx_keywords_term ON keywords(term)",
+        """
+        CREATE TABLE IF NOT EXISTS date_mentions (
+            id          INTEGER PRIMARY KEY AUTOINCREMENT,
+            file_id     INTEGER NOT NULL REFERENCES files(id) ON DELETE CASCADE,
+            text        TEXT    NOT NULL,
+            iso_date    TEXT,
+            precision   TEXT    NOT NULL DEFAULT 'day',
+            source      TEXT    NOT NULL DEFAULT '',
+            char_start  INTEGER NOT NULL DEFAULT 0,
+            char_end    INTEGER NOT NULL DEFAULT 0,
+            in_tabular  INTEGER NOT NULL DEFAULT 0,
+            year_inferred INTEGER NOT NULL DEFAULT 0
+        )
+        """,
+        "CREATE INDEX IF NOT EXISTS idx_dates_file ON date_mentions(file_id)",
+        "CREATE INDEX IF NOT EXISTS idx_dates_iso  ON date_mentions(iso_date)",
+        """
+        CREATE TABLE IF NOT EXISTS entity_runs (
+            file_id      INTEGER PRIMARY KEY REFERENCES files(id) ON DELETE CASCADE,
+            content_hash TEXT,
+            error        TEXT NOT NULL DEFAULT '',
+            duration_ms  REAL NOT NULL DEFAULT 0,
+            run_at       TEXT NOT NULL
+        )
+        """,
+    ],
 ]
 
 #: The schema version this build of ContextFS writes.
@@ -555,6 +609,214 @@ class Store:
             ORDER BY f.path
             """
         ).fetchall()
+
+    # -- entities (Phase 6) ------------------------------------------------
+
+    def save_entities(
+        self, file_id: int, result: Any, content_hash: str | None = None, tabular_spans=None
+    ) -> None:
+        """Persist entities, keywords, and raw date mentions for one file.
+
+        Existing rows for the file are deleted first, so re-running Layer 3 on a
+        changed document replaces its analysis rather than accumulating
+        duplicates across scans.
+
+        Args:
+            file_id: ``files.id`` of the source document.
+            result: A :class:`~contextfs.entities.DocumentEntities`.
+            content_hash: Hash at analysis time, for staleness detection.
+            tabular_spans: ``[(start, end), ...]`` character ranges of tabular
+                content, from :meth:`ExtractedDocument.tabular_spans`. Each date
+                mention is stamped with whether it falls inside one - computed
+                here, once, so the Phase 10 classifier never re-parses source
+                files to answer a question extraction already knew.
+        """
+        spans = list(tabular_spans or [])
+        with self.transaction() as cursor:
+            for table in ("entities", "keywords", "date_mentions"):
+                cursor.execute(f"DELETE FROM {table} WHERE file_id = ?", (file_id,))
+
+            if result.entities:
+                cursor.executemany(
+                    "INSERT INTO entities (file_id, text, normalised, category, spacy_label, "
+                    "char_start, char_end) VALUES (?,?,?,?,?,?,?)",
+                    [
+                        (file_id, m.text, m.normalised, m.category, m.spacy_label, m.start, m.end)
+                        for m in result.entities
+                    ],
+                )
+            if result.keywords:
+                cursor.executemany(
+                    "INSERT INTO keywords (file_id, term, count, rank) VALUES (?,?,?,?)",
+                    [
+                        (file_id, term, count, rank)
+                        for rank, (term, count) in enumerate(result.keywords)
+                    ],
+                )
+            if result.dates:
+                cursor.executemany(
+                    "INSERT INTO date_mentions (file_id, text, iso_date, precision, source, "
+                    "char_start, char_end, in_tabular, year_inferred) VALUES (?,?,?,?,?,?,?,?,?)",
+                    [
+                        (
+                            file_id,
+                            d.text,
+                            d.iso,
+                            d.precision,
+                            d.source,
+                            d.start,
+                            d.end,
+                            int(any(s <= d.start < e for s, e in spans)),
+                            int(d.year_inferred),
+                        )
+                        for d in result.dates
+                    ],
+                )
+            cursor.execute(
+                "INSERT INTO entity_runs (file_id, content_hash, error, duration_ms, run_at) "
+                "VALUES (?,?,?,?,?) ON CONFLICT(file_id) DO UPDATE SET "
+                "content_hash=excluded.content_hash, error=excluded.error, "
+                "duration_ms=excluded.duration_ms, run_at=excluded.run_at",
+                (file_id, content_hash, result.error, result.duration_ms, utc_now()),
+            )
+
+    def get_entities(self, file_id: int, category: str | None = None) -> list[sqlite3.Row]:
+        """Return a file's entity mentions, optionally filtered by category."""
+        if category:
+            return self.conn.execute(
+                "SELECT * FROM entities WHERE file_id = ? AND category = ? ORDER BY char_start",
+                (file_id, category),
+            ).fetchall()
+        return self.conn.execute(
+            "SELECT * FROM entities WHERE file_id = ? ORDER BY char_start", (file_id,)
+        ).fetchall()
+
+    def get_keywords(self, file_id: int) -> list[sqlite3.Row]:
+        """Return a file's keywords in rank order."""
+        return self.conn.execute(
+            "SELECT * FROM keywords WHERE file_id = ? ORDER BY rank", (file_id,)
+        ).fetchall()
+
+    def get_date_mentions(self, file_id: int | None = None) -> list[sqlite3.Row]:
+        """Return date mentions for one file, or for the whole corpus."""
+        if file_id is None:
+            return self.conn.execute(
+                "SELECT dm.*, f.path FROM date_mentions dm JOIN files f ON f.id = dm.file_id "
+                "WHERE f.status = 'present' ORDER BY f.path, dm.char_start"
+            ).fetchall()
+        return self.conn.execute(
+            "SELECT * FROM date_mentions WHERE file_id = ? ORDER BY char_start", (file_id,)
+        ).fetchall()
+
+    def entity_category_votes(self) -> dict[str, dict[str, int]]:
+        """Return ``{normalised: {category: distinct_file_count}}``.
+
+        The input to :meth:`reconcile_entity_categories`.
+        """
+        rows = self.conn.execute(
+            "SELECT e.normalised, e.category, COUNT(DISTINCT e.file_id) AS n "
+            "FROM entities e JOIN files f ON f.id = e.file_id "
+            "WHERE f.status = 'present' GROUP BY e.normalised, e.category"
+        ).fetchall()
+        votes: dict[str, dict[str, int]] = {}
+        for row in rows:
+            votes.setdefault(row["normalised"], {})[row["category"]] = row["n"]
+        return votes
+
+    def reconcile_entity_categories(self) -> int:
+        """Resolve category disagreements for the same entity across the corpus.
+
+        A statistical NER model types an entity from local sentence context, so
+        the *same* string can be typed differently in different documents.
+        Measured on this corpus: "Zoho" was typed ``org`` in the application
+        tracker and ``person`` in the company-research notes, purely because the
+        latter is written as Markdown headings.
+
+        Resolution rule: for each normalised entity string, the category
+        supported by the **strictly greatest number of distinct files** wins and
+        is applied everywhere. A tie changes nothing - a coin-flip would be
+        worse than an inconsistency, because it is unpredictable.
+
+        This is a corpus-level correction that stays compatible with incremental
+        indexing: it reads the votes already stored, so re-analysing one file
+        immediately benefits from what the rest of the corpus knows.
+
+        Returns:
+            The number of mention rows whose category was changed.
+        """
+        changed = 0
+        with self.transaction() as cursor:
+            for normalised, tally in self.entity_category_votes().items():
+                if len(tally) < 2:
+                    continue
+                ranked = sorted(tally.items(), key=lambda kv: -kv[1])
+                if ranked[0][1] == ranked[1][1]:
+                    continue  # genuine tie: leave the evidence alone
+                winner = ranked[0][0]
+                cursor.execute(
+                    "UPDATE entities SET category = ? WHERE normalised = ? AND category <> ?",
+                    (winner, normalised, winner),
+                )
+                changed += cursor.rowcount
+        return changed
+
+    def entity_index(self) -> dict[str, set[int]]:
+        """Return ``{entity_key: {file_id, ...}}`` across the corpus.
+
+        This is the input to entity-overlap edges in Phase 9. Built with one
+        query rather than per-file lookups because the graph builder needs the
+        whole picture at once.
+        """
+        rows = self.conn.execute(
+            "SELECT e.category, e.normalised, e.file_id FROM entities e "
+            "JOIN files f ON f.id = e.file_id WHERE f.status = 'present'"
+        ).fetchall()
+        index: dict[str, set[int]] = {}
+        for row in rows:
+            key = f"{row['category']}:{row['normalised']}"
+            index.setdefault(key, set()).add(row["file_id"])
+        return index
+
+    def date_recurrence(self) -> dict[str, int]:
+        """Return ``{iso_date: number_of_distinct_files}``.
+
+        This is the cross-file recurrence signal for Phase 10, computed once
+        over the corpus rather than per document.
+        """
+        rows = self.conn.execute(
+            "SELECT dm.iso_date, COUNT(DISTINCT dm.file_id) AS n FROM date_mentions dm "
+            "JOIN files f ON f.id = dm.file_id "
+            "WHERE f.status = 'present' AND dm.iso_date IS NOT NULL "
+            "GROUP BY dm.iso_date"
+        ).fetchall()
+        return {row["iso_date"]: row["n"] for row in rows}
+
+    def files_needing_entities(self) -> list[sqlite3.Row]:
+        """Return files whose entity analysis is missing or stale."""
+        return self.conn.execute(
+            """
+            SELECT f.*, d.text AS doc_text FROM files f
+            JOIN documents d ON d.file_id = f.id AND d.ok = 1
+            LEFT JOIN entity_runs er ON er.file_id = f.id
+            WHERE f.status = 'present'
+              AND (er.file_id IS NULL OR er.content_hash IS NOT f.content_hash)
+            ORDER BY f.path
+            """
+        ).fetchall()
+
+    def entity_count(self) -> int:
+        """Total entity mentions across present files."""
+        return self.conn.execute(
+            "SELECT COUNT(*) FROM entities e JOIN files f ON f.id = e.file_id "
+            "WHERE f.status = 'present'"
+        ).fetchone()[0]
+
+    def date_mention_count(self) -> int:
+        """Total raw date mentions across present files."""
+        return self.conn.execute(
+            "SELECT COUNT(*) FROM date_mentions dm JOIN files f ON f.id = dm.file_id "
+            "WHERE f.status = 'present'"
+        ).fetchone()[0]
 
     # -- scan runs ---------------------------------------------------------
 

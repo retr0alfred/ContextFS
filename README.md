@@ -56,6 +56,8 @@ hybrid) are built and evaluated side by side on the same ground-truth query set.
 python -m venv .venv
 .venv\Scripts\python.exe -m pip install "torch>=2.2,<3" --index-url https://download.pytorch.org/whl/cpu
 .venv\Scripts\python.exe -m pip install -e ".[dev,datagen]"
+.venv\Scripts\python.exe -m spacy download en_core_web_md
+.venv\Scripts\python.exe scripts\generate_corpus.py
 ```
 
 The CPU-only torch index is deliberate — see Decision 2 in [log.md](log.md).

@@ -108,7 +108,11 @@ class ExtractionConfig(_Section):
 class EntitiesConfig(_Section):
     """spaCy entity extraction settings (Layer 3)."""
 
-    spacy_model: str = "en_core_web_sm"
+    spacy_model: str = "en_core_web_md"
+    max_keywords: int = 25
+    drop_acronym_orgs: bool = True
+    gazetteer_propagation: bool = True
+    gazetteer_min_length: int = 4
 
 
 class EmbeddingsConfig(_Section):

@@ -32,6 +32,24 @@ extras:
 .venv\Scripts\python.exe -m pip install -e ".[dev,datagen]"
 ```
 
+Then download the spaCy language model (~54 MB):
+
+```bash
+.venv\Scripts\python.exe -m spacy download en_core_web_md
+```
+
+`en_core_web_md` is the default because it was measured to be substantially more
+accurate than the smaller `en_core_web_sm` on this kind of corpus (entity F1
+0.595 vs 0.472). If disk space matters more than accuracy, install
+`en_core_web_sm` instead and set `spacy_model = "en_core_web_sm"` under
+`[entities]` in your config.
+
+Finally, generate the synthetic demo corpus so there is something to index:
+
+```bash
+.venv\Scripts\python.exe scripts\generate_corpus.py
+```
+
 ### Activating the environment
 
 Every command below assumes the virtual environment is active. Activate it once

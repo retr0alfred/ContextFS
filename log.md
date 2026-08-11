@@ -919,3 +919,195 @@ re-extraction, and a read-only audit over the corpus.
 - `documents.text` as the canonical single string per document.
 
 ---
+
+## Phase 6 — Entity extraction (Layer 3)
+
+### What was built
+
+`src/contextfs/entities.py` — spaCy NER for people / organisations / locations,
+frequency-ranked keywords, and **raw date mentions**. Schema v3 adds `entities`,
+`keywords`, `date_mentions`, `entity_runs`. `scripts/entity_eval.py` reports
+precision/recall against a five-document hand-labelled gold set added to
+`corpus_spec.py` as `ENTITY_GOLD`.
+
+### Decisions & reasoning
+
+#### Decision 30 — Date *detection* is separated from date *classification*
+
+**What:** this layer records every date mention it can find and classifies none
+of them. Phase 10 decides meaningful vs incidental.
+
+**Why:** the classification signals live outside this layer — the document's
+mtime, whether the date is inside a table, whether the same date recurs across
+files. Separating them also means Phase 10 can be evaluated against a **fixed**
+set of detected mentions, so a change to the classifier does not silently change
+what is being classified. Without that separation, a Phase 10 precision
+improvement could come from detecting fewer dates, which is not an improvement.
+
+#### Decision 31 — Dates come from regex over the original text, not spaCy NER
+
+**What:** spaCy's `DATE` entities are discarded; five regex patterns (numeric
+dd-mm-yyyy, ISO, written d-m-y, written m-d-y, bare year) run over the
+**original** extracted text.
+
+**Why:** two hard reasons. (1) NER runs on markup-normalised text (Decision 32),
+so its offsets do not index the original string — and a subtly wrong date offset
+would corrupt the structured-context signal invisibly. (2) spaCy's NER reliably
+misses bare numeric dates in spreadsheet rows, which is exactly where this
+corpus's most important dates live, because a table row supplies none of the
+sentence context the model depends on.
+
+**Stated limitation:** relative expressions ("next week", "last semester") are
+consequently out of scope for the temporal layer in this build.
+
+#### Decision 32 — Markup is neutralised before NER [found by measurement]
+
+**What:** `prepare_for_ner()` strips Markdown heading/bullet/checkbox markers,
+converts table pipes into sentence boundaries, and appends a full stop to
+headings that lack terminal punctuation.
+
+**Why (the concrete failure):** the gold-set evaluation showed spaCy reading
+
+```
+## Zoho
+Chennai/Tenkasi. Builds everything in-house...
+```
+
+as a **single** entity `Zoho Chennai/Tenkasi`, typed `PERSON`. The heading had no
+terminal punctuation, so sentence segmentation merged it with the line below.
+spaCy's models are trained on running prose; personal corpora are full of
+headings, bullets and cells.
+
+Entity offsets are remapped back to the original text by forward-scanning search
+(the transformation only removes markup, never reorders words). An entity whose
+surface cannot be relocated keeps offsets of `-1` rather than a plausible wrong
+offset — a missing offset is recoverable, a wrong one is not.
+
+**Measured effect:** micro F1 0.432 → 0.472.
+
+#### Decision 33 — Corpus-level category consensus and gazetteer propagation
+
+**What:** two corpus-wide corrections. `reconcile_entity_categories()` resolves
+the same entity string being typed differently in different documents, by
+majority of distinct files (strict majority required; ties change nothing).
+`build_gazetteer()` / `propagate_gazetteer()` take entities confidently detected
+in prose and search for them in documents where NER had too little context.
+
+**Why:** NER types an entity from local sentence context, so a company named in
+a cover letter is found and the same company in a bullet list is not. Propagation
+uses only evidence the corpus already contains — no external word list, no
+hand-written list of real companies. Only terms containing a lowercase letter
+propagate, so acronym false positives stay local instead of being broadcast.
+
+Both are compatible with incremental indexing: they read votes already stored, so
+re-analysing one file immediately benefits from corpus-wide knowledge.
+
+**Measured effect:** org precision 0.176 → 0.273. Overall F1 unchanged at 0.472,
+which led directly to Decision 35.
+
+#### Decision 34 — Short all-caps organisation detections are dropped by default
+
+**What:** `entities.drop_acronym_orgs` (default true) discards ≤5-character
+all-capitals tokens typed as organisations.
+
+**Why:** on the gold set, `API`, `SQL`, `DBMS`, `FYP` and `CS` accounted for the
+majority of organisation false positives. **The cost is stated, not hidden:** this
+also discards genuine short acronym organisations (IBM, BBC, NASA). It is
+therefore a config flag, not a hardcoded rule, and such tokens remain retrievable
+through the keyword layer regardless.
+
+#### Decision 35 — Default spaCy model changed from `sm` to `md`, on measurement
+[DEVIATION from the "small model" default chosen in Phase 1]
+
+After Decisions 32–34, org and location recall were still poor. Dumping the raw
+votes showed why, and it was not a reconciliation problem:
+
+```
+Zoho        {'location': 2}      <- consistently wrong, nothing to reconcile
+Freshworks  {'person': 2}        <- consistently wrong
+Postman     {}                   <- never detected
+Chargebee   {}                   <- never detected
+Tenkasi     {}                   <- never detected
+```
+
+`en_core_web_sm` has no word vectors, so rare proper nouns (company names,
+Indian place names) are simply outside its reach. Measured comparison:
+
+| Model | Entity F1 | Recall | Location F1 | Time / 40 docs | On disk |
+|---|---|---|---|---|---|
+| `en_core_web_sm` | 0.472 | 0.586 | 0.333 | 2337 ms | 14.5 MB |
+| **`en_core_web_md`** | **0.595** | **0.759** | **0.857** | 2794 ms | 53.9 MB |
+
++26% F1 and +30% recall for +20% time and +39 MB. Taken, because the time cost
+is paid only for changed files (incremental) and is dwarfed by embedding cost
+from Phase 7 onward. Recorded in `contextfs.toml` with the measurement table
+beside the setting, so the choice is auditable rather than arbitrary.
+
+#### Decision 36 — Year-less dates are resolved against the document's mtime
+
+**What:** "24 Nov" with no year resolves to whichever of (mtime year − 1, mtime
+year, mtime year + 1) lands closest to the document's own timestamp. The mention
+is flagged `year_inferred=True` so Phase 10 can discount it.
+
+**Why (found by a failing test):** `test_date_recurrence_is_computed_across_files`
+failed. The timetable writes `24-11-2025`; the revision checklist writes `24 Nov`.
+Unresolved, those are two unrelated facts, so the ML exam date — the single most
+important date in the corpus — had a cross-file recurrence count of **1** instead
+of 2, silently disabling one of Phase 10's four signals on its primary case.
+People omit years constantly in personal documents, and those are often the most
+actionable dates.
+
+#### Decision 37 — Keyword ranking is frequency, not TF-IDF
+
+TF-IDF needs a corpus-wide document-frequency table, which would make
+per-document extraction depend on the whole corpus: adding one file would
+invalidate every other file's keywords, breaking incrementality. Corpus-level
+term weighting belongs in the embedding and retrieval layers, and happens there.
+
+### Verification — actual output
+
+```
+$ python scripts/entity_eval.py          (en_core_web_md, whole-corpus pass)
+category       TP   FP   FN  precision   recall       F1
+people         11   14    1      0.440    0.917    0.595
+orgs            5    8    5      0.385    0.500    0.435
+locations       6    1    1      0.857    0.857    0.857
+MICRO AVG      22   23    7      0.489    0.759    0.595
+
+Sample size: 29 gold entities across 5 documents.
+
+$ contextfs scan   (clean index)
+extracted 40/40 documents (100.0%), 55,627 chars, 8 with tabular content, 1430 ms
+entities: 254 mentions (90 people, 97 orgs, 24 locations),
+          101 raw date mentions, 996 keywords over 40 files in 9301 ms
+
+$ pytest -q      188 passed in 48.44s
+$ ruff check .   All checks passed!
+```
+
+**Honest reading of these numbers.** Micro precision 0.489 is mediocre. The
+false positives are mostly over-broad or mistyped spans ("British", "Direct
+Action", "Workplace", "Ruby"/"Java" as people), not hallucinated text. For
+ContextFS's actual use — entity-overlap edges between files — a false positive
+costs a spurious weak edge, while a false negative costs a missing connection,
+so recall (0.759) is the more consequential number here. That asymmetry is an
+argument, not an excuse, and the precision figure is reported unmodified. n=29
+over 5 documents: a sanity spot check, not an NER benchmark.
+
+### Known-broken / deferred after Phase 6
+
+- Precision remains modest; a transformer model (`en_core_web_trf`) would likely
+  fix it but needs ~500 MB and is markedly slower on CPU. Not taken.
+- Relative date expressions unsupported (Decision 31).
+- Numeric dates assume **day-first**. Correct for this corpus persona; wrong for
+  a US corpus. Currently hardcoded, should become a config key. Flagged.
+- Entity coreference ("sir" → Dr. Murari) is not resolved.
+
+### What Phase 7 needs from this phase
+
+- `documents.text` and `document_blocks` for chunking.
+- `Store.date_recurrence()` and `entity_index()` (built here, consumed in 9/10).
+- Confirmation that entity/keyword extraction is per-document and incremental,
+  so embedding can be too.
+
+---
