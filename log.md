@@ -722,3 +722,200 @@ hashed.
 - `FileRecord.ext` and `abs_path` for extractor dispatch.
 
 ---
+
+## Phase 5 — Content extraction (Layer 2)
+
+### What was built
+
+| Module | Role |
+|---|---|
+| `extract/base.py` | `ExtractedDocument` / `ExtractedBlock` schema, block-boundary truncation |
+| `extract/extractors.py` | Eight extractors: pdf, docx, pptx, xlsx, text, code, csv, image |
+| `extract/__init__.py` | Extension → extractor registry, `extract_file`, `extract_many`, `ExtractionReport` |
+| `store.py` (schema v2) | `documents` + `document_blocks` tables, `files_needing_extraction()` |
+| `scripts/extraction_report.py` | Corpus-wide extraction report |
+
+`contextfs scan` now runs extraction for changed files automatically
+(`--no-extract` opts out).
+
+### Decisions & reasoning
+
+#### Decision 24 — Extraction preserves structure, it does not flatten to text
+[CORE ARCHITECTURAL DECISION — the whole temporal contribution rests on it]
+
+**What:** extraction yields a list of `ExtractedBlock`s, each tagged with its
+origin (`page` / `sheet` / `slide` / `section` / `paragraph` / `notes`) and two
+booleans: `is_tabular` and `is_heading`. `ExtractedDocument.tabular_spans()`
+returns character ranges of tabular regions in the flattened text.
+
+**Why:** the obvious design is "extraction returns a string". That would have
+destroyed the single strongest signal the Phase 10 date classifier has. A date
+inside a timetable row is a commitment; the same date in a paragraph of prose
+usually is not. If the spreadsheet has already been flattened into a paragraph
+by the time the classifier runs, the structured-context signal cannot be
+computed at all — and Phase 10 would still produce a precision number, just a
+meaningless one.
+
+The character-offset design (`tabular_spans`, `block_at`) means Phase 10 can ask
+"is the date at offset 1,847 inside a table?" without re-opening or re-parsing
+the source file. Block offsets are persisted alongside the text, and a test
+asserts `text[char_start:char_end] == block.text` for every stored block.
+
+**Cost:** a more complex schema and two extra tables. Justified: this is the
+mechanism behind the highest-novelty component in the project.
+
+#### Decision 25 — Errors are captured as data, never raised
+
+**What:** every extractor returns an `ExtractedDocument` with `ok=False` and an
+`error` string rather than throwing. `extract_file` wraps the extractor in a
+blanket `except Exception` as a final guarantee.
+
+**Why:** the constraint is that one corrupt file cannot abort an index build.
+But the second half matters more: **nothing is dropped silently.** A failure
+becomes a row in `documents` with `ok=0`, a line in the extraction report, and a
+red line in `contextfs scan` output. The failure mode being designed against is
+not the crash — it is the index that quietly covers 38 of 40 files while
+reporting success, which would corrupt every metric downstream with no visible
+symptom.
+
+Partial failures are represented too: a PDF where 3 of 12 pages yield no text
+succeeds, keeps the 9 readable pages, and records a warning naming the count and
+the likely cause (scanned images, OCR out of scope).
+
+#### Decision 26 — XLSX opened with `data_only=True`
+
+**What:** workbooks are read for formula *results*, not formula source.
+
+**Why:** a cell containing `=TODAY()+7` tells retrieval nothing. The date it
+evaluates to is the fact the user remembers. This has a real limitation worth
+stating: `data_only=True` returns `None` for formula cells in a workbook that
+has never been opened by Excel, because the cached value is absent. On the
+synthetic corpus every value is literal so it does not arise, but on a real
+corpus it will. Flagged for Phase 23.
+
+#### Decision 27 — Code is one block, not one block per function
+
+**What:** a source file becomes a single block tagged with its language.
+
+**Why:** retrieval here answers "which file was I looking for", not "where is
+this symbol". Splitting per function would multiply chunk count — and therefore
+embedding time, the dominant index-build cost on this CPU — for no measurable
+gain in re-finding accuracy. Revisit only if code-specific queries enter the
+benchmark.
+
+#### Decision 28 — Text-encoding fallback chain ends in replacement, not failure
+
+**What:** `utf-8-sig` → `utf-8` → `cp1252` → `latin-1`, then UTF-8 with
+`errors="replace"`.
+
+**Why:** cp1252 precedes latin-1 because on Windows it is the far more likely
+legacy encoding and decodes smart quotes and em-dashes correctly where latin-1
+mojibakes them. The final replacement fallback means a partially garbled
+document still enters the index — for retrieval, a document with three broken
+characters is enormously more useful than no document.
+
+#### Decision 29 — Re-extraction is keyed on content hash, not mtime
+
+**What:** `files_needing_extraction()` returns files where no extraction exists
+*or* `documents.content_hash IS NOT files.content_hash`.
+
+**Why:** it composes correctly with Decision 23's scanner behaviour. A file that
+was touched but not edited has a new mtime, an unchanged hash, and is therefore
+not re-extracted. Verified live: the second `contextfs scan` prints
+`extraction: nothing to do, all documents current`.
+
+Re-extraction **replaces** a file's blocks wholesale rather than merging, so a
+shrinking document cannot leave stale blocks behind with offsets that no longer
+index anything. A test asserts a 7-block file re-extracted as 1 block ends with
+exactly 1 stored block.
+
+### Verification — actual output
+
+```
+$ python scripts/extraction_report.py
+corpus: 40 files
+
+  attempted              40
+  succeeded              40
+  failed                 0
+  unsupported            0
+  genuine_failures       0
+  empty                  0
+  with_warnings          0
+  total_chars            55627
+  tabular_documents      8
+  duration_ms            2262.08
+
+  SUCCESS RATE           100.0% (40/40)
+
+  per extension (succeeded/attempted):
+    .docx 5/5   .md 10/10   .pdf 4/4   .pptx 2/2
+    .py 4/4     .sql 1/1    .txt 8/8   .xlsx 6/6
+
+  FAILURES: none
+  WARNINGS: none
+
+  DOCUMENTS WITH TABULAR CONTENT (8):
+    College/Capstone/evaluation_plan.xlsx
+    College/Semester7/DBMS/dbms_lab_record.xlsx
+    College/Semester7/MachineLearning/Exam_Timetable_Sem7.xlsx
+    College/Semester7/MachineLearning/Unit3_SVM_Notes.md      <- markdown pipe table
+    College/Semester7/MachineLearning/ml_lab_attendance.xlsx
+    Personal/Career/application_tracker.xlsx
+    Projects/UrbanFlow/sensor_data_sample.xlsx
+    Projects/UrbanFlow/team_notes.md                          <- markdown pipe table
+```
+
+**Extraction success rate: 100% (40/40), zero failures, zero warnings, zero
+empty documents.** All 6 spreadsheets plus both Markdown pipe tables were
+correctly detected as tabular; the 32 prose/code documents were correctly not.
+
+CLI, from a clean index:
+
+```
+$ contextfs scan     hashed 40/40 (0.33 MiB) in 94 ms | reprocessing 40/40 (100.0%)
+                     extracted 40/40 documents (100.0%), 55,627 chars,
+                     8 with tabular content, in 2441 ms
+$ contextfs scan     hashed 0/40 | reprocessing 0/40 (0.0% of corpus)
+                     extraction: nothing to do, all documents current
+```
+
+Index size after full extraction: **256 KB** SQLite for a 333 KiB corpus.
+
+```
+$ pytest -q      142 passed in 19.72s
+$ ruff check .   All checks passed!
+```
+
+Tests added (44): registry coverage, per-format structure assertions, the
+tabular-span/offset mapping, corrupt-PDF/DOCX/XLSX handling, missing files,
+empty files, non-UTF-8 decoding, batch survival past a bad file, truncation at
+block boundaries, persistence round-trip, offset integrity, incremental
+re-extraction, and a read-only audit over the corpus.
+
+**Two benchmark-critical fidelity tests:**
+- `test_labelled_date_surfaces_survive_extraction` — all 65 ground-truth date
+  surface forms are present in the extracted text. Without this, a Phase 10
+  recall failure caused by extraction would be misdiagnosed as a classifier
+  failure.
+- `test_the_adversarial_case_survives_extraction` — the key PDF still contains
+  no exam vocabulary after extraction, and the timetable still names it.
+
+### Known-broken / deferred after Phase 5
+
+- **No OCR.** Image extraction is metadata + filename only, as scoped. On a real
+  corpus, scanned PDFs will surface as "N pages yielded no text" warnings.
+- **`data_only=True` blind spot** — see Decision 26.
+- Extraction is single-threaded. 2.4 s for 40 files is dominated by PDF parsing
+  (747 ms for one file). Parallelising across the 8 cores is an obvious win but
+  is deferred: embedding, not extraction, will dominate index build time from
+  Phase 7, and optimising the wrong stage first is wasted effort.
+- DOCX comments, footnotes, and headers/footers are not extracted.
+
+### What Phase 6 needs from this phase
+
+- `Store.all_documents()` and `get_blocks()` — spaCy runs over stored text.
+- Character offsets on blocks, so entity mentions can be located structurally.
+- `documents.text` as the canonical single string per document.
+
+---

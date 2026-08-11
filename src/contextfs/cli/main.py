@@ -159,6 +159,37 @@ def _not_implemented(command: str, phase: int, what: str) -> None:
     raise typer.Exit(EXIT_NOT_IMPLEMENTED)
 
 
+def _run_extraction(store, cfg):
+    """Extract content for files whose extraction is missing or stale.
+
+    Only files whose *content hash* differs from the one recorded at extraction
+    time are reprocessed, so a scan that merely re-observed the corpus performs
+    no extraction at all.
+
+    Returns:
+        The :class:`~contextfs.extract.ExtractionReport` for the batch.
+    """
+    from pathlib import Path as _Path
+
+    from contextfs.extract import extract_many
+
+    pending = store.files_needing_extraction()
+    if not pending:
+        from contextfs.extract import ExtractionReport
+
+        return ExtractionReport()
+
+    rows_by_path = {row["path"]: row for row in pending}
+    items = [(_Path(row["abs_path"]), row["path"]) for row in pending]
+    report = extract_many(items, config=cfg)
+
+    for doc in report.documents:
+        row = rows_by_path.get(doc.rel_path)
+        if row is not None:
+            store.save_document(row["id"], doc, content_hash=row["content_hash"])
+    return report
+
+
 # ---------------------------------------------------------------------------
 # Commands
 # ---------------------------------------------------------------------------
@@ -183,6 +214,10 @@ def scan(
     show_files: Annotated[
         bool, typer.Option("--show-files", help="List the changed files, not just counts.")
     ] = False,
+    no_extract: Annotated[
+        bool,
+        typer.Option("--no-extract", help="Stop after file discovery; skip content extraction."),
+    ] = False,
 ) -> None:
     """Index the configured root directory (read-only, incremental by default)."""
     from contextfs.scanner import Scanner
@@ -206,9 +241,12 @@ def scan(
         cfg.ensure_data_dir()
         store_ctx = Store(cfg.db_path)
 
+    extraction = None
     with store_ctx as store:
         scanner = Scanner(cfg)
         result = scanner.scan(store, full=full, dry_run=dry_run, rehash=rehash)
+        if not dry_run and not no_extract:
+            extraction = _run_extraction(store, cfg)
 
     table = Table(
         title=f"Scan of {cfg.paths.root}" + (" [dry run]" if dry_run else ""),
@@ -246,6 +284,22 @@ def scan(
             for item in items:
                 console.print(f"  [{style}]{label:<9}[/{style}] {item}")
 
+    if extraction is not None and extraction.total:
+        console.print(
+            f"extracted {len(extraction.succeeded)}/{extraction.total} documents "
+            f"({extraction.success_rate:.1%}), {extraction.total_chars:,} chars, "
+            f"{extraction.summary()['tabular_documents']} with tabular content, "
+            f"in {extraction.duration_ms:.0f} ms"
+        )
+        for doc in extraction.failed:
+            err_console.print(f"  [red]extract failed[/red] {doc.rel_path}: {doc.error}")
+        if state.verbose:
+            for doc in extraction.with_warnings:
+                for warning in doc.warnings:
+                    err_console.print(f"  [yellow]warn[/yellow] {doc.rel_path}: {warning}")
+    elif extraction is not None:
+        console.print("[dim]extraction: nothing to do, all documents current[/dim]")
+
     if result.errors:
         err_console.print(f"[yellow]{len(result.errors)} error(s) during scan:[/yellow]")
         for path, stage, message in result.errors[:10]:
@@ -253,7 +307,9 @@ def scan(
 
     if dry_run:
         console.print("[dim]Dry run: nothing was written to the index.[/dim]")
-    console.print("[dim]Content extraction and downstream layers land in Phase 5 onward.[/dim]")
+    console.print(
+        "[dim]Entities, embeddings, graph, timeline and sessions land in Phase 6 onward.[/dim]"
+    )
 
 
 @app.command()

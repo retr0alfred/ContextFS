@@ -107,8 +107,7 @@ def main() -> int:
     )
     if incremental:
         print(
-            f"incremental speedup vs cold: "
-            f"{cold_median / statistics.median(incremental):.1f}x"
+            f"incremental speedup vs cold: " f"{cold_median / statistics.median(incremental):.1f}x"
         )
     print(
         "\nNOTE: this corpus is small (KiB, not GiB) and fits entirely in the OS page\n"

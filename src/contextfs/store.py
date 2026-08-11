@@ -118,6 +118,47 @@ MIGRATIONS: list[list[str]] = [
         )
         """,
     ],
+    # -- v2: Phase 5, extracted content ------------------------------------
+    [
+        """
+        CREATE TABLE IF NOT EXISTS documents (
+            file_id       INTEGER PRIMARY KEY REFERENCES files(id) ON DELETE CASCADE,
+            path          TEXT    NOT NULL,
+            extractor     TEXT    NOT NULL,
+            ok            INTEGER NOT NULL,
+            error         TEXT    NOT NULL DEFAULT '',
+            warnings      TEXT    NOT NULL DEFAULT '[]',
+            meta          TEXT    NOT NULL DEFAULT '{}',
+            text          TEXT    NOT NULL DEFAULT '',
+            char_count    INTEGER NOT NULL DEFAULT 0,
+            word_count    INTEGER NOT NULL DEFAULT 0,
+            block_count   INTEGER NOT NULL DEFAULT 0,
+            has_tabular   INTEGER NOT NULL DEFAULT 0,
+            truncated     INTEGER NOT NULL DEFAULT 0,
+            content_hash  TEXT,
+            extracted_at  TEXT    NOT NULL
+        )
+        """,
+        "CREATE INDEX IF NOT EXISTS idx_documents_ok   ON documents(ok)",
+        "CREATE INDEX IF NOT EXISTS idx_documents_path ON documents(path)",
+        """
+        CREATE TABLE IF NOT EXISTS document_blocks (
+            id          INTEGER PRIMARY KEY AUTOINCREMENT,
+            file_id     INTEGER NOT NULL REFERENCES files(id) ON DELETE CASCADE,
+            block_index INTEGER NOT NULL,
+            kind        TEXT    NOT NULL,
+            label       TEXT    NOT NULL DEFAULT '',
+            text        TEXT    NOT NULL,
+            is_tabular  INTEGER NOT NULL DEFAULT 0,
+            is_heading  INTEGER NOT NULL DEFAULT 0,
+            row_count   INTEGER NOT NULL DEFAULT 0,
+            char_start  INTEGER NOT NULL DEFAULT 0,
+            char_end    INTEGER NOT NULL DEFAULT 0
+        )
+        """,
+        "CREATE INDEX IF NOT EXISTS idx_blocks_file ON document_blocks(file_id)",
+        "CREATE INDEX IF NOT EXISTS idx_blocks_tab  ON document_blocks(is_tabular)",
+    ],
 ]
 
 #: The schema version this build of ContextFS writes.
@@ -372,6 +413,148 @@ class Store:
             "GROUP BY ext ORDER BY n DESC"
         ).fetchall()
         return {row["ext"]: row["n"] for row in rows}
+
+    # -- documents (Phase 5) ----------------------------------------------
+
+    def save_document(self, file_id: int, doc: Any, content_hash: str | None = None) -> None:
+        """Persist one :class:`~contextfs.extract.base.ExtractedDocument`.
+
+        The document's blocks are replaced wholesale rather than merged: a
+        re-extraction of a changed file must not leave stale blocks from the
+        previous version behind, which would corrupt every downstream layer
+        that reads block offsets.
+
+        Args:
+            file_id: ``files.id`` of the source file.
+            doc: The extracted document.
+            content_hash: The file's content hash at extraction time, so a later
+                scan can tell whether the stored extraction is still current.
+        """
+        import json
+
+        now = utc_now()
+        with self.transaction() as cursor:
+            cursor.execute("DELETE FROM document_blocks WHERE file_id = ?", (file_id,))
+            cursor.execute(
+                """
+                INSERT INTO documents (
+                    file_id, path, extractor, ok, error, warnings, meta, text,
+                    char_count, word_count, block_count, has_tabular, truncated,
+                    content_hash, extracted_at
+                ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+                ON CONFLICT(file_id) DO UPDATE SET
+                    path=excluded.path, extractor=excluded.extractor, ok=excluded.ok,
+                    error=excluded.error, warnings=excluded.warnings, meta=excluded.meta,
+                    text=excluded.text, char_count=excluded.char_count,
+                    word_count=excluded.word_count, block_count=excluded.block_count,
+                    has_tabular=excluded.has_tabular, truncated=excluded.truncated,
+                    content_hash=excluded.content_hash, extracted_at=excluded.extracted_at
+                """,
+                (
+                    file_id,
+                    doc.rel_path,
+                    doc.extractor,
+                    int(doc.ok),
+                    doc.error,
+                    json.dumps(doc.warnings),
+                    json.dumps(doc.meta, default=str),
+                    doc.text,
+                    doc.char_count,
+                    doc.word_count,
+                    doc.block_count,
+                    int(doc.has_tabular_content),
+                    int(doc.truncated),
+                    content_hash,
+                    now,
+                ),
+            )
+
+            offset = 0
+            rows = []
+            for block in doc.blocks:
+                start = offset
+                end = start + len(block.text)
+                rows.append(
+                    (
+                        file_id,
+                        block.index,
+                        block.kind,
+                        block.label,
+                        block.text,
+                        int(block.is_tabular),
+                        int(block.is_heading),
+                        block.row_count,
+                        start,
+                        end,
+                    )
+                )
+                offset = end + 2  # matches ExtractedDocument.text's "\n\n" join
+            if rows:
+                cursor.executemany(
+                    "INSERT INTO document_blocks (file_id, block_index, kind, label, text, "
+                    "is_tabular, is_heading, row_count, char_start, char_end) "
+                    "VALUES (?,?,?,?,?,?,?,?,?,?)",
+                    rows,
+                )
+
+    def get_document(self, file_id: int) -> sqlite3.Row | None:
+        """Return the stored extraction for a file."""
+        return self.conn.execute("SELECT * FROM documents WHERE file_id = ?", (file_id,)).fetchone()
+
+    def get_document_by_path(self, path: str) -> sqlite3.Row | None:
+        """Return the stored extraction for a corpus-relative path."""
+        return self.conn.execute("SELECT * FROM documents WHERE path = ?", (path,)).fetchone()
+
+    def get_blocks(self, file_id: int) -> list[sqlite3.Row]:
+        """Return a file's blocks in document order."""
+        return self.conn.execute(
+            "SELECT * FROM document_blocks WHERE file_id = ? ORDER BY block_index", (file_id,)
+        ).fetchall()
+
+    def all_documents(self, ok_only: bool = True) -> list[sqlite3.Row]:
+        """Return every stored extraction, joined to its still-present file."""
+        sql = (
+            "SELECT d.* FROM documents d JOIN files f ON f.id = d.file_id "
+            "WHERE f.status = 'present'"
+        )
+        if ok_only:
+            sql += " AND d.ok = 1"
+        return self.conn.execute(sql + " ORDER BY d.path").fetchall()
+
+    def document_count(self, ok_only: bool = True) -> int:
+        """Count stored extractions."""
+        sql = "SELECT COUNT(*) FROM documents"
+        if ok_only:
+            sql += " WHERE ok = 1"
+        return self.conn.execute(sql).fetchone()[0]
+
+    def delete_documents(self, file_ids: Iterable[int]) -> int:
+        """Remove extractions (and their blocks) for the given files."""
+        ids = list(file_ids)
+        if not ids:
+            return 0
+        with self.transaction() as cursor:
+            marks = ",".join("?" * len(ids))
+            cursor.execute(f"DELETE FROM document_blocks WHERE file_id IN ({marks})", ids)
+            cursor.execute(f"DELETE FROM documents WHERE file_id IN ({marks})", ids)
+            return cursor.rowcount
+
+    def files_needing_extraction(self) -> list[sqlite3.Row]:
+        """Return present files with no extraction, or a stale one.
+
+        Staleness is decided by comparing the file's current content hash with
+        the hash recorded at extraction time - so a file whose *content* changed
+        is re-extracted while a file that was merely re-observed is not.
+        """
+        return self.conn.execute(
+            """
+            SELECT f.* FROM files f
+            LEFT JOIN documents d ON d.file_id = f.id
+            WHERE f.status = 'present'
+              AND (d.file_id IS NULL OR d.content_hash IS NOT f.content_hash)
+            ORDER BY f.path
+            """
+        ).fetchall()
 
     # -- scan runs ---------------------------------------------------------
 
