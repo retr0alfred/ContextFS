@@ -2396,3 +2396,142 @@ this once" would have been the smaller diff and the wrong call.
   whatever Phase 9 measured; it adds exactness for identical hashes only.
 
 ---
+
+## Phases 23–25 — Real-data migration plan, code quality pass, documentation
+
+### Phase 24 — Code quality and test coverage
+
+Measured with `pytest --cov`, before and after:
+
+| Module | Before | After |
+|---|---|---|
+| `cli/main.py` | **19.0%** | **49.2%** |
+| `insights.py` | 73.0% | 80.7% |
+| **Total** | **77%** | **81.5%** |
+
+Test count 432 → **457**.
+
+#### Decision 78 — The CLI was the coverage hole, and it is the main deliverable
+
+19% on `cli/main.py` was the worst number in the project and the least
+defensible one: the user's stated priority is that the CLI is "the main thing",
+every command had been exercised by hand against the live index, and *none of
+that behaviour was pinned against regression*.
+
+`tests/test_cli_commands.py` (25 tests) fixes it without importing the ML stack.
+The fixture writes a small index **directly into SQLite** plus a graph JSON,
+which is sufficient for every command that *reads* an index rather than building
+one — `digest`, `duplicates`, `projects`, `tags`, `feedback`, `stats`,
+`explain`, `reset`, `config`. The whole module runs in **6.5 seconds**.
+
+That speed is the point, not a bonus. On this hardware a CLI test module that
+loaded torch would add minutes to every run, and a test suite people stop
+running has zero coverage regardless of what the number says.
+
+What is deliberately *not* covered here: `scan`, `query` and `timeline` need
+real embeddings, so this module only asserts they fail **cleanly** with no
+index — which is the path a first-time user actually hits. Their behavioural
+coverage lives in the integration tests.
+
+Two properties worth calling out as tests rather than as prose:
+
+- `test_duplicates_never_offers_to_delete` — the read-only guarantee has to be
+  visible at the surface, not merely held internally.
+- `test_every_index_reading_command_fails_cleanly_with_no_index`, parametrised
+  over all seven index-reading commands — no traceback, correct exit code, and
+  the word "scan" in the message, because the most common first-run mistake
+  should tell you what to do about it.
+
+#### Remaining low-coverage modules, flagged rather than papered over
+
+| Module | Coverage | Why, honestly |
+|---|---|---|
+| `__main__.py` | 0% | Three lines of entry-point plumbing, exercised by a subprocess test that coverage cannot see |
+| `cli/main.py` | 49% | The uncovered half is `scan`'s pipeline orchestration, which is genuinely covered — by the integration tests and by every evaluation script — but only through subprocesses and real model loads |
+| `evaluation.py` | 50% | Exercised by `scripts/evaluate.py` on every result quoted in the README, not by unit tests. Real coverage is higher than the number; the number is what a CI would see |
+| `extract/extractors.py` | 64% | The uncovered branches are per-format failure paths — corrupt PDFs, password-protected files, unsupported variants — which would need a library of deliberately broken fixtures |
+| `datagen/generate.py` | 68% | Corpus generation is verified by `scripts/verify_corpus.py` end to end rather than per-branch |
+
+Stating this rather than chasing the number: the gap in `extractors.py` is a
+real gap (broken-file handling is untested against actual broken files), and the
+gaps in `evaluation.py` and `cli/main.py` are artefacts of where the testing
+happens rather than absent testing. Different problems, and worth distinguishing.
+
+### Phase 23 — Real dataset migration plan
+
+Written to [docs/real-data-migration.md](docs/real-data-migration.md), and
+deliberately **not executed** — that is what the phase asked for.
+
+#### Decision 79 — The plan's most useful content is what cannot be done
+
+The mechanical part of "migrating to real data" is trivial and the document says
+so in one paragraph: ContextFS never writes to scanned files and stores
+everything derived separately, so pointing it at a real folder is a
+*configuration change*, not a conversion.
+
+The document's actual value is the honest accounting of the hard steps:
+
+- **Step 4 (build a real query set) is the bottleneck**, and it cannot be
+  automated. The protocol given — write queries before looking at the index,
+  never adjust a failed query, record "I misremembered which file it was" as a
+  real outcome — exists because the obvious way to do this quietly turns an
+  evaluation into a demo. The labeller is also the author of the system;
+  blinding is impossible; the strongest available claim is a case study at n=1
+  with the conflict of interest stated.
+- **Three measured results have no path to real-data validation at all.**
+  Session accuracy needs ground-truth session boundaries that nobody remembers
+  and no record preserves. Meaningful-date F1 and entity F1 need per-item human
+  labelling at a scale (~10³ date pairs for a 500-file subtree) that is feasible
+  in principle and brutal in practice. For sessions the honest fallback is a
+  confirm/reject proxy that yields precision-like feedback and **no recall** —
+  you cannot ask someone to enumerate sessions they have forgotten.
+- **Six real-data failure modes the synthetic corpus structurally cannot
+  exhibit** are listed so a disappointing run gets *diagnosed* rather than
+  mistaken for a null result. The first is the important one: cloud sync, bulk
+  copies and restores rewrite mtimes, and since the activity layer is built
+  entirely on mtime this does not degrade it — it silences it, with no detection
+  and no repair.
+- **Scale projections are labelled as projections.** The table gives the
+  complexity of each stage and where it is expected to hurt; the only measured
+  point on it is 40 files. Session clustering at O(n²) is named as the first
+  real wall.
+
+The document ends with a *minimum viable* validation — one folder, 100–300
+files, 15 queries written from memory in advance, roughly a day's work — plus an
+explicit statement of what that can and cannot claim.
+
+### Phase 25 — Documentation
+
+- **[docs/architecture.md](docs/architecture.md)** — maps all eleven specified
+  layers onto the modules that implement them, with a data-flow diagram, the
+  storage rationale, and each deviation stated inline next to the layer it
+  affects.
+- **README.md** — rewritten from the Phase 1 placeholder. Leads with the
+  hypothesis and the measured table, then the per-kind breakdown, then the
+  ablation.
+- **guide.md** — rewritten in Phases 19–20; every placeholder marker is gone and
+  every documented command exists.
+
+#### Decision 80 — The README states the result's weaknesses in the README
+
+The user's instruction was to solve any visible weakness that is solvable and
+state the rest. The README therefore carries a ten-item **Weaknesses** section
+that includes the things a reader would otherwise catch and stop trusting the
+document for:
+
+- the corpus is synthetic and self-authored (named as "the big one");
+- n=17, with per-kind cells of 2–4 queries, explicitly not a significance test;
+- **the activity layer barely moves the headline metric** — +0.000 MRR over
+  graph alone, and the honest reading is that the temporal layer carries the
+  result;
+- **Hit@1 did not improve at all**, 0.412 for every configuration;
+- entity extraction has precision 0.489, meaning roughly half of extracted
+  entities are wrong.
+
+The ablation table in the README is annotated with that reading rather than left
+for the reader to work out. A result presented with its own strongest
+counter-argument is more persuasive than one that waits to be caught, and an
+examiner who finds an unstated caveat themselves will discount everything else
+in the document.
+
+---
