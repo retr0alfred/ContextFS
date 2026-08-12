@@ -2178,3 +2178,59 @@ architecture exists for, and the explanation says so in the user's own terms.
   Adequate for one user; wrong for concurrent sessions.
 
 ---
+
+## Phase 18 — Incremental update correctness
+
+`scripts/incremental_check.py` builds a full index over a throwaway copy of the
+corpus, re-scans it unchanged, then modifies one file, adds one, deletes one, and
+re-scans again — instrumenting every stage.
+
+### Measured (all figures from the run, none estimated)
+
+| Pass | Files reprocessed | Total time |
+|---|---|---|
+| 1. Initial full build | 40 extracted / 40 embedded | **33 166 ms** |
+| 2. Re-scan, nothing changed | **0 / 0 / 0** | **464 ms** |
+| 3. After 1 modified, 1 added, 1 deleted | **2 extracted, 2 embedded** | **1 322 ms** |
+
+- **Reprocessed-file-count vs corpus size: 2 / 40 = 5.0%**
+- **Incremental update time: 1 322 ms**
+- **Speed-up vs full rebuild: 25.1×**
+
+### Correctness checks — all passing
+
+1. A no-change re-scan reprocesses nothing (0 extracted, 0 entities, 0 embedded).
+2. Change detection is exact: 1 new, 1 modified, 1 deleted — no over- or
+   under-reporting.
+3. Only changed files are reprocessed: 2 of 40.
+4. The deleted file is removed from **every** store — tombstoned in SQLite,
+   purged from `documents`, and its vectors deleted from LanceDB. This is the
+   check that matters most: a vector left behind stays searchable and would
+   return text for a file that no longer exists, which is a *wrong answer*
+   rather than a missing one.
+5. The added file is fully indexed through extraction, entities and vectors.
+
+### The honest asterisk on "25× faster"
+
+The per-file stages — extraction, entities, embedding — are **genuinely
+incremental**, and they are the ones whose cost scales with corpus size. The
+structural stages are **rebuilt wholesale by design**, and their cost is reported
+separately rather than folded into the headline: dates 131 ms, sessions 129 ms,
+tree + graph 192 ms.
+
+That is a deliberate architectural choice, not an oversight. Date classification
+uses cross-file recurrence, and session clustering is global — adding one file
+can legitimately change the verdict on a date in a file that did not itself
+change, or re-partition a session. A per-file patch would leave the store in a
+state no full run would ever produce, and silent divergence between "incremental"
+and "full" results would be far worse than 450 ms of rebuild.
+
+**The consequence, stated plainly:** incremental update time has a floor of
+roughly 450 ms that does not shrink with fewer changes, and those stages are
+O(n²) in files (session clustering) or O(n) (dates, tree, graph). At tens of
+thousands of files this floor becomes the dominant cost and the design would
+need revisiting — blocking sessions by time window, and patching timeline nodes
+per file with a periodic global reconciliation. Untested at that scale and not
+claimed.
+
+---
