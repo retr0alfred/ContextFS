@@ -223,7 +223,49 @@ Every one of these accepts `--json` for scripting.
 
 ---
 
-## 7. Stop / clean up
+## 7. The desktop application
+
+```bash
+pip install -e ".[gui]"
+contextfs gui
+```
+
+A native Windows application (Qt), not a web page in a frame. Three tabs:
+**Search** (results beside the reasoning that produced them), **Insights**
+(digest, projects, duplicates), and **Index** (choose a folder, scan, watch
+progress).
+
+The reason to prefer it over the CLI is measured, not stylistic: loading the
+models takes about 23 seconds, and the CLI pays that on *every* command because
+each command is a separate process. The GUI pays it once when it opens, and
+every query after that is warm (~75 ms). The status bar tells you when the load
+is done.
+
+Results are tinted by the signal that found them — blue for semantic, violet for
+graph, amber for activity, green for timeline — so "this was found because of
+when you worked on it, not because of its text" is visible before you read
+anything.
+
+`Ctrl+R` re-scans. `Ctrl+G` opens the 3D graph.
+
+### The 3D relationship graph
+
+```bash
+contextfs visualise
+```
+
+Writes a single self-contained HTML file (~1.3 MB) and opens it. three.js is
+bundled inside the file, so it fetches nothing — it works offline, and you can
+send the file to someone who does not have ContextFS installed.
+
+Drag to orbit, scroll to zoom, click a node for its details. The useful part is
+the relation toggles in the top-left: switch **semantic** off and leave
+**activity** on, and you can see files clustering by when you worked on them
+rather than by what they say. That is the project's whole claim, made visible.
+
+---
+
+## 8. Stop / clean up
 
 ContextFS runs no background service — there is nothing to "stop". Every command
 is a one-shot process that exits when it is done. Nothing watches your

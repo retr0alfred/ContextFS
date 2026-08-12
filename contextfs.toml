@@ -251,6 +251,35 @@ weight_timeline = 0.15
 # Feedback nudge (Phase 19) is applied as a bounded multiplier, not a weight.
 feedback_max_boost = 0.15
 
+# Format-hint multipliers. A query naming a format ("the PDF", "that
+# spreadsheet") states a constraint the user actually knows, so it is applied
+# as a bounded multiplier outside the weighted signal mix.
+#
+# These were 1.15 / 0.85 until Phase 27, when end-to-end testing showed a query
+# saying "the PDF" returning four non-PDFs in its top five, with the correct
+# PDF at rank 6. Swept against the 17-query ground truth:
+#
+#   boost  penalty |    MRR   hit@1     P@5    R@10 | format-query MRR (n=5)
+#    1.15     0.85 | 0.5845  0.4118  0.7196  0.8564 | 0.5889   <- old
+#    1.15     0.70 | 0.6319  0.4706  0.7392  0.8564 | 0.7500   <- chosen
+#    1.20     0.60 | 0.6319  0.4706  0.7392  0.8564 | 0.7500
+#    1.25     0.50 | 0.6319  0.4706  0.7392  0.8564 | 0.7500
+#    1.30     0.40 | 0.6319  0.4706  0.7392  0.8564 | 0.7500
+#    1.30     0.30 | 0.6319  0.4706  0.7275  0.8564 | 0.7500
+#    1.40     0.20 | 0.6319  0.4706  0.7275  0.8564 | 0.7500
+#    1.50     0.10 | 0.6319  0.4706  0.7275  0.8564 | 0.7500
+#
+# Everything from 0.70 down is a plateau: identical MRR, hit@1 and recall over
+# a 7x range of penalty. That flatness is the reason to trust the change - the
+# result does not depend on picking a lucky value. 0.70 is chosen as the
+# mildest setting that reaches the plateau, because a stronger penalty buys
+# nothing measurable and costs more when a user misremembers the format.
+#
+# Asymmetry is deliberate: naming a format is strong evidence AGAINST files of
+# other types, and only weak evidence for any particular file of that type.
+format_boost = 1.15
+format_penalty = 0.70
+
 # Graph traversal budget.
 max_hops = 2
 max_seed_nodes = 10

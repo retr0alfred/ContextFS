@@ -338,20 +338,37 @@ class Store:
             store.upsert_file(record)
     """
 
-    def __init__(self, path: Path | str, *, read_only: bool = False) -> None:
+    def __init__(
+        self, path: Path | str, *, read_only: bool = False, cross_thread: bool = False
+    ) -> None:
         """Open (and if necessary create and migrate) the database at ``path``.
 
         Args:
             path: Database file. Parent directories are created.
             read_only: Open without applying migrations. Used by ``stats`` and
                 the GUI so that merely inspecting an index cannot alter it.
+            cross_thread: Allow the connection to be used from a thread other
+                than the one that opened it.
+
+        On ``cross_thread``: the desktop GUI opens its index on a worker thread
+        and closes it on the GUI thread, and Python's default
+        ``check_same_thread=True`` makes that a hard error. Relaxing it is only
+        safe because ``sqlite3.threadsafety == 3`` (serialized) on CPython, so
+        the driver itself locks around every call, **and** because the GUI
+        funnels all index access through a single-threaded job queue so two
+        operations never overlap on one connection. Both conditions are
+        required; neither alone is sufficient, and this flag should not be set
+        anywhere that does not satisfy both.
         """
         self.in_memory = str(path) == ":memory:"
         self.path = Path(path)
         self.read_only = read_only
         if not self.in_memory:
             self.path.parent.mkdir(parents=True, exist_ok=True)
-        self.conn = sqlite3.connect(":memory:" if self.in_memory else str(self.path))
+        self.conn = sqlite3.connect(
+            ":memory:" if self.in_memory else str(self.path),
+            check_same_thread=not cross_thread,
+        )
         self.conn.row_factory = sqlite3.Row
         self._configure()
         if not read_only or self.in_memory:

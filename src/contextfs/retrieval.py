@@ -571,7 +571,11 @@ class HybridRetriever:
         # rather than a weighted signal: "slides" should promote decks, not
         # outrank the entire topic of the query.
         if decomposition.format_hint:
-            total *= 1.15 if explanation.format_match else 0.85
+            total *= (
+                self.config.retrieval.format_boost
+                if explanation.format_match
+                else self.config.retrieval.format_penalty
+            )
 
         # Feedback is deliberately NOT applied here. It used to be, as a hook
         # inside per-file scoring, which put it upstream of the format

@@ -261,6 +261,13 @@ class RetrievalConfig(_Section):
     weight_activity: float = 0.20
     weight_timeline: float = 0.15
     feedback_max_boost: float = 0.15
+    # A format hint ("the PDF", "that spreadsheet") is a *stated constraint*,
+    # not a soft preference: the user is telling you something they know. The
+    # values below are deliberately asymmetric - see Decision 84. Swept and
+    # measured in log.md, Phase 27; the table lives beside them in
+    # contextfs.toml.
+    format_boost: float = 1.15
+    format_penalty: float = 0.70
     max_hops: int = 2
     max_seed_nodes: int = 10
     max_expanded_nodes: int = 400

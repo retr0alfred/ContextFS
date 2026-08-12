@@ -1362,6 +1362,53 @@ def fetch_models() -> None:
     console.print("[green]Done.[/green] Indexing will now run fully offline.")
 
 
+@app.command()
+def gui() -> None:
+    """Open the ContextFS desktop application."""
+    cfg = state.config()
+    try:
+        from contextfs.gui import launch
+    except ImportError as exc:
+        err_console.print(
+            "[bold red]The desktop application needs the `gui` extra.[/bold red]\n"
+            'Install it with: pip install -e ".[gui]"'
+        )
+        raise typer.Exit(EXIT_CONFIG_ERROR) from exc
+    raise typer.Exit(launch(cfg))
+
+
+@app.command()
+def visualise(
+    open_it: Annotated[
+        bool, typer.Option("--open/--no-open", help="Open the page when it is built.")
+    ] = True,
+    out: Annotated[Path | None, typer.Option("--out", help="Where to write the HTML file.")] = None,
+) -> None:
+    """Build the 3D relationship-graph visualisation as a standalone page.
+
+    The output is one self-contained HTML file with three.js inlined - no CDN,
+    no server, no network access. It can be opened on any machine, or handed to
+    someone else, without ContextFS installed.
+    """
+    import webbrowser
+
+    from contextfs.gui import build_visualisation
+
+    cfg = state.config()
+    if not cfg.graph_file.is_file():
+        err_console.print(
+            f"[bold red]No relationship graph at[/bold red] {cfg.graph_file}. "
+            "Run `contextfs scan` first."
+        )
+        raise typer.Exit(EXIT_CONFIG_ERROR)
+
+    target = build_visualisation(cfg, out)
+    size_mb = target.stat().st_size / 1024 / 1024
+    console.print(f"[green]Wrote[/green] {target} [dim]({size_mb:.1f} MB, self-contained)[/dim]")
+    if open_it:
+        webbrowser.open(target.as_uri())
+
+
 @app.command(name="config")
 def config_cmd(
     show_paths: Annotated[bool, typer.Option("--paths", help="Show only resolved paths.")] = False,

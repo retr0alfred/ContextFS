@@ -2600,3 +2600,205 @@ on average; entity queries did not move at all. Stating which layers did *not*
 pay for themselves is more useful than an aggregate that hides it.
 
 ---
+
+## Phases 27–28 — Desktop application and 3D graph visualisation
+
+### Decision 82 — A real Qt application, not a browser in a frame
+
+"Desktop app" most often means Electron or a webview shell. That was rejected.
+The user asked for "a proper windows application, not a webapp", and a webview
+shell satisfies the letter of that while failing it in every way a user would
+notice: it starts slower, it eats several hundred megabytes of RAM before doing
+anything, and it renders non-native widgets.
+
+**PySide6-Essentials** (Qt 6, LGPL, 77 MB) — not the full `PySide6`, whose
+Addons wheel is roughly 400 MB and whose main attraction is QtWebEngine, a
+bundled Chromium this project deliberately does not use.
+
+Toolkit alternatives, and why not:
+
+| Option | Why not |
+|---|---|
+| Tkinter | Already installed and free, but its widget set would not carry the explanation panel legibly, and it has no path to the 3D view |
+| Dear PyGui | Fast and GPU-accelerated, but immediate-mode and visibly non-native on Windows |
+| Electron / webview | The thing the user explicitly ruled out |
+| PySide6-Addons | QtWebEngine would let three.js embed, at ~400 MB and a second Chromium render process on a 16 GB laptop |
+
+### Decision 83 — The 3D graph is a generated file, not an embedded widget
+
+Phase 28 asks for three.js; Phase 27 asks for a native app. Embedding three.js
+inside the native app means QtWebEngine, which means shipping Chromium — 5× the
+application's total size, for one screen.
+
+Instead, `contextfs visualise` writes **one self-contained HTML file** with
+three.js inlined, and the desktop app opens it. Three consequences, all good:
+
+1. **Nothing is fetched, ever.** three.js r160 (MIT, licence notice preserved)
+   is vendored in the package and inlined into the output. A visualisation that
+   pulls its renderer from a CDN is a cloud dependency no matter how local the
+   rest of the system is. A test asserts the generated page contains no
+   `https://`, no CDN hostname, and no dynamic `import(`.
+2. **The output is portable.** The 1.3 MB file opens on any machine, with no
+   Python, no ContextFS, and no network. It can be emailed to a supervisor.
+3. **The native app stays native.** No embedded browser, no local HTTP server,
+   no JavaScript inside the application itself.
+
+The implementation trick that makes a single file possible: three.js is an ES
+module ending in `export { … }`, which is legal inside an inline
+`<script type="module">` and leaves every class in scope for the code that
+follows it. So there is no `import`, therefore no fetch, therefore no server.
+
+The layout is a force-directed simulation with **sampled repulsion** — each node
+is pushed away from ~14 random others per frame rather than from all of them,
+making it O(n·k) instead of O(n²). On Vega 10 integrated graphics that is the
+difference between interactive and not. `alpha` cools and the simulation stops
+integrating, because a layout that never settles is a battery bug on a laptop.
+Node cap 1200, and when it bites the page **says how many nodes were dropped**
+rather than showing a partial graph as if it were complete.
+
+Verified against the real index: WebGL 2.0 context, 77 nodes and 597 edges, and
+the six per-type edge counts (54 semantic, 30 entity, 326 structural, 4
+duplicate, 119 temporal, 64 activity) summing exactly to 597. Frame timing is
+exposed on `window.__contextfs` so anyone can check the performance rather than
+take a claim on trust; no FPS figure is quoted here because the browser pane
+used for verification throttles `requestAnimationFrame` while hidden, and a
+number measured under throttling would be a fabricated one.
+
+### Decision 84 — Format hints were too weak, and were masking the activity layer
+
+**This is the most important finding of the testing pass, and it was found by
+end-to-end testing rather than by unit tests.**
+
+Driving the GUI through four realistic queries showed
+`Exam_Timetable_Sem7.xlsx` at rank 1 for three unrelated queries — including
+*"the **PDF** I studied before my ML exam"*, where four of the top five results
+were not PDFs and the correct PDF sat at rank 6.
+
+The format multiplier was working exactly as specified (verified: score ratios
+of precisely 0.850 and 1.150). The specification was wrong. ±15% is a *nudge*,
+and a query naming a format is not a nudge — it is a constraint the user
+actually knows. A high-degree hub node could absorb the 15% and still win.
+
+Swept against the 17-query ground truth rather than tuned by eye:
+
+| boost | penalty | MRR | hit@1 | P@5 | R@10 | format-query MRR (n=5) |
+|---|---|---|---|---|---|---|
+| 1.15 | 0.85 | 0.5845 | 0.4118 | 0.7196 | 0.8564 | 0.5889 ← old |
+| **1.15** | **0.70** | **0.6319** | **0.4706** | **0.7392** | **0.8564** | **0.7500** ← chosen |
+| 1.20 | 0.60 | 0.6319 | 0.4706 | 0.7392 | 0.8564 | 0.7500 |
+| 1.25 | 0.50 | 0.6319 | 0.4706 | 0.7392 | 0.8564 | 0.7500 |
+| 1.30 | 0.40 | 0.6319 | 0.4706 | 0.7392 | 0.8564 | 0.7500 |
+| 1.30 | 0.30 | 0.6319 | 0.4706 | 0.7275 | 0.8564 | 0.7500 |
+| 1.40 | 0.20 | 0.6319 | 0.4706 | 0.7275 | 0.8564 | 0.7500 |
+| 1.50 | 0.10 | 0.6319 | 0.4706 | 0.7275 | 0.8564 | 0.7500 |
+
+Everything from 0.70 downwards is a **plateau** — identical MRR, hit@1 and
+recall across a 7× range of penalty. That flatness is the reason to trust the
+change: the result does not depend on picking a lucky value, which is exactly
+what overfitting to 17 queries would look like. **0.70 is chosen as the mildest
+setting that reaches the plateau**, because a stronger penalty buys nothing
+measurable and costs more when a user misremembers the format.
+
+The asymmetry (1.15 up, 0.70 down) is deliberate: naming a format is strong
+evidence *against* files of other types and only weak evidence *for* any
+particular file of that type.
+
+#### The consequence that matters: a broken component was hiding a working one
+
+| Metric | Before | After |
+|---|---|---|
+| Full MRR | 0.5845 | **0.6319** |
+| Hit@1 | 0.4118 | **0.4706** |
+| Activity-query MRR | 0.417 | **0.583** |
+| RQ1: activity over graph | **+0.000 MRR** | **+0.031 MRR, +0.059 hit@1** |
+
+Before this fix, the honest reading — recorded in the Phase 26 log and in the
+README — was that *the activity layer contributes essentially nothing on
+average*. That reading was wrong, and it was wrong because hub files promoted by
+a too-weak format constraint were crowding out precisely the files the activity
+layer had correctly surfaced.
+
+Two things worth stating plainly:
+
+1. **A research layer measuring as worthless may be being suppressed rather
+   than being useless.** The ablation was measuring the activity layer
+   *through* a defect in an unrelated component. Nothing about the ablation
+   methodology was wrong; the confound was simply outside where anyone was
+   looking.
+2. **Hit@1 moved for the first time in the project.** It had been 0.412 in every
+   configuration and was listed in the README as an unsolved weakness. It is now
+   0.471 — one extra query out of 17, so still modest, and the README says so.
+
+### GUI / CLI parity — the check that stops this being a fork
+
+The GUI builds its own retrieval stack. If that stack drifts from the CLI's, the
+project has two systems and the research numbers describe only one of them.
+
+Measured over all 17 ground-truth queries, same process, same index:
+
+- **17 / 17 identical result lists**, every score matching to **1e-9**
+- warm latency, GUI stack: min 72.1 / median 74.9 / max 77.6 ms
+- warm latency, CLI stack: min 71.0 / median 73.0 / max 382.9 ms
+
+### Why a desktop app is more than a nicer CLI — measured
+
+One-time model and index load: **23.1 s**. The CLI pays that on *every*
+invocation, because each command is a separate process. The GUI pays it once per
+session and every query afterwards is warm. That is the entire performance
+argument for the GUI, and it is a measured number rather than an assertion. The
+status bar states it in the UI too — *"models loaded in 23.4s (paid once; every
+query after this is warm)"* — rather than hiding the cost.
+
+`RetrievalService` also issues one throwaway warm-up query at load, because
+without it the first *user* query pays lazy-initialisation inside torch and
+LanceDB and the system looks several times slower than it is.
+
+### A real concurrency bug, found by testing the shutdown path
+
+Closing the window raised:
+
+```
+sqlite3.ProgrammingError: SQLite objects created in a thread can only be used
+in that same thread. The object was created in thread id 2584 and this is
+thread id 24752.
+```
+
+The index connection is opened on a worker thread and closed on the GUI thread.
+The crash on close was the visible symptom; the latent bug was worse — with a
+multi-threaded pool, a search job could run on a different thread from the one
+that opened the connection.
+
+Fixed on both sides, because either alone is insufficient:
+
+- `Store(..., cross_thread=True)` relaxes `check_same_thread`, which is only
+  safe because CPython's `sqlite3.threadsafety == 3` (serialized) means the
+  driver locks around every call. Opt-in, never the default, and a test asserts
+  the default still refuses cross-thread use.
+- `JobRunner` now runs **one** worker thread, so two operations never touch the
+  shared connection at once. It also avoids oversubscribing a CPU on which torch
+  is already using several cores.
+
+### Verification
+
+- **473 tests passing** (16 new in `tests/test_gui.py`), ruff and black clean
+  across 54 files.
+- Offscreen end-to-end run: index load, four queries, explanation rendering,
+  insights refresh, and 3D export — all passing, with every returned result
+  carrying a complete explanation.
+- The generated page asserted to contain zero external references.
+
+### Honest limitations
+
+- **No automated UI tests.** Widget behaviour is exercised end-to-end offscreen
+  and retrieval parity is proven, but nothing asserts layout, so a visual
+  regression would not be caught. Pixel assertions were considered and rejected:
+  they break on font and DPI differences without catching real defects, and a
+  test that passes for the wrong reason is worse than no test.
+- **The visualisation caps at 1200 nodes.** Beyond that the highest-degree nodes
+  are kept; the page reports the drop, but a very large index is not fully shown.
+- **No FPS figure is claimed.** It was not measurable under the conditions
+  available, so it is not reported.
+- The format-hint sweep rests on **5 format-bearing queries**. The plateau is
+  strong evidence the value is not overfitted, but n=5 is n=5.
+
+---

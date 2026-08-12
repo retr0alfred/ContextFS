@@ -68,7 +68,7 @@ Nothing above L1 ever writes to your files. Everything derived lives in
 | 8 | Activity sessions | [`activity.py`](../src/contextfs/activity.py) | `sessions`, `session_members` | ✅ |
 | 9 | Retrieval & ranking | [`retrieval.py`](../src/contextfs/retrieval.py), [`query.py`](../src/contextfs/query.py) | — | ✅ |
 | 10 | CLI | [`cli/main.py`](../src/contextfs/cli/main.py) | `feedback`, `last_query.json` | ✅ |
-| 11 | Desktop GUI | — | — | ⬜ not built |
+| 11 | Desktop GUI | [`gui/`](../src/contextfs/gui/) | `graph3d.html` | ✅ |
 
 Supporting modules outside the layer stack: [`config.py`](../src/contextfs/config.py)
 (single source of every threshold), [`store.py`](../src/contextfs/store.py)
@@ -174,6 +174,15 @@ Four signals — semantic, graph, activity, timeline — weighted and
 in scale. Seeds come from four independent routes; the graph expands them; a
 query decomposer reads format hints, temporal spans and activity cues.
 
+A format hint ("the PDF", "that spreadsheet") is applied as a bounded
+multiplier outside the weighted mix — 1.15 up, **0.70 down**. The asymmetry is
+deliberate and measured: naming a format is strong evidence against files of
+other types and weak evidence for any given file of that type. This was 0.85
+until end-to-end testing found it too weak to honour a stated constraint; the
+correction raised full MRR 0.585 → 0.632 and hit@1 0.412 → 0.471, and revealed
+that the activity layer's apparent zero contribution had been a masking effect
+(log.md, Decision 84).
+
 Two things are enforced rather than encouraged:
 
 - **Every result explains itself.** `Explanation.is_complete` requires at least
@@ -181,7 +190,7 @@ Two things are enforced rather than encouraged:
   measured at **100% across all six ablation configurations.**
 - **Query-adaptive weighting.** Entity-style queries were measured *degrading*
   under context layers; weights now shift only when the query itself carries the
-  relevant cue. MRR 0.566 → 0.584, entity-query MRR 0.667 → 0.750.
+  relevant cue.
 
 Feedback (Phase 19) is applied **after** ranking as a bounded, saturating
 re-rank, never as a fifth signal, and is inert unless a feedback store is passed
@@ -200,8 +209,23 @@ that importing the CLI pulls in none of torch, spacy, transformers, lancedb.
 
 ### L11 — Desktop GUI
 
-Not built. Planned as a native Windows application with a three.js graph
-visualisation.
+A native Qt (PySide6) Windows application — no embedded browser, no local
+server, no JavaScript in the application itself. Three tabs: Search (results
+beside their reasoning), Insights, and Index.
+
+Its reason to exist is measured rather than aesthetic: model load costs ~23 s,
+and the one-shot CLI pays that on every invocation. The GUI pays it once and
+keeps the retriever resident, so every query afterwards is warm (~75 ms). All
+work runs on a **single** background thread — both so the shared index handle is
+never touched concurrently, and because torch already uses several cores.
+
+Verified not to be a fork of the CLI: **17/17 ground-truth queries return
+identical results and identical scores to 1e-9.**
+
+The 3D relationship graph (`contextfs visualise`) is a *generated* self-contained
+HTML file with three.js inlined — nothing is fetched, and the output is portable
+to a machine without ContextFS. Force-directed layout with sampled repulsion
+(O(n·k), not O(n²)) so it stays interactive on integrated graphics.
 
 ---
 
