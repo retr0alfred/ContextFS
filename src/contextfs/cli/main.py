@@ -291,6 +291,15 @@ def _run_tree(store, cfg):
     return report
 
 
+def _run_graph(store, cfg):
+    """Rebuild the relationship graph and persist it."""
+    from contextfs.graph import build_graph, save_graph
+
+    graph, report = build_graph(store, _open_vector_store(cfg), cfg)
+    save_graph(graph, cfg.graph_file)
+    return report
+
+
 def _forget_deleted(store, cfg, deleted_paths):
     """Remove derived data belonging to files that vanished from disk.
 
@@ -377,6 +386,7 @@ def scan(
         entity_stats = None
         embedding = None
         tree_report = None
+        graph_report = None
         if not dry_run and not no_extract:
             extraction = _run_extraction(store, cfg)
             entity_stats = _run_entities(store, cfg)
@@ -384,6 +394,7 @@ def scan(
                 _forget_deleted(store, cfg, result.deleted)
             embedding = _run_embeddings(store, cfg)
             tree_report = _run_tree(store, cfg)
+            graph_report = _run_graph(store, cfg)
 
     table = Table(
         title=f"Scan of {cfg.paths.root}" + (" [dry run]" if dry_run else ""),
@@ -472,6 +483,24 @@ def scan(
             f"{tree_report.summaries} summaries via {tree_report.summary_backend} "
             f"in {tree_report.duration_ms:.0f} ms"
         )
+
+    if graph_report is not None:
+        by_type = ", ".join(
+            f"{count} {name}" for name, count in sorted(graph_report.by_type.items())
+        )
+        console.print(
+            f"graph: {graph_report.nodes} nodes, {graph_report.edges} edges "
+            f"({by_type}) in {graph_report.duration_ms:.0f} ms"
+        )
+        if graph_report.duplicate_pairs:
+            console.print(
+                f"[dim]  near-duplicate pairs detected: "
+                f"{len(graph_report.duplicate_pairs)}[/dim]"
+            )
+        if graph_report.isolated:
+            console.print(
+                f"[dim]  {len(graph_report.isolated)} isolated file(s) with no relationships[/dim]"
+            )
 
     if result.errors:
         err_console.print(f"[yellow]{len(result.errors)} error(s) during scan:[/yellow]")

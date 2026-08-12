@@ -183,7 +183,10 @@ class GraphConfig(_Section):
     semantic_edge_threshold: float = 0.55
     semantic_edges_per_node: int = 8
     min_shared_entities: int = 2
-    duplicate_threshold: float = 0.95
+    #: Jaccard threshold over word shingles - NOT a cosine threshold.
+    duplicate_threshold: float = 0.25
+    #: Cosine pre-filter for duplicate candidates.
+    duplicate_candidate_similarity: float = 0.70
 
 
 class TemporalConfig(_Section):

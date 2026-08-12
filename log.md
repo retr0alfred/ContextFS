@@ -1371,3 +1371,125 @@ Project nodes resolve to exactly `{College, Projects, Personal, Downloads}`;
 - `tree_nodes` for folder-proximity computation.
 
 ---
+
+## Phase 9 — Relationship graph (Layer 6)
+
+### What was built
+
+`src/contextfs/graph.py` — a NetworkX `MultiDiGraph` over file nodes with four
+edge types (`semantic`, `entity`, `structural`, `duplicate`), JSON persistence,
+type-filtered neighbour queries, and `shortest_explained_path()`. Wired into
+`contextfs scan`.
+
+### Decisions & reasoning
+
+#### Decision 46 — MultiDiGraph, and every edge keeps its own evidence
+
+Two files are routinely related in several ways at once — the assignment draft
+and final share a folder, share entities, are semantically similar, *and* are
+near-duplicates. A simple graph would collapse those into one link, and an
+explanation reading "these are connected" without saying how would fail the
+explainability requirement outright. Parallel edges let Phase 16 report each
+reason separately. Entity edges additionally store *which* entities were shared;
+duplicate edges store both their Jaccard and cosine scores.
+
+Directed, because Phase 13's `temporal` edges genuinely are not symmetric.
+Symmetric relations are stored as matched pairs, asserted by a test.
+
+#### Decision 47 — Entity edges are IDF-weighted
+
+Sharing "Dr. Murari" (3 files) is strong evidence; sharing "Chennai" (many
+files) is nearly none. Counting raw shared entities would treat those
+identically and make every file mentioning the user's own city a neighbour of
+every other. Entities appearing in more than half the corpus are dropped
+entirely — they carry no information.
+
+#### Decision 48 — Semantic edges are capped per node
+
+Top-8 by similarity, above threshold. A dense graph is slower to traverse *and
+less informative*: if everything connects to everything, graph connectivity
+stops discriminating between results and the layer contributes nothing.
+
+#### Decision 49 — Near-duplicate detection uses shingle Jaccard, not cosine
+[SPEC DEVIATION — the spec says "embedding similarity above threshold";
+measurement says that does not work]
+
+The first implementation followed the spec: duplicate edge when cosine ≥ 0.95.
+It produced **zero** duplicate edges, missing both planted pairs. Rather than
+lowering the threshold until the test passed, the actual distribution was
+measured:
+
+| Pair | Cosine | Jaccard (5-word shingles) |
+|---|---|---|
+| Planted duplicate #1 (annotated PDF) | 0.928 | **0.519** |
+| Planted duplicate #2 (draft/final docx) | 0.827 | **0.393** |
+| Best **non**-duplicate pair (proposal ↔ review slides) | 0.807 | 0.021 |
+
+By cosine, the margin between a true duplicate and a false one is **0.019** —
+any threshold is a coin flip, and planted pair #2 ranks *below* several
+unrelated pairs. By Jaccard the margin is **0.372**, about **19× better
+separation**.
+
+The reason is structural, not a corpus artefact: **embeddings are trained to
+place documents about the same topic close together, which is the opposite of
+what near-duplicate detection needs.** Two different essays about BCNF
+normalisation *should* be semantically close, and are not duplicates.
+
+Implementation keeps cosine as a cheap candidate pre-filter (≥ 0.70) so shingle
+sets are never built for all O(n²) pairs. `duplicate_threshold` is now a Jaccard
+threshold (0.25), and `contextfs.toml` carries the measurement table beside it.
+`test_jaccard_separates_duplicates_far_better_than_cosine` asserts the margin
+holds, so if it ever collapses the decision gets revisited rather than silently
+inherited.
+
+**Assessment of the deviation:** the spec's phrase was a reasonable default that
+turns out to be wrong for this task. This is exactly the case the master prompt
+asks to be flagged rather than silently redesigned.
+
+#### Decision 50 — The graph is stored as readable JSON, not pickle
+
+An index a user can read is an index a user can audit, which matters for a
+system whose selling point is explainability. Pickle would also be a
+code-execution hazard on load.
+
+### Verification — actual output
+
+```
+$ contextfs scan
+graph: 40 nodes, 414 edges (4 duplicate, 30 entity, 54 semantic, 326 structural)
+  near-duplicate pairs detected: 2
+
+$ pytest -q      277 passed in 94.14s
+$ ruff check .   All checks passed!
+```
+
+**Graph statistics report:** 40 nodes, 414 edges, 0 isolated nodes, ≤3 connected
+components (asserted — a fragmented graph would cripple traversal retrieval).
+
+**Phase-required manual check — the planted duplicates:** both deliberately
+planted near-duplicate pairs are linked with `duplicate` edges (4 directed edges
+= 2 pairs × 2 directions), and `test_no_spurious_duplicates` asserts **no other
+pair** was flagged. All four edge types are produced; every edge weight is in
+[0, 1]; symmetry holds for all four symmetric types; and the draft/final pair
+carries ≥ 3 distinct relation types simultaneously — the case that justifies
+MultiDiGraph.
+
+### Known-broken / deferred after Phase 9
+
+- The graph is rebuilt wholesale each scan (~230 ms at this scale). Genuine
+  exception to incrementality, same as the tree. Phase 18 will measure whether
+  it matters.
+- Structural edges are O(n²) within a folder. Fine for tens of files per folder;
+  a folder with thousands would blow up. Untested at that scale, not claimed.
+- Entity edges rest on Phase 6's NER, whose precision is 0.489 — some entity
+  edges will be spurious. Mitigated by IDF weighting and the ≥2 shared-entity
+  minimum, not eliminated.
+
+### What Phase 10 needs from this phase
+
+- Nothing structural; Phase 10 reads `date_mentions` (with `in_tabular` already
+  stamped) and `Store.date_recurrence()` directly.
+- Phase 13 will re-enter this module to add `temporal` and `activity` edges,
+  which are already declared in `EDGE_TYPES`.
+
+---

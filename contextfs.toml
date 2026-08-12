@@ -145,8 +145,25 @@ semantic_edge_threshold = 0.55
 semantic_edges_per_node = 8
 # Minimum shared named entities for an `entity` edge.
 min_shared_entities = 2
-# Cosine similarity above which two documents are treated as near-duplicates.
-duplicate_threshold = 0.95
+
+# --- Near-duplicate detection --------------------------------------------
+# Duplicates are decided by JACCARD over 5-word shingles, not by embedding
+# cosine. Measured on this corpus:
+#
+#   pair                       cosine    jaccard
+#   planted duplicate #1        0.928     0.519
+#   planted duplicate #2        0.827     0.393
+#   best NON-duplicate pair     0.807     0.021
+#
+# Cosine leaves a 0.019 margin - unusable. Jaccard leaves 0.372. Embeddings
+# are trained to put same-topic documents close together, which is precisely
+# the wrong signal here: two different essays about BCNF should be
+# semantically close and are not duplicates.
+duplicate_threshold = 0.25
+
+# Cosine acts only as a cheap candidate filter before the shingle comparison,
+# so we never build shingle sets for all O(n^2) pairs.
+duplicate_candidate_similarity = 0.70
 
 [temporal]
 # --- Meaningful vs. incidental date classification (Phase 10) --------------
