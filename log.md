@@ -2535,3 +2535,68 @@ examiner who finds an unstated caveat themselves will discount everything else
 in the document.
 
 ---
+
+## Phase 26 — Publication and clean-clone verification
+
+Pushed to https://github.com/retr0alfred/ContextFS as instructed: `main`
+force-overwritten, and the two pre-existing tags (`final-review`,
+`phase1-review`) deleted, so the remote carries only this build.
+
+### Decision 81 — Verification is a real clone, not a `git status` check
+
+"It pushed successfully" proves nothing about whether anyone else can run this.
+The `.gitignore` deliberately excludes the generated corpus, both indexes, and
+every derived artefact — which is correct for privacy and repo size, and is
+exactly the condition under which a repository silently stops being
+reproducible.
+
+So the check was performed the way a reader would perform it: clone the public
+URL into a fresh directory and rebuild everything from nothing.
+
+| Step | Result |
+|---|---|
+| `git clone` | 73 tracked files; no corpus, no index, as intended |
+| `scripts/generate_corpus.py` | 40 files, 5 sessions + 1 negative control, 17 queries, 35 meaningful / 30 incidental dates, 2 near-duplicate pairs |
+| `scripts/verify_corpus.py` | **OK: all 11 checks passed** |
+| `contextfs scan` | 321 tree nodes · 77 graph nodes · 597 edges · 5 sessions · 2 duplicate pairs — identical to the development index |
+| `scripts/evaluate.py` | see below |
+
+### The result that matters: every published number reproduces exactly
+
+| Configuration | Clean clone MRR | Development MRR | Identical |
+|---|---|---|---|
+| baseline | 0.5029 | 0.5029 | ✅ |
+| semantic_only | 0.5176 | 0.5176 | ✅ |
+| semantic_graph | 0.5359 | 0.5359 | ✅ |
+| semantic_graph_temporal | 0.5850 | 0.5850 | ✅ |
+| semantic_graph_activity | 0.5355 | 0.5355 | ✅ |
+| full | 0.5845 | 0.5845 | ✅ |
+
+Compared programmatically on both MRR and R@10 to within 1e-9: **bit-identical
+reproduction from a clean clone.**
+
+This is the single strongest claim the project can make about its own
+methodology. Every figure in README.md, log.md and docs/ was produced by a
+script that a third party can re-run from the public repository and get the same
+answer to four decimal places — including the corpus itself, which is generated
+deterministically rather than committed. Nothing is quoted from a run that no
+longer exists.
+
+### Honest reading of the research questions
+
+| RQ | Configuration tested | Verdict |
+|---|---|---|
+| **RQ1** — does activity-aware retrieval help? | semantic_graph_activity vs semantic_graph | **Weakly, and not in the headline.** MRR 0.5359 → 0.5355 (−0.0004, i.e. nothing). R@10 0.727 → 0.739. The support comes from per-kind results: activity-query MRR 0.312 → 0.417 (+0.104). |
+| **RQ2** — does temporal intelligence help? | semantic_graph_temporal vs semantic_graph | **Yes, and this is the strongest layer.** MRR 0.5359 → 0.5850 (+0.049), R@10 0.727 → 0.845 (+0.118). Temporal-query MRR 0.067 → 0.344, a 5× improvement on the kind it targets. |
+| **RQ3** — can meaningful dates be distinguished from incidental ones? | date classifier vs naive extraction | **Yes, decisively.** F1 0.986 vs 0.700. |
+| **RQ4** — does graph-enhanced beat pure semantic? | semantic_graph vs semantic_only | **Marginally.** MRR 0.5176 → 0.5359 (+0.018), R@10 0.686 → 0.727 (+0.041). |
+| **RQ5** — does contextual retrieval solve memory-based queries? | full vs baseline | **Partially.** MRR +0.082, P@5 +0.156, R@10 +0.171, and Hit@1 **unchanged at 0.412**. It surfaces more right answers and orders the shortlist better; it does not make the top result more often correct. |
+
+The honest summary: **the hypothesis is supported, but not uniformly, and the
+support is not evenly distributed across the four layers.** Temporal
+intelligence carries the result; the graph contributes modestly; activity
+modelling contributes on the queries it was designed for and essentially nothing
+on average; entity queries did not move at all. Stating which layers did *not*
+pay for themselves is more useful than an aggregate that hides it.
+
+---
