@@ -49,13 +49,9 @@ def test_no_args_shows_help_not_a_crash():
 
 
 #: Commands still awaiting implementation, and the phase each lands in.
-#: Entries are removed as phases complete - `scan` went live in Phase 4.
-STUBS = [
-    (["query", "some text"], 15),
-    (["explain", "abc123"], 16),
-    (["stats"], 17),
-    (["reset"], 17),
-]
+#: Empty as of Phase 17 - every subcommand is now live. The mechanism is kept
+#: because later phases may add commands, and it documents the convention.
+STUBS: list[tuple[list[str], int]] = []
 
 
 def test_every_stub_reports_not_implemented_cleanly():
@@ -65,6 +61,11 @@ def test_every_stub_reports_not_implemented_cleanly():
         assert "not yet implemented" in result.output.lower(), argv
         assert f"Phase {phase}" in result.output, argv
         assert result.exception is None or isinstance(result.exception, SystemExit)
+
+
+def test_no_command_is_still_a_stub():
+    """Phase 17 completes the CLI; nothing may remain unimplemented."""
+    assert STUBS == []
 
 
 def test_each_subcommand_has_its_own_help():

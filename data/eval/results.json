@@ -1,0 +1,382 @@
+{
+  "baseline": {
+    "name": "baseline",
+    "signals": [
+      "semantic"
+    ],
+    "answers": "control",
+    "queries": 17,
+    "mrr": 0.5029,
+    "hit_at_1": 0.4118,
+    "p@1": 0.5294,
+    "p@3": 0.5,
+    "p@5": 0.5637,
+    "p@10": 0.6858,
+    "r@1": 0.2588,
+    "r@3": 0.4314,
+    "r@5": 0.5637,
+    "r@10": 0.6858,
+    "median_latency_ms": 51.18,
+    "explanation_coverage": 1.0,
+    "by_kind": {
+      "activity": {
+        "n": 4,
+        "mrr": 0.3125,
+        "p@5": 0.375,
+        "r@10": 0.4563
+      },
+      "entity": {
+        "n": 2,
+        "mrr": 0.75,
+        "p@5": 0.6667,
+        "r@10": 1.0
+      },
+      "hybrid": {
+        "n": 4,
+        "mrr": 0.775,
+        "p@5": 0.75,
+        "r@10": 0.875
+      },
+      "semantic": {
+        "n": 4,
+        "mrr": 0.625,
+        "p@5": 0.6875,
+        "r@10": 0.8333
+      },
+      "temporal": {
+        "n": 3,
+        "mrr": 0.0667,
+        "p@5": 0.3333,
+        "r@10": 0.3333
+      }
+    },
+    "by_difficulty": {
+      "easy": {
+        "n": 7,
+        "mrr": 0.7143
+      },
+      "hard": {
+        "n": 10,
+        "mrr": 0.355
+      }
+    }
+  },
+  "semantic_only": {
+    "name": "semantic_only",
+    "signals": [
+      "semantic"
+    ],
+    "answers": "control",
+    "queries": 17,
+    "mrr": 0.5176,
+    "hit_at_1": 0.4118,
+    "p@1": 0.5294,
+    "p@3": 0.5294,
+    "p@5": 0.5637,
+    "p@10": 0.6858,
+    "r@1": 0.2588,
+    "r@3": 0.4608,
+    "r@5": 0.5637,
+    "r@10": 0.6858,
+    "median_latency_ms": 91.42,
+    "explanation_coverage": 1.0,
+    "by_kind": {
+      "activity": {
+        "n": 4,
+        "mrr": 0.375,
+        "p@5": 0.375,
+        "r@10": 0.4563
+      },
+      "entity": {
+        "n": 2,
+        "mrr": 0.75,
+        "p@5": 0.6667,
+        "r@10": 1.0
+      },
+      "hybrid": {
+        "n": 4,
+        "mrr": 0.775,
+        "p@5": 0.75,
+        "r@10": 0.875
+      },
+      "semantic": {
+        "n": 4,
+        "mrr": 0.625,
+        "p@5": 0.6875,
+        "r@10": 0.8333
+      },
+      "temporal": {
+        "n": 3,
+        "mrr": 0.0667,
+        "p@5": 0.3333,
+        "r@10": 0.3333
+      }
+    },
+    "by_difficulty": {
+      "easy": {
+        "n": 7,
+        "mrr": 0.7143
+      },
+      "hard": {
+        "n": 10,
+        "mrr": 0.38
+      }
+    }
+  },
+  "semantic_graph": {
+    "name": "semantic_graph",
+    "signals": [
+      "semantic",
+      "graph"
+    ],
+    "answers": "RQ4",
+    "queries": 17,
+    "mrr": 0.5359,
+    "hit_at_1": 0.4118,
+    "p@1": 0.5294,
+    "p@3": 0.5294,
+    "p@5": 0.5755,
+    "p@10": 0.727,
+    "r@1": 0.2588,
+    "r@3": 0.4608,
+    "r@5": 0.5755,
+    "r@10": 0.727,
+    "median_latency_ms": 90.15,
+    "explanation_coverage": 1.0,
+    "by_kind": {
+      "activity": {
+        "n": 4,
+        "mrr": 0.425,
+        "p@5": 0.425,
+        "r@10": 0.6312
+      },
+      "entity": {
+        "n": 2,
+        "mrr": 0.75,
+        "p@5": 0.6667,
+        "r@10": 1.0
+      },
+      "hybrid": {
+        "n": 4,
+        "mrr": 0.775,
+        "p@5": 0.75,
+        "r@10": 0.875
+      },
+      "semantic": {
+        "n": 4,
+        "mrr": 0.6528,
+        "p@5": 0.6875,
+        "r@10": 0.8333
+      },
+      "temporal": {
+        "n": 3,
+        "mrr": 0.0667,
+        "p@5": 0.3333,
+        "r@10": 0.3333
+      }
+    },
+    "by_difficulty": {
+      "easy": {
+        "n": 7,
+        "mrr": 0.7302
+      },
+      "hard": {
+        "n": 10,
+        "mrr": 0.4
+      }
+    }
+  },
+  "semantic_graph_temporal": {
+    "name": "semantic_graph_temporal",
+    "signals": [
+      "semantic",
+      "graph",
+      "timeline"
+    ],
+    "answers": "RQ2",
+    "queries": 17,
+    "mrr": 0.585,
+    "hit_at_1": 0.4118,
+    "p@1": 0.6471,
+    "p@3": 0.6569,
+    "p@5": 0.6784,
+    "p@10": 0.8446,
+    "r@1": 0.2882,
+    "r@3": 0.5637,
+    "r@5": 0.6784,
+    "r@10": 0.8446,
+    "median_latency_ms": 92.22,
+    "explanation_coverage": 1.0,
+    "by_kind": {
+      "activity": {
+        "n": 4,
+        "mrr": 0.425,
+        "p@5": 0.425,
+        "r@10": 0.6312
+      },
+      "entity": {
+        "n": 2,
+        "mrr": 0.75,
+        "p@5": 0.6667,
+        "r@10": 1.0
+      },
+      "hybrid": {
+        "n": 4,
+        "mrr": 0.775,
+        "p@5": 0.75,
+        "r@10": 0.875
+      },
+      "semantic": {
+        "n": 4,
+        "mrr": 0.6528,
+        "p@5": 0.6875,
+        "r@10": 0.8333
+      },
+      "temporal": {
+        "n": 3,
+        "mrr": 0.3444,
+        "p@5": 0.9167,
+        "r@10": 1.0
+      }
+    },
+    "by_difficulty": {
+      "easy": {
+        "n": 7,
+        "mrr": 0.7302
+      },
+      "hard": {
+        "n": 10,
+        "mrr": 0.4833
+      }
+    }
+  },
+  "semantic_graph_activity": {
+    "name": "semantic_graph_activity",
+    "signals": [
+      "semantic",
+      "graph",
+      "activity"
+    ],
+    "answers": "RQ1",
+    "queries": 17,
+    "mrr": 0.5355,
+    "hit_at_1": 0.4118,
+    "p@1": 0.5294,
+    "p@3": 0.549,
+    "p@5": 0.6167,
+    "p@10": 0.7387,
+    "r@1": 0.2588,
+    "r@3": 0.4725,
+    "r@5": 0.6167,
+    "r@10": 0.7387,
+    "median_latency_ms": 98.63,
+    "explanation_coverage": 1.0,
+    "by_kind": {
+      "activity": {
+        "n": 4,
+        "mrr": 0.4167,
+        "p@5": 0.6,
+        "r@10": 0.6813
+      },
+      "entity": {
+        "n": 2,
+        "mrr": 0.75,
+        "p@5": 0.6667,
+        "r@10": 1.0
+      },
+      "hybrid": {
+        "n": 4,
+        "mrr": 0.7812,
+        "p@5": 0.75,
+        "r@10": 0.875
+      },
+      "semantic": {
+        "n": 4,
+        "mrr": 0.6528,
+        "p@5": 0.6875,
+        "r@10": 0.8333
+      },
+      "temporal": {
+        "n": 3,
+        "mrr": 0.0667,
+        "p@5": 0.3333,
+        "r@10": 0.3333
+      }
+    },
+    "by_difficulty": {
+      "easy": {
+        "n": 7,
+        "mrr": 0.7302
+      },
+      "hard": {
+        "n": 10,
+        "mrr": 0.3992
+      }
+    }
+  },
+  "full": {
+    "name": "full",
+    "signals": [
+      "semantic",
+      "graph",
+      "activity",
+      "timeline"
+    ],
+    "answers": "RQ5",
+    "queries": 17,
+    "mrr": 0.5845,
+    "hit_at_1": 0.4118,
+    "p@1": 0.6471,
+    "p@3": 0.6765,
+    "p@5": 0.7196,
+    "p@10": 0.8564,
+    "r@1": 0.2882,
+    "r@3": 0.5755,
+    "r@5": 0.7196,
+    "r@10": 0.8564,
+    "median_latency_ms": 91.79,
+    "explanation_coverage": 1.0,
+    "by_kind": {
+      "activity": {
+        "n": 4,
+        "mrr": 0.4167,
+        "p@5": 0.6,
+        "r@10": 0.6813
+      },
+      "entity": {
+        "n": 2,
+        "mrr": 0.75,
+        "p@5": 0.6667,
+        "r@10": 1.0
+      },
+      "hybrid": {
+        "n": 4,
+        "mrr": 0.7812,
+        "p@5": 0.75,
+        "r@10": 0.875
+      },
+      "semantic": {
+        "n": 4,
+        "mrr": 0.6528,
+        "p@5": 0.6875,
+        "r@10": 0.8333
+      },
+      "temporal": {
+        "n": 3,
+        "mrr": 0.3444,
+        "p@5": 0.9167,
+        "r@10": 1.0
+      }
+    },
+    "by_difficulty": {
+      "easy": {
+        "n": 7,
+        "mrr": 0.7302
+      },
+      "hard": {
+        "n": 10,
+        "mrr": 0.4825
+      }
+    }
+  }
+}

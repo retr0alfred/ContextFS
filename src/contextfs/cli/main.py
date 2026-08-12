@@ -574,6 +574,69 @@ def scan(
     )
 
 
+def _open_retrieval(cfg, store, signals=None):
+    """Construct the retrieval stack shared by `query` and the eval harness."""
+    from contextfs.embed import Embedder
+    from contextfs.graph import load_graph
+    from contextfs.retrieval import ALL_SIGNALS, HybridRetriever, SemanticBaseline
+    from contextfs.temporal import TimelineIndex
+
+    embedder = Embedder(
+        cfg.embeddings.model,
+        device=cfg.embeddings.device,
+        batch_size=cfg.embeddings.batch_size,
+        expected_dimension=cfg.embeddings.dimension,
+        backend=cfg.embeddings.backend,
+        num_threads=cfg.embeddings.num_threads,
+    )
+    vectors = _open_vector_store(cfg)
+    graph = load_graph(cfg.graph_file)
+    timeline = TimelineIndex.from_store(store)
+
+    hybrid = HybridRetriever(
+        store,
+        vectors,
+        embedder,
+        graph,
+        cfg,
+        signals=tuple(signals) if signals else ALL_SIGNALS,
+        timeline_index=timeline,
+    )
+    return hybrid, SemanticBaseline(store, vectors, embedder)
+
+
+def _render_results(response, show_explanations: bool) -> None:
+    """Print a retrieval response as a table, optionally with reasoning."""
+    if not response.results:
+        console.print("[yellow]No results.[/yellow]")
+        return
+
+    table = Table(show_header=True, header_style="bold cyan")
+    table.add_column("#", justify="right")
+    table.add_column("Score", justify="right")
+    table.add_column("File", overflow="fold")
+    if not show_explanations:
+        table.add_column("Why", overflow="fold", style="dim")
+
+    for result in response.results:
+        row = [str(result.rank), f"{result.score:.3f}", result.path]
+        if not show_explanations:
+            reasons = result.explanation.reasons()
+            row.append(reasons[0] if reasons else "-")
+        table.add_row(*row)
+    console.print(table)
+
+    if show_explanations:
+        for result in response.results:
+            console.print(f"\n[bold]{result.rank}. {result.path}[/bold]  ({result.score:.3f})")
+            for reason in result.explanation.reasons():
+                console.print(f"   • {reason}")
+            contributions = result.explanation.contributions
+            console.print(
+                "   [dim]" + "  ".join(f"{k}={v:.3f}" for k, v in contributions.items()) + "[/dim]"
+            )
+
+
 @app.command()
 def query(
     text: Annotated[str, typer.Argument(help="What you remember about the file.")],
@@ -587,16 +650,72 @@ def query(
             "--baseline", help="Use the pure-semantic baseline instead of the full system."
         ),
     ] = False,
+    compare: Annotated[
+        bool, typer.Option("--compare", help="Run both systems side by side.")
+    ] = False,
+    signals: Annotated[
+        str,
+        typer.Option(
+            "--signals",
+            help="Comma-separated subset of semantic,graph,activity,timeline (ablation).",
+        ),
+    ] = "",
 ) -> None:
     """Search the index using context, not just content."""
-    _ = (text, top_k, explain, baseline)
-    _not_implemented(
-        "query",
-        15,
-        "Will decompose the query into topic / entity / temporal components, select seed "
-        "nodes, traverse the relationship graph, and rank by a weighted combination of "
-        "semantic, graph, activity and timeline signals.",
+    from contextfs.store import Store
+
+    cfg = state.config()
+    if not cfg.db_path.is_file():
+        err_console.print(f"[bold red]No index at[/bold red] {cfg.db_path}. Run `contextfs scan`.")
+        raise typer.Exit(EXIT_CONFIG_ERROR)
+
+    chosen = tuple(s.strip() for s in signals.split(",") if s.strip()) or None
+
+    with Store(cfg.db_path, read_only=True) as store:
+        hybrid, flat = _open_retrieval(cfg, store, chosen)
+
+        if compare:
+            hybrid_response = hybrid.search(text, top_k)
+            baseline_response = flat.search(text, top_k)
+            console.print(f"[bold]Query:[/bold] {text}")
+            console.print(f"[dim]read as: {hybrid_response.decomposition.describe()}[/dim]\n")
+            console.print("[bold cyan]BASELINE (semantic only)[/bold cyan]")
+            _render_results(baseline_response, False)
+            console.print(f"[dim]{baseline_response.latency_ms:.0f} ms[/dim]\n")
+            console.print("[bold green]CONTEXTFS (hybrid)[/bold green]")
+            _render_results(hybrid_response, explain)
+            console.print(
+                f"[dim]{hybrid_response.latency_ms:.0f} ms, "
+                f"{hybrid_response.expanded_nodes} candidates, "
+                f"seeds: {', '.join(hybrid_response.seeds[:4]) or 'none'}[/dim]"
+            )
+            _remember_results(cfg, hybrid_response)
+            return
+
+        response = flat.search(text, top_k) if baseline else hybrid.search(text, top_k)
+
+    console.print(f"[bold]Query:[/bold] {text}")
+    if response.decomposition is not None:
+        console.print(f"[dim]read as: {response.decomposition.describe()}[/dim]")
+    if response.seeds:
+        console.print(f"[dim]seeds: {', '.join(response.seeds[:5])}[/dim]")
+    console.print()
+    _render_results(response, explain)
+    console.print(
+        f"\n[dim]{response.system} | {response.latency_ms:.0f} ms | "
+        f"{response.expanded_nodes} candidates considered | "
+        f"weights {response.weights}[/dim]"
     )
+    _remember_results(cfg, response)
+
+
+def _remember_results(cfg, response) -> None:
+    """Cache the last result set so `contextfs explain <id>` can reference it."""
+    import json
+
+    cfg.ensure_data_dir()
+    path = cfg.paths.data_dir / "last_query.json"
+    path.write_text(json.dumps(response.as_dict(), indent=2), encoding="utf-8")
 
 
 @app.command()
@@ -693,28 +812,199 @@ def timeline(
 
 @app.command()
 def explain(
-    result_id: Annotated[str, typer.Argument(help="Result id from a previous query.")],
+    result_id: Annotated[
+        str,
+        typer.Argument(
+            help="A rank number from the last query (e.g. 1), or a file path substring."
+        ),
+    ],
+    as_json: Annotated[
+        bool, typer.Option("--json", help="Print the raw machine-readable explanation.")
+    ] = False,
 ) -> None:
     """Show, in full, why a particular result was retrieved."""
-    _ = result_id
-    _not_implemented(
-        "explain",
-        16,
-        "Will print the complete explanation object: matched topic, matched entities, "
-        "matched activity session, matched timeline dates, and the graph path that "
-        "connected the seed node to this file.",
+    import json
+
+    cfg = state.config()
+    cached = cfg.paths.data_dir / "last_query.json"
+    if not cached.is_file():
+        err_console.print(
+            "[bold red]No previous query to explain.[/bold red] Run `contextfs query` first."
+        )
+        raise typer.Exit(1)
+
+    payload = json.loads(cached.read_text(encoding="utf-8"))
+    results = payload.get("results", [])
+
+    match = None
+    if result_id.isdigit():
+        match = next((r for r in results if r["rank"] == int(result_id)), None)
+    if match is None:
+        needle = result_id.lower()
+        match = next((r for r in results if needle in r["path"].lower()), None)
+    if match is None:
+        err_console.print(
+            f"[bold red]No result matching[/bold red] {result_id!r} in the last query.\n"
+            f"Available: " + ", ".join(f"{r['rank']}={Path(r['path']).name}" for r in results[:5])
+        )
+        raise typer.Exit(1)
+
+    if as_json:
+        console.print_json(json.dumps(match["explanation"]))
+        return
+
+    explanation = match["explanation"]
+    console.print(
+        Panel(
+            f"[bold]{match['path']}[/bold]\n" f"rank {match['rank']}  ·  score {match['score']}",
+            title=f"Why this matched: {payload['query']!r}",
+            border_style="cyan",
+        )
+    )
+
+    console.print("\n[bold cyan]Reasons[/bold cyan]")
+    for reason in explanation["reasons"]:
+        console.print(f"  • {reason}")
+
+    table = Table(show_header=True, header_style="bold cyan", title="\nScore breakdown")
+    table.add_column("Signal")
+    table.add_column("Value", justify="right")
+    table.add_column("Weight", justify="right")
+    table.add_column("Contribution", justify="right")
+    for signal, value in explanation["signals"].items():
+        weight = explanation["weights"].get(signal, 0.0)
+        table.add_row(
+            signal,
+            f"{value:.3f}",
+            f"{weight:.3f}",
+            f"{explanation['contributions'].get(signal, 0.0):.3f}",
+        )
+    table.add_section()
+    table.add_row(
+        "[bold]total[/bold]",
+        "",
+        "",
+        f"[bold]{sum(explanation['contributions'].values()):.3f}[/bold]",
+    )
+    console.print(table)
+
+    if explanation["matched_entities"]:
+        console.print(
+            "\n[bold cyan]Shared entities[/bold cyan]  "
+            + ", ".join(explanation["matched_entities"])
+        )
+    if explanation["matched_session"]:
+        session = explanation["matched_session"]
+        console.print(
+            f"\n[bold cyan]Activity session[/bold cyan]  {session['label']}\n"
+            f"  {session['size']} files, {session['start']} to {session['end']}"
+        )
+    if explanation["matched_timeline"]:
+        console.print("\n[bold cyan]Timeline matches[/bold cyan]")
+        for item in explanation["matched_timeline"]:
+            console.print(
+                f"  {item['date']}  ({item['surface']})  "
+                f"relevance {item['score']}  [dim]{item.get('reason', '')}[/dim]"
+            )
+    if explanation["graph_path"]:
+        console.print("\n[bold cyan]Graph path[/bold cyan]")
+        for hop in explanation["graph_path"]:
+            console.print(f"  {hop['from']} --[{hop['type']}]--> {hop['to_label']}")
+
+    console.print(
+        f"\n[dim]seeded by: {explanation['seed_origin']}  ·  "
+        f"explanation complete: {explanation['complete']}[/dim]"
     )
 
 
 @app.command()
 def stats() -> None:
     """Report corpus size, index size, graph size, and index freshness."""
-    _not_implemented(
-        "stats",
-        17,
-        "Will report file counts by type, entity/embedding/graph/timeline/session counts, "
-        "last scan time, and whether the index is stale relative to the root.",
-    )
+    from contextfs.graph import graph_stats, load_graph
+    from contextfs.store import Store
+    from contextfs.temporal import TimelineIndex
+
+    cfg = state.config()
+    if not cfg.db_path.is_file():
+        err_console.print(f"[bold red]No index at[/bold red] {cfg.db_path}. Run `contextfs scan`.")
+        raise typer.Exit(EXIT_CONFIG_ERROR)
+
+    with Store(cfg.db_path, read_only=True) as store:
+        last = store.last_scan()
+        dates = store.date_counts()
+        sessions = store.sessions()
+        timeline = TimelineIndex.from_store(store)
+        extensions = store.counts_by_extension()
+        graph = load_graph(cfg.graph_file)
+        vectors = _open_vector_store(cfg).counts()
+
+        corpus = Table(title="Corpus", show_header=True, header_style="bold cyan")
+        corpus.add_column("Metric")
+        corpus.add_column("Value", justify="right")
+        corpus.add_row("scan root", str(cfg.paths.root))
+        corpus.add_row("files indexed", str(store.file_count()))
+        corpus.add_row("files tombstoned", str(store.file_count(True) - store.file_count()))
+        corpus.add_row("documents extracted", str(store.document_count()))
+        corpus.add_row("by extension", ", ".join(f"{k} {v}" for k, v in extensions.items()))
+        console.print(corpus)
+
+        index = Table(title="\nIndex", show_header=True, header_style="bold cyan")
+        index.add_column("Layer")
+        index.add_column("Size", justify="right")
+        index.add_row("entities (L3)", str(store.entity_count()))
+        index.add_row("date mentions (L3)", str(store.date_mention_count()))
+        index.add_row(
+            "embeddings (L4)", f"{vectors['documents']} docs / {vectors['chunks']} chunks"
+        )
+        index.add_row("tree nodes (L5)", str(store.tree_node_count()))
+        index.add_row(
+            "graph (L6)",
+            f"{graph.number_of_nodes()} nodes / {graph.number_of_edges()} edges",
+        )
+        index.add_row(
+            "dates classified (L7)",
+            f"{dates['meaningful']} meaningful / {dates['incidental']} incidental",
+        )
+        index.add_row("timeline nodes (L7)", str(len(timeline.nodes)))
+        index.add_row("sessions (L8)", str(len(sessions)))
+        console.print(index)
+
+        if graph.number_of_nodes():
+            stats_report = graph_stats(graph)
+            console.print(
+                f"[dim]graph edges by type: {stats_report['by_type']}  ·  "
+                f"mean degree {stats_report['mean_degree']}  ·  "
+                f"components {stats_report['connected_components']}[/dim]"
+            )
+
+        span = timeline.span()
+        if span:
+            console.print(f"[dim]timeline spans {span[0]} to {span[1]}[/dim]")
+
+        freshness = Table(title="\nFreshness", show_header=True, header_style="bold cyan")
+        freshness.add_column("Metric")
+        freshness.add_column("Value", justify="right")
+        if last:
+            freshness.add_row("last scan", last["finished_at"] or "(incomplete)")
+            freshness.add_row("scan duration", f"{last['duration_ms']:.0f} ms")
+            freshness.add_row(
+                "last scan changed",
+                f"{last['count_new']} new / {last['count_modified']} modified "
+                f"/ {last['count_deleted']} deleted",
+            )
+        else:
+            freshness.add_row("last scan", "never")
+
+        pending = len(store.files_needing_extraction()) + len(store.files_needing_embedding())
+        freshness.add_row(
+            "index state",
+            "[green]current[/green]" if pending == 0 else f"[yellow]{pending} stale[/yellow]",
+        )
+        console.print(freshness)
+
+    size = sum(p.stat().st_size for p in cfg.paths.data_dir.rglob("*") if p.is_file())
+    console.print(f"\n[dim]derived data: {size / 1024 / 1024:.2f} MB at {cfg.paths.data_dir}[/dim]")
+    console.print("[dim]Your files are never modified: ContextFS opens them read-only.[/dim]")
 
 
 @app.command()
@@ -722,13 +1012,31 @@ def reset(
     yes: Annotated[bool, typer.Option("--yes", "-y", help="Skip the confirmation prompt.")] = False,
 ) -> None:
     """Delete ContextFS's derived data. Never touches your files."""
-    _ = yes
-    _not_implemented(
-        "reset",
-        17,
-        "Will delete only the ContextFS data directory (SQLite, LanceDB, graph). Scanned "
-        "files are never touched - ContextFS opens them read-only.",
+    import shutil
+
+    cfg = state.config()
+    target = cfg.paths.data_dir
+    if not target.exists():
+        console.print(f"[dim]Nothing to reset: {target} does not exist.[/dim]")
+        return
+
+    size = sum(p.stat().st_size for p in target.rglob("*") if p.is_file())
+    console.print(
+        Panel(
+            f"This deletes [bold]{target}[/bold] ({size / 1024 / 1024:.2f} MB).\n\n"
+            f"Your scanned files in [cyan]{cfg.paths.root}[/cyan] are [bold]not[/bold] "
+            "touched - ContextFS never had write access to them.\n"
+            "You can rebuild the index with `contextfs scan`.",
+            title="Reset the ContextFS index",
+            border_style="yellow",
+        )
     )
+    if not yes and not typer.confirm("Delete the derived data?"):
+        console.print("[dim]Cancelled.[/dim]")
+        raise typer.Exit(1)
+
+    shutil.rmtree(target)
+    console.print(f"[green]Deleted[/green] {target}")
 
 
 @app.command(name="fetch-models")

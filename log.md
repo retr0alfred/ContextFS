@@ -2002,3 +2002,179 @@ $ ruff check .   All checks passed!
 - `TimelineIndex` for the temporal component of query decomposition.
 
 ---
+
+## Phases 14–17 & 21–22 — Retrieval, explanations, CLI completion, evaluation
+
+Combined: an explanation (16) is produced by the same pass that ranks (15), an
+ablation (22) is the harness (21) run over configurations, and the CLI (17) is
+the surface all of it is exercised through. Splitting them would have meant
+shipping a ranker that could not say why, or a harness that could not be run.
+
+### THE HEADLINE RESULT
+
+| | Baseline (semantic only) | ContextFS (full) | Δ |
+|---|---|---|---|
+| **MRR** | 0.503 | **0.584** | **+0.082** |
+| Recall@3 | 0.431 | **0.575** | +0.144 |
+| Recall@5 | 0.564 | **0.720** | +0.156 |
+| Recall@10 | 0.686 | **0.856** | +0.171 |
+| hit@1 | 0.412 | 0.412 | ±0.000 |
+| Explanation coverage | 100% | 100% | — |
+
+**By query kind — the view that answers the research questions:**
+
+| Query kind | n | Baseline MRR | Full MRR | Δ |
+|---|---|---|---|---|
+| **temporal** | 3 | 0.067 | **0.344** | **+0.278** |
+| **activity** | 4 | 0.312 | **0.417** | **+0.104** |
+| semantic | 4 | 0.625 | 0.653 | +0.028 |
+| hybrid | 4 | 0.775 | 0.781 | +0.006 |
+| entity | 2 | 0.750 | 0.750 | ±0.000 |
+
+**Full ablation grid:**
+
+| Configuration | RQ | MRR | P@5 | R@10 |
+|---|---|---|---|---|
+| baseline (flat semantic) | control | 0.503 | 0.564 | 0.686 |
+| semantic_only (hybrid machinery) | control | 0.518 | 0.564 | 0.686 |
+| semantic + graph | **RQ4** | 0.536 | 0.575 | 0.727 |
+| semantic + graph + activity | **RQ1** | 0.535 | 0.617 | 0.739 |
+| semantic + graph + timeline | **RQ2** | 0.585 | 0.678 | 0.845 |
+| **full (all four)** | **RQ5** | **0.584** | **0.720** | **0.856** |
+
+### Decisions & reasoning
+
+#### Decision 67 — The baseline shares everything except its signals
+
+`SemanticBaseline` uses the same index, the same embeddings, the same store. It
+is not a strawman — dense retrieval over document vectors is what a good
+conventional tool does. `semantic_only` (the hybrid pipeline restricted to the
+semantic signal) is reported alongside it to isolate pipeline overhead from
+signal contribution: the 0.503 → 0.518 gap is machinery, not context.
+
+#### Decision 68 — Query-adaptive weighting [found by a measured regression]
+
+The first full ablation showed two problems:
+
+* **entity queries got worse** with context on (MRR 0.750 → 0.667), and
+* **`semantic+graph+temporal` (0.585) beat the full system (0.566)** — adding
+  activity actively hurt.
+
+One cause. A query like *"documents where my supervisor is mentioned"* names no
+time and no activity, yet timeline and activity weights were still applied, so
+any file that happened to sit in a session or have a dated neighbour collected
+score it had not earned and pushed the true match down.
+
+`_adaptive_weights()` now drops a signal whose **input is absent from the
+query** and re-normalises the rest — the same re-normalisation the ablation
+uses, for the same reason. This is a statement about evidence, not a tuning
+knob: a signal with no input contributes noise, so it should not contribute
+weight. The active weights are reported in every explanation, so no result hides
+which weighting produced it.
+
+**A first attempt failed and is worth recording:** the condition was originally
+"no activity cue *and* no seed landed in a session". Nearly every file belongs
+to some session, so the second clause was true for almost every query and the
+guard never fired — the metrics were byte-identical. Correcting it to the
+query's own cue produced:
+
+| | Before | After |
+|---|---|---|
+| MRR (full) | 0.566 | **0.584** |
+| entity MRR | 0.667 | **0.750** (regression eliminated) |
+| R@10 | 0.798 | **0.856** |
+
+#### Decision 69 — Explanation completeness is a measured metric, not a promise
+
+`Explanation.is_complete` requires **at least one substantive reason** plus the
+scoring arithmetic. An explanation object that exists but is empty would satisfy
+the letter of "every result carries an explanation" while defeating it.
+
+That metric immediately caught a real breach: `semantic_only` scored **76.5%**,
+because `matched_topic` was only populated above a similarity of 0.15 and
+low-similarity results were returned with nothing to say. A weak match *is* the
+reason a result is present; stating "0.11" is honest, stating nothing is not.
+Threshold removed → **100% across all six configurations**, verified by
+`test_every_result_carries_a_complete_explanation`, which checks *every* result
+of *every* query on *both* systems, not the top-1 spot check the phase asked for.
+
+#### Decision 70 — Metrics are broken down by query kind
+
+The aggregate answers "is it better". The breakdown answers "*which layer* does
+the work", which is what RQ1–RQ4 actually ask. It is also the only view that
+would expose a system improving on average while degrading a query class — which
+is exactly what happened, and exactly how Decision 68 was found.
+
+Precision@K uses `min(k, |relevant|)` as its denominator: a query with two
+correct answers cannot reach P@10 = 1.0 otherwise, and penalising it for that
+would measure the query rather than the system.
+
+#### Decision 71 — Latency is measured after an explicit warm-up
+
+Model import and load cost ~24 s on this machine (Phase 7's known issue) and
+would otherwise be charged entirely to whichever query ran first. The harness
+warms both models before timing and **prints the warm-up figure separately**.
+Median query latency is then **47–258 ms** depending on configuration.
+
+### Verification — actual output
+
+```
+$ pytest -q                                409 passed in 124.02s
+$ ruff check .                             All checks passed!
+$ python scripts/evaluate.py               (tables above)
+$ contextfs stats                          40 files, 77 graph nodes, 597 edges,
+                                           46 timeline nodes, 5 sessions, index current
+$ contextfs explain 3
+```
+
+`explain` on q01's third result is the clearest single artefact this project
+produces — the thesis on one screen:
+
+```
+College/Semester7/MachineLearning/Unit4_Ensemble_Methods.pdf   rank 3, score 0.5975
+
+Reasons
+  • topic match (0.18): study, machine, learn, exam
+  • same work session as your query: exam prep in .../MachineLearning (7 files)
+  • reached via College/Semester7/MachineLearning/Exam_Timetable_Sem7.xlsx
+  • matches the file type you asked for
+
+  Signal     Value  Weight  Contribution
+  semantic   0.181   0.529         0.096
+  graph      0.800   0.235         0.188
+  activity   1.000   0.235         0.235
+  timeline   0.000   0.000         0.000
+```
+
+Semantic similarity is **0.181** — near the floor. The file is retrieved on
+activity (1.000) and graph (0.800). This is precisely the case the whole
+architecture exists for, and the explanation says so in the user's own terms.
+
+### Honest reading of the results
+
+1. **hit@1 did not move (0.412 both).** The context layers improve *ranking depth*
+   and *recall*, not the top slot. On this corpus the baseline already gets the
+   easy queries' first result right, and the hard ones need more than a re-rank.
+   Reported unchanged rather than buried.
+2. **`semantic+graph+timeline` (0.585) marginally exceeds the full system
+   (0.584)** on aggregate MRR. Activity adds +0.104 on activity queries and
+   +0.011 on R@10, but costs a hair of MRR elsewhere. At n=17 this difference is
+   noise; it is reported because omitting it would misrepresent the ablation.
+3. **RQ3 is answered elsewhere** (Phase 10: F1 0.986 vs naive 0.700). The
+   retrieval ablation does not test it.
+4. **17 queries.** Per-kind cells hold 2–4 queries. Those breakdowns are
+   **directional, not significant**, and no significance test is reported
+   because none would be honest at this n. The harness prints that caveat itself.
+5. **The corpus was authored by the system's author.** Every number above
+   inherits that bias. Phase 23 exists for this reason.
+
+### Known-broken / deferred
+
+- Cold-start latency (~10 s to load models) still dominates a one-shot
+  `contextfs query`. Unsolved; the GUI's long-lived process is the fix.
+- Graph score uses only one-hop edge weight to a seed; multi-hop path scoring
+  with decay is designed but not implemented.
+- `explain` reads a cached `last_query.json` rather than persisted result ids.
+  Adequate for one user; wrong for concurrent sessions.
+
+---
