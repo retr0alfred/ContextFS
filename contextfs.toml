@@ -181,8 +181,20 @@ timeline_node_threshold = 0.55
 keyword_window_tokens = 12
 
 # Days between a mentioned date and the document's mtime within which the
-# metadata-consistency signal is considered fully satisfied.
+# metadata-consistency signal is considered fully satisfied. The signal is
+# asymmetric: dates BEFORE the document's mtime decay twice as fast, because
+# people write about deadlines before they fall due.
 metadata_consistency_window_days = 60
+
+# A mention carrying only year precision ("published in 1998") is multiplied
+# by this. A bare year cannot be an actionable date - you cannot attend an
+# exam "in 1998". Applied after the weighted sum and reported separately,
+# because it is a statement about the KIND of mention, not graded evidence.
+year_only_penalty = 0.35
+
+# Number of distinct files at which the cross-file recurrence signal saturates.
+# The difference between 1 file and 3 is informative; 10 versus 12 is not.
+recurrence_saturation = 4
 
 [activity]
 # --- Activity session reconstruction (Phase 12) ---------------------------

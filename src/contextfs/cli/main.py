@@ -291,6 +291,25 @@ def _run_tree(store, cfg):
     return report
 
 
+def _run_date_classification(store, cfg):
+    """Classify every date mention as meaningful or incidental."""
+    import time
+
+    from contextfs.temporal import DateClassifier
+
+    started = time.perf_counter()
+    classifier = DateClassifier(cfg)
+    verdicts = classifier.collapse(classifier.classify_store(store))
+    store.save_classified_dates(verdicts)
+    meaningful = sum(1 for v in verdicts if v.is_meaningful)
+    return {
+        "total": len(verdicts),
+        "meaningful": meaningful,
+        "incidental": len(verdicts) - meaningful,
+        "duration_ms": (time.perf_counter() - started) * 1000,
+    }
+
+
 def _run_graph(store, cfg):
     """Rebuild the relationship graph and persist it."""
     from contextfs.graph import build_graph, save_graph
@@ -387,6 +406,7 @@ def scan(
         embedding = None
         tree_report = None
         graph_report = None
+        date_stats = None
         if not dry_run and not no_extract:
             extraction = _run_extraction(store, cfg)
             entity_stats = _run_entities(store, cfg)
@@ -394,6 +414,7 @@ def scan(
                 _forget_deleted(store, cfg, result.deleted)
             embedding = _run_embeddings(store, cfg)
             tree_report = _run_tree(store, cfg)
+            date_stats = _run_date_classification(store, cfg)
             graph_report = _run_graph(store, cfg)
 
     table = Table(
@@ -482,6 +503,14 @@ def scan(
             f"{kinds.get('file', 0)} files, {kinds.get('chunk', 0)} chunks), "
             f"{tree_report.summaries} summaries via {tree_report.summary_backend} "
             f"in {tree_report.duration_ms:.0f} ms"
+        )
+
+    if date_stats is not None and date_stats["total"]:
+        console.print(
+            f"dates: {date_stats['meaningful']} meaningful / "
+            f"{date_stats['incidental']} incidental "
+            f"of {date_stats['total']} distinct (file, date) pairs "
+            f"in {date_stats['duration_ms']:.0f} ms"
         )
 
     if graph_report is not None:

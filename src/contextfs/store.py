@@ -248,6 +248,33 @@ MIGRATIONS: list[list[str]] = [
         "CREATE INDEX IF NOT EXISTS idx_tree_kind   ON tree_nodes(kind)",
         "CREATE INDEX IF NOT EXISTS idx_tree_file   ON tree_nodes(file_id)",
     ],
+    # -- v6: Phase 10, classified dates ------------------------------------
+    [
+        """
+        CREATE TABLE IF NOT EXISTS classified_dates (
+            id            INTEGER PRIMARY KEY AUTOINCREMENT,
+            file_id       INTEGER NOT NULL REFERENCES files(id) ON DELETE CASCADE,
+            path          TEXT    NOT NULL,
+            iso_date      TEXT    NOT NULL,
+            surface       TEXT    NOT NULL,
+            char_start    INTEGER NOT NULL DEFAULT 0,
+            char_end      INTEGER NOT NULL DEFAULT 0,
+            precision     TEXT    NOT NULL DEFAULT 'day',
+            score         REAL    NOT NULL,
+            is_meaningful INTEGER NOT NULL,
+            sig_keyword   REAL    NOT NULL DEFAULT 0,
+            sig_structured REAL   NOT NULL DEFAULT 0,
+            sig_metadata  REAL    NOT NULL DEFAULT 0,
+            sig_crossfile REAL    NOT NULL DEFAULT 0,
+            explanation   TEXT    NOT NULL DEFAULT '{}',
+            reason        TEXT    NOT NULL DEFAULT '',
+            classified_at TEXT    NOT NULL
+        )
+        """,
+        "CREATE INDEX IF NOT EXISTS idx_cdates_file ON classified_dates(file_id)",
+        "CREATE INDEX IF NOT EXISTS idx_cdates_iso  ON classified_dates(iso_date)",
+        "CREATE INDEX IF NOT EXISTS idx_cdates_mean ON classified_dates(is_meaningful)",
+    ],
 ]
 
 #: The schema version this build of ContextFS writes.
@@ -955,6 +982,82 @@ class Store:
     def tree_node_count(self) -> int:
         """Total stored tree nodes."""
         return self.conn.execute("SELECT COUNT(*) FROM tree_nodes").fetchone()[0]
+
+    # -- classified dates (Phase 10) ---------------------------------------
+
+    def save_classified_dates(self, verdicts: Iterable[Any]) -> int:
+        """Replace the stored date classification with a fresh pass.
+
+        Replaced wholesale because the cross-file recurrence signal is global:
+        adding one file can legitimately change the verdict on a date in a file
+        that did not itself change. Patching per file would leave the store
+        inconsistent with what a full pass would produce.
+
+        Returns:
+            The number of verdicts stored.
+        """
+        import json
+
+        now = utc_now()
+        verdicts = list(verdicts)
+        with self.transaction() as cursor:
+            cursor.execute("DELETE FROM classified_dates")
+            cursor.executemany(
+                "INSERT INTO classified_dates (file_id, path, iso_date, surface, char_start, "
+                "char_end, precision, score, is_meaningful, sig_keyword, sig_structured, "
+                "sig_metadata, sig_crossfile, explanation, reason, classified_at) "
+                "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+                [
+                    (
+                        v.file_id,
+                        v.rel_path,
+                        v.iso_date,
+                        v.surface,
+                        v.char_start,
+                        v.char_end,
+                        v.precision,
+                        v.score,
+                        int(v.is_meaningful),
+                        v.signals.keyword,
+                        v.signals.structured,
+                        v.signals.metadata,
+                        v.signals.crossfile,
+                        json.dumps(v.explain()),
+                        v.reason(),
+                        now,
+                    )
+                    for v in verdicts
+                ],
+            )
+        return len(verdicts)
+
+    def meaningful_dates(self) -> list[sqlite3.Row]:
+        """Return dates classified as meaningful, for present files only."""
+        return self.conn.execute(
+            "SELECT cd.* FROM classified_dates cd JOIN files f ON f.id = cd.file_id "
+            "WHERE cd.is_meaningful = 1 AND f.status = 'present' ORDER BY cd.iso_date"
+        ).fetchall()
+
+    def classified_dates(self, file_id: int | None = None) -> list[sqlite3.Row]:
+        """Return classified dates, optionally for one file."""
+        if file_id is None:
+            return self.conn.execute(
+                "SELECT * FROM classified_dates ORDER BY path, iso_date"
+            ).fetchall()
+        return self.conn.execute(
+            "SELECT * FROM classified_dates WHERE file_id = ? ORDER BY iso_date", (file_id,)
+        ).fetchall()
+
+    def date_counts(self) -> dict[str, int]:
+        """Return meaningful/incidental counts over present files."""
+        row = self.conn.execute(
+            "SELECT SUM(is_meaningful) AS meaningful, COUNT(*) AS total "
+            "FROM classified_dates cd JOIN files f ON f.id = cd.file_id "
+            "WHERE f.status = 'present'"
+        ).fetchone()
+        total = row["total"] or 0
+        meaningful = row["meaningful"] or 0
+        return {"meaningful": meaningful, "incidental": total - meaningful, "total": total}
 
     # -- scan runs ---------------------------------------------------------
 

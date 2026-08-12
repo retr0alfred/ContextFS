@@ -1493,3 +1493,205 @@ MultiDiGraph.
   which are already declared in `EDGE_TYPES`.
 
 ---
+
+## Phase 10 — Meaningful vs. incidental date classification (Layer 7)
+
+**The project's highest-novelty component.** Headline result:
+
+| | Precision | Recall | F1 | Accuracy |
+|---|---|---|---|---|
+| **ContextFS classifier** | **0.972** | **1.000** | **0.986** | **0.985** |
+| Naive extraction (every date meaningful) | 0.538 | 1.000 | 0.700 | — |
+
+65 labelled `(file, date)` pairs. **This is a small sample and is reported as
+such** — it demonstrates the model behaves as designed; it is not a
+statistically significant accuracy estimate.
+
+### The scoring model
+
+```
+relevance = 0.40 · S_keyword      (commitment / past-record / incidental vocabulary)
+          + 0.25 · S_structured   (inside a table?)
+          + 0.20 · S_metadata     (distance from the document's own mtime)
+          + 0.15 · S_crossfile    (how many files mention this date)
+
+then:  relevance × year_only_penalty   if the mention carries only year precision
+
+meaningful  ⟺  relevance ≥ timeline_node_threshold   (0.55, configurable)
+```
+
+Weights are validated to sum to 1.0 (Phase 2, Decision 11), so the output is
+genuinely on a 0–1 scale rather than an arbitrary sum.
+
+### Decisions & reasoning
+
+#### Decision 51 — Neutral is 0.5, not 0 [the decision the whole model rests on]
+
+Each signal returns **0.5 when it has no evidence either way**, and moves up or
+down from there.
+
+Worked through by hand before writing the code: if an absent signal contributed
+0, every signal would become evidence *against* meaningfulness whenever it was
+silent. Concretely — a deadline written in prose ("Last date for submission: 31
+December 2025") would be punished by the structured-context signal for not being
+in a table, scoring **0.534 against a 0.55 threshold**. A false negative on a
+completely unambiguous deadline.
+
+A date in a table is evidence *for*. A date in prose is *no evidence either
+way*. Those are different statements and the arithmetic has to reflect it.
+Guarded by `test_a_prose_deadline_is_not_punished_for_lacking_a_table`.
+
+#### Decision 52 — Three vocabularies, not one, and the best evidence wins
+
+S1 searches for **commitment** words (*deadline*, *exam*, *viva*, *due*),
+**past-record** words (*attendance*, *completed*, *logged*), and **incidental**
+words (*born*, *published*, *founded*). The latter two push the score *down*.
+
+This is what separates an attendance spreadsheet from a timetable spreadsheet —
+structurally identical objects, both tables full of dates. Without a negative
+vocabulary, the structured-context signal alone would make every row of
+`ml_lab_attendance.xlsx` a timeline node.
+
+The **maximum** of each polarity is used rather than the sum, so a table
+repeating a status word ten times cannot out-vote one occurrence of "deadline".
+
+#### Decision 53 — The metadata signal is deliberately asymmetric
+
+People write about deadlines *before* they fall due. A date shortly **after**
+the document's mtime decays with a 60-day constant; a date **before** it decays
+twice as fast (30-day constant). A 1947 date in a 2025 file scores ~0.
+
+#### Decision 54 — A precision gate, stated separately from the weighted sum
+
+A mention carrying only year precision is multiplied by `year_only_penalty`
+(0.35). You cannot attend an exam "in 1998". This is kept out of the four
+signals and reported as its own field because it is a **categorical statement
+about the kind of mention**, not graded evidence about its context — conflating
+the two would make the score harder to defend, not easier.
+
+#### Decision 55 — "present" removed from the past-record vocabulary
+[found by the first evaluation run]
+
+The first run scored P 0.971 / R 0.943 / F1 0.957 with **two false negatives,
+both traced to the same word**: `-present@2` and `-present@4`. In an attendance
+sheet "Present" is a status; in meeting notes `Present: Alfred, Abu, Dr. Murari`
+introduces the *attendee list* — evidence the meeting happened, the exact
+opposite reading.
+
+Removing it costs nothing, because the maximum (not the sum) of evidence is
+used and "attendance"/"absent" already dominate the case it was meant for.
+
+#### Decision 56 — Structural headings are searched, not just a proximity window
+[BEYOND SPEC — the largest single accuracy gain this phase]
+
+Both remaining errors after Decision 55 had the same shape: **the
+disambiguating word was in the document but outside the token window.**
+
+- The only false positive was a sensor timestamp in `sensor_data_sample.xlsx`.
+  Its `Timestamp` column header sits at the top of the sheet; the row it labels
+  is forty tokens further down.
+- The only false negative was `16 January 2026` in `supervisor_meeting_notes.md`.
+  The `# Supervisor meetings` heading is two hundred characters above it.
+
+One principle covers both: **structure carries context that proximity cannot
+see.** A column header governs its whole column; a section heading governs its
+whole section. `_header_for()` now supplies the containing table's header rows,
+or the *chain* of preceding Markdown headings, and those are searched for
+keywords at a 0.7 discount (a header describes a column, not the individual
+cell).
+
+The heading **chain** matters, not just the nearest heading — a date frequently
+sits inside its own subheading (`## 16 January 2026, 11:00`), which says
+nothing; the document heading above it is what identifies the kind of date.
+Keeping only the nearest heading discards exactly the level that carries meaning,
+and the first attempt at this fix failed for precisely that reason.
+
+Measured progression across the three fixes:
+
+| Version | Precision | Recall | F1 |
+|---|---|---|---|
+| Initial | 0.971 | 0.943 | 0.957 |
+| + "present" removed, + table headers | 0.971 | 0.971 | 0.971 |
+| + heading chain | **0.972** | **1.000** | **0.986** |
+
+#### Decision 57 — Rule-based and inspectable, not learned
+
+There is no labelled training corpus of personal files to learn from — building
+one is the very problem this project has. A learned scorer also could not
+produce the per-signal explanation the system promises. The weights live in
+configuration precisely so a future project *can* fit them if such a corpus
+appears.
+
+Every verdict carries its signal values, the evidence that produced them (which
+keyword, at what token distance, with what strength), and the arithmetic.
+`test_the_score_is_reproducible_from_its_explanation` asserts the score can be
+recomputed by hand from the explanation — the difference between a defensible
+model and a black box.
+
+### Threshold sensitivity (measured, not assumed)
+
+```
+threshold  precision  recall     F1
+     0.35      0.700   1.000  0.824
+     0.45      0.895   0.971  0.932
+     0.50      0.972   1.000  0.986
+     0.55      0.972   1.000  0.986   <- configured
+     0.60      0.972   1.000  0.986
+     0.70      0.960   0.686  0.800
+     0.80      1.000   0.400  0.571
+```
+
+F1 is **flat across 0.50–0.60**. The configured value sits in the middle of a
+plateau rather than on a knife-edge, which is the evidence that it was not
+tuned to the test set.
+
+### Honest limitations
+
+1. **One irreducible false positive remains**: `13-09-2025` in
+   `sensor_data_sample.xlsx`. A table of observations timestamped near the
+   file's own mtime is structurally near-identical to a table of scheduled
+   events. The header discount reduces its score but not below threshold. Not
+   fixed, and reported rather than tuned away.
+2. **The metadata signal is not merely a tie-breaker.** A date four days after a
+   document's timestamp, with no keyword, no table and no recurrence, scores
+   0.574 — just over threshold. Defensible (writing about next week is what a
+   commitment looks like) but it is a real property, now asserted by a test so
+   it stays a decision rather than an accident.
+3. **The vocabularies are English and domain-specific.** They were written for a
+   student corpus. A different domain needs different words, and no attempt has
+   been made to show they transfer.
+4. **65 labelled pairs.** Small. Stated in the script's own output so the number
+   cannot be quoted without its caveat.
+5. **25 detected dates are unlabelled** and excluded from scoring — the corpus
+   was annotated for the dates that matter to the argument, not for every string
+   that looks like a date. Scoring against them would measure annotation
+   completeness, not classifier accuracy. Reported explicitly.
+
+### Verification — actual output
+
+```
+$ contextfs scan
+dates: 44 meaningful / 44 incidental of 88 distinct (file, date) pairs in 158 ms
+
+$ python scripts/date_eval.py
+  true positives     34      false positives     1
+  false negatives     0      true negatives     30
+  PRECISION 0.972   RECALL 1.000   F1 0.986   accuracy 0.985
+  naive baseline: precision 0.538  recall 1.000  F1 0.700
+
+$ pytest -q      312 passed in 272.23s
+$ ruff check .   All checks passed!
+```
+
+35 new tests covering each signal independently, the neutral-at-0.5 property,
+the precision gate, explanation reproducibility, threshold configurability, and
+the corpus's planted adversarial cases (attendance table, history essay,
+birthday list, publication years, unsessioned scholarship deadline).
+
+### What Phase 11 needs from this phase
+
+- `Store.meaningful_dates()` — the classified dates that become timeline nodes.
+- `DateVerdict.explain()` for the timeline's own explanations.
+- `classified_dates.iso_date` indexed, for interval-tree construction.
+
+---

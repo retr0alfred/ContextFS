@@ -204,6 +204,10 @@ class TemporalConfig(_Section):
     timeline_node_threshold: float = 0.55
     keyword_window_tokens: int = 12
     metadata_consistency_window_days: int = 60
+    #: Multiplier applied to a mention that carries only year precision.
+    year_only_penalty: float = 0.35
+    #: File count at which the cross-file recurrence signal saturates.
+    recurrence_saturation: int = 4
 
     @model_validator(mode="after")
     def _check_weights(self) -> TemporalConfig:
