@@ -601,6 +601,9 @@ def _open_retrieval(cfg, store, signals=None):
         cfg,
         signals=tuple(signals) if signals else ALL_SIGNALS,
         timeline_index=timeline,
+        # Interactive use gets the feedback re-rank; the evaluation harness
+        # builds its own retriever without one, so measured numbers stay clean.
+        feedback=store,
     )
     return hybrid, SemanticBaseline(store, vectors, embedder)
 
@@ -672,6 +675,15 @@ def query(
     chosen = tuple(s.strip() for s in signals.split(",") if s.strip()) or None
 
     with Store(cfg.db_path, read_only=True) as store:
+        if store.is_outdated():
+            # Read-only opens deliberately do not migrate, so an index written
+            # by an older build still answers - it just cannot use anything a
+            # later schema added. Saying so beats silently degrading.
+            err_console.print(
+                "[yellow]This index was written by an older build "
+                f"(schema v{store.schema_version}).[/yellow] It still works; "
+                "run `contextfs scan` to upgrade it and enable newer features."
+            )
         hybrid, flat = _open_retrieval(cfg, store, chosen)
 
         if compare:
@@ -716,6 +728,291 @@ def _remember_results(cfg, response) -> None:
     cfg.ensure_data_dir()
     path = cfg.paths.data_dir / "last_query.json"
     path.write_text(json.dumps(response.as_dict(), indent=2), encoding="utf-8")
+
+
+def _load_last_query(cfg):
+    """Return the cached last query response, or None."""
+    import json
+
+    cached = cfg.paths.data_dir / "last_query.json"
+    if not cached.is_file():
+        return None
+    return json.loads(cached.read_text(encoding="utf-8"))
+
+
+@app.command()
+def feedback(
+    pick: Annotated[
+        int, typer.Option("--pick", "-p", help="Rank number from the last query that was right.")
+    ] = 0,
+    reject: Annotated[int, typer.Option("--reject", "-r", help="Rank number that was wrong.")] = 0,
+    show: Annotated[bool, typer.Option("--show", help="List recorded feedback.")] = False,
+    clear: Annotated[bool, typer.Option("--clear", help="Delete all recorded feedback.")] = False,
+) -> None:
+    """Tell ContextFS which of the last query's results was the one you wanted.
+
+    Feedback is scoped to the exact query text and only nudges near-ties - it
+    is a small bounded re-rank, never an override, and it never touches the
+    measured evaluation numbers.
+    """
+    from contextfs.store import Store
+
+    cfg = state.config()
+    if not cfg.db_path.is_file():
+        err_console.print(f"[bold red]No index at[/bold red] {cfg.db_path}. Run `contextfs scan`.")
+        raise typer.Exit(EXIT_CONFIG_ERROR)
+
+    with Store(cfg.db_path) as store:
+        if clear:
+            removed = store.clear_feedback()
+            console.print(f"Cleared [bold]{removed}[/bold] feedback event(s).")
+            return
+
+        if show or not (pick or reject):
+            events = store.feedback_events()
+            if not events:
+                console.print(
+                    "[yellow]No feedback recorded yet.[/yellow] "
+                    "Run a query, then `contextfs feedback --pick 1`."
+                )
+                return
+            table = Table(show_header=True, header_style="bold cyan")
+            table.add_column("When")
+            table.add_column("Query", overflow="fold")
+            table.add_column("File", overflow="fold")
+            table.add_column("Event")
+            for row in events:
+                colour = "green" if row["event"] == "pick" else "red"
+                table.add_row(
+                    row["created_at"][:19],
+                    row["query_norm"],
+                    row["path"],
+                    f"[{colour}]{row['event']}[/{colour}]",
+                )
+            console.print(table)
+            return
+
+        cached = _load_last_query(cfg)
+        if cached is None:
+            err_console.print("[bold red]No previous query to give feedback on.[/bold red]")
+            raise typer.Exit(EXIT_CONFIG_ERROR)
+
+        by_rank = {result["rank"]: result for result in cached["results"]}
+        for rank, event in ((pick, "pick"), (reject, "reject")):
+            if not rank:
+                continue
+            result = by_rank.get(rank)
+            if result is None:
+                err_console.print(f"[bold red]No result at rank {rank}.[/bold red]")
+                raise typer.Exit(EXIT_CONFIG_ERROR)
+            store.record_feedback(cached["query"], result["file_id"], result["path"], event=event)
+            verb = "Recorded" if event == "pick" else "Recorded rejection of"
+            console.print(
+                f"{verb} [bold]{result['path']}[/bold] for "
+                f'"[italic]{cached["query"]}[/italic]".'
+            )
+        console.print(
+            "[dim]This will nudge that file up (or down) the next time you run the "
+            "same query. It cannot outrank a clearly better match.[/dim]"
+        )
+
+
+@app.command()
+def duplicates(
+    as_json: Annotated[bool, typer.Option("--json", help="Machine-readable output.")] = False,
+) -> None:
+    """List groups of near-duplicate files, and how much space they waste."""
+    import json
+
+    from contextfs.graph import load_graph
+    from contextfs.insights import near_duplicates
+    from contextfs.store import Store
+
+    cfg = state.config()
+    if not cfg.db_path.is_file():
+        err_console.print(f"[bold red]No index at[/bold red] {cfg.db_path}. Run `contextfs scan`.")
+        raise typer.Exit(EXIT_CONFIG_ERROR)
+
+    with Store(cfg.db_path, read_only=True) as store:
+        groups = near_duplicates(store, load_graph(cfg.graph_file))
+
+    if as_json:
+        console.print_json(json.dumps([g.as_dict() for g in groups]))
+        return
+    if not groups:
+        console.print("[green]No near-duplicates found.[/green]")
+        return
+
+    for index, group in enumerate(groups, start=1):
+        console.print(
+            f"[bold]Group {index}[/bold] - {len(group.members)} files, "
+            f"similarity {group.similarity:.2f}, "
+            f"{group.wasted_bytes / 1024:.0f} KB redundant"
+        )
+        for member in group.members:
+            marker = "[green]keep[/green]" if member is group.keeper else "[dim]dup [/dim]"
+            console.print(f"  {marker}  {member['path']}")
+        console.print()
+    console.print("[dim]ContextFS never deletes anything. This is a report, not an action.[/dim]")
+
+
+@app.command()
+def projects(
+    as_json: Annotated[bool, typer.Option("--json", help="Machine-readable output.")] = False,
+) -> None:
+    """Show bodies of work and where each sits in its lifecycle."""
+    import json
+
+    from contextfs.insights import projects as detect_projects
+    from contextfs.store import Store
+
+    cfg = state.config()
+    if not cfg.db_path.is_file():
+        err_console.print(f"[bold red]No index at[/bold red] {cfg.db_path}. Run `contextfs scan`.")
+        raise typer.Exit(EXIT_CONFIG_ERROR)
+
+    with Store(cfg.db_path, read_only=True) as store:
+        found = detect_projects(store)
+
+    if as_json:
+        console.print_json(json.dumps([p.as_dict() for p in found]))
+        return
+    if not found:
+        console.print("[yellow]No multi-file folders in the index.[/yellow]")
+        return
+
+    colours = {
+        "upcoming": "bold magenta",
+        "active": "bold green",
+        "dormant": "yellow",
+        "finished": "dim",
+    }
+    table = Table(show_header=True, header_style="bold cyan")
+    table.add_column("Stage")
+    table.add_column("Folder", overflow="fold")
+    table.add_column("Files", justify="right")
+    table.add_column("Last touched")
+    table.add_column("Why", overflow="fold", style="dim")
+    for project in found:
+        style = colours.get(project.stage, "")
+        table.add_row(
+            f"[{style}]{project.stage}[/{style}]" if style else project.stage,
+            project.folder,
+            str(project.files),
+            project.last_activity[:10],
+            project.reason,
+        )
+    console.print(table)
+
+
+@app.command()
+def digest(
+    as_json: Annotated[bool, typer.Option("--json", help="Machine-readable output.")] = False,
+) -> None:
+    """Summarise what is in the indexed tree: kinds, ages, sizes, redundancy."""
+    import json
+
+    from contextfs.graph import load_graph
+    from contextfs.insights import digest as build_digest
+    from contextfs.store import Store
+
+    cfg = state.config()
+    if not cfg.db_path.is_file():
+        err_console.print(f"[bold red]No index at[/bold red] {cfg.db_path}. Run `contextfs scan`.")
+        raise typer.Exit(EXIT_CONFIG_ERROR)
+
+    graph = load_graph(cfg.graph_file) if cfg.graph_file.is_file() else None
+    with Store(cfg.db_path, read_only=True) as store:
+        report = build_digest(store, graph)
+
+    if as_json:
+        console.print_json(json.dumps(report.as_dict()))
+        return
+
+    console.print(
+        f"[bold]{report.files}[/bold] files, "
+        f"[bold]{report.bytes / 1024 / 1024:.1f} MB[/bold] indexed\n"
+    )
+
+    table = Table(title="By file type", show_header=True, header_style="bold cyan")
+    table.add_column("Type")
+    table.add_column("Files", justify="right")
+    table.add_column("Size", justify="right")
+    for ext, count, size in report.by_extension[:10]:
+        table.add_row(ext, str(count), f"{size / 1024:.0f} KB")
+    console.print(table)
+
+    ages = Table(title="By age", show_header=True, header_style="bold cyan")
+    ages.add_column("Age")
+    ages.add_column("Files", justify="right")
+    for label, count in report.by_age.items():
+        ages.add_row(label, str(count))
+    console.print(ages)
+
+    if report.duplicate_groups:
+        console.print(
+            f"\n[yellow]{report.duplicate_groups}[/yellow] near-duplicate group(s), "
+            f"about [yellow]{report.duplicate_waste / 1024:.0f} KB[/yellow] redundant "
+            "([dim]contextfs duplicates[/dim])"
+        )
+    if report.unextracted or report.unembedded:
+        console.print(
+            f"\n[dim]{report.unextracted} file(s) awaiting extraction, "
+            f"{report.unembedded} awaiting embedding.[/dim]"
+        )
+
+
+@app.command()
+def tags(
+    path: Annotated[str, typer.Argument(help="Indexed file path (or a unique substring).")],
+    as_json: Annotated[bool, typer.Option("--json", help="Machine-readable output.")] = False,
+) -> None:
+    """Suggest tags for a file from the context ContextFS already knows."""
+    import json
+
+    from contextfs.insights import suggest_tags
+    from contextfs.store import Store
+
+    cfg = state.config()
+    if not cfg.db_path.is_file():
+        err_console.print(f"[bold red]No index at[/bold red] {cfg.db_path}. Run `contextfs scan`.")
+        raise typer.Exit(EXIT_CONFIG_ERROR)
+
+    with Store(cfg.db_path, read_only=True) as store:
+        resolved = path
+        if store.get_file(path) is None:
+            matches = [
+                row["path"] for row in store.all_files() if path.lower() in row["path"].lower()
+            ]
+            if not matches:
+                err_console.print(f"[bold red]No indexed file matching[/bold red] {path}")
+                raise typer.Exit(EXIT_CONFIG_ERROR)
+            if len(matches) > 1:
+                err_console.print(f"[yellow]Ambiguous;[/yellow] {len(matches)} files match:")
+                for match in matches[:10]:
+                    err_console.print(f"  {match}")
+                raise typer.Exit(EXIT_CONFIG_ERROR)
+            resolved = matches[0]
+        suggestions = suggest_tags(store, resolved)
+
+    if as_json:
+        console.print_json(json.dumps([s.as_dict() for s in suggestions]))
+        return
+    console.print(f"[bold]{resolved}[/bold]\n")
+    if not suggestions:
+        console.print("[yellow]No tags could be derived - is the file indexed?[/yellow]")
+        return
+    table = Table(show_header=True, header_style="bold cyan")
+    table.add_column("Tag", overflow="fold")
+    table.add_column("Drawn from")
+    table.add_column("Rank score", justify="right")
+    for suggestion in suggestions:
+        table.add_row(suggestion.tag, suggestion.source, f"{suggestion.confidence:.2f}")
+    console.print(table)
+    console.print(
+        "[dim]Rank score orders the list; it is a fixed per-source prior, not a "
+        "calibrated probability.[/dim]"
+    )
 
 
 @app.command()

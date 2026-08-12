@@ -11,7 +11,21 @@ from contextfs.cli.main import EXIT_NOT_IMPLEMENTED, app
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 runner = CliRunner()
 
-EXPECTED_COMMANDS = ["scan", "query", "timeline", "explain", "stats", "reset", "config"]
+EXPECTED_COMMANDS = [
+    "scan",
+    "query",
+    "timeline",
+    "explain",
+    "stats",
+    "reset",
+    "config",
+    # Phases 19-20: feedback and the auxiliary insight surfaces.
+    "feedback",
+    "duplicates",
+    "projects",
+    "digest",
+    "tags",
+]
 
 
 def unwrap(output: str) -> str:

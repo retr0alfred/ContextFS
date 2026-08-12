@@ -2234,3 +2234,165 @@ per file with a periodic global reconciliation. Untested at that scale and not
 claimed.
 
 ---
+
+## Phases 19–20 — Relevance feedback, and auxiliary insight surfaces
+
+Both phases are, by the master prompt's own assessment, low research value:
+they do not test the hypothesis and no reported metric depends on them. They
+are time-boxed accordingly, and the design goal was to add **no new pipeline** —
+every feature here is a projection over structures Phases 4–13 already built.
+
+### What was built
+
+**Phase 19 — feedback learning.** Schema v8 adds a `feedback` table, `contextfs
+feedback --pick N / --reject N / --show / --clear` records against the last
+query, and `HybridRetriever._apply_feedback` applies a bounded re-rank.
+
+**Phase 20 — four insight surfaces** in a new `insights.py`, exposed as
+`contextfs duplicates`, `projects`, `digest`, and `tags <file>`.
+
+#### Decision 72 — Feedback is a re-rank, not a fifth signal
+
+The obvious implementation is to add feedback as another weighted signal beside
+semantic/graph/activity/timeline. That was rejected, and a pre-existing hook
+that did roughly this (inside `_score`, via a `feedback.adjust()` call) was
+**removed** rather than implemented.
+
+Three reasons, in order of importance:
+
+1. **It would corrupt the explanations.** The hook sat inside per-file scoring,
+   upstream of the format multiplier and inside the arithmetic the explanation
+   reports. A boosted file would have displayed `contributions` for signals that
+   did not earn them — the system would have been lying in exactly the place the
+   project promises it never does.
+2. **It would corrupt the ablations.** An ablation asking "what does the graph
+   contribute?" must not silently be answering "the graph, plus whatever the
+   user clicked last time".
+3. **It is not a research claim.** With one user and a handful of clicks there
+   is no honest way to evaluate learned relevance, so it must not be able to
+   move a number the project reports.
+
+Feedback is therefore applied **after** scoring and sorting, is never folded
+into `contributions`, and — decisively — is **inert unless a feedback store is
+passed in**. The evaluation harness constructs `HybridRetriever` without one.
+A test pins this (`test_feedback_is_inert_without_a_feedback_store`), because
+the alternative is circular results that look like an improvement.
+
+#### Decision 73 — The boost is bounded and saturating, and this is measured
+
+The boost is `feedback_max_boost * w / (1 + |w|)` where `w` is the net signed
+feedback weight. The first pick buys half the cap; further picks buy
+progressively less; the total can never reach the cap.
+
+Measured on the live index, query *"notes I revised before the machine learning
+exam"*, watching `College/Capstone/references.txt`:
+
+| Picks | Score | Δ vs baseline | Rank |
+|---|---|---|---|
+| 0 | 0.734 | — | 3 |
+| 1 | 0.809 | +0.075 (exactly half the 0.15 cap) | 3 |
+| 6 | 0.863 | +0.129 (saturating, still under the cap) | 2 |
+
+Six picks moved it past rank 2 (0.812) and **could not** move it past rank 1
+(0.877). That is the intended property demonstrated rather than asserted: user
+feedback reorders near-ties and cannot overturn a clear win.
+
+#### Decision 74 — Feedback is keyed on a crudely normalised query
+
+`Store.normalise_query` casefolds and collapses whitespace, nothing more. No
+stemming, no stopword removal. A smarter normaliser would let feedback from one
+query leak into a semantically different one, and with the tiny amount of
+feedback a single user generates, one wrong transfer costs more than several
+missed ones. Only queries the user *acted on* are stored — this is deliberately
+not a search-history table.
+
+#### Decision 75 — Duplicates are reported as components, not pairs
+
+Three copies of a document produce three pairwise `duplicate` edges. Reporting
+that as three findings makes one problem look like several, so the edges are
+collapsed into connected components. Exact content-hash collisions are folded in
+alongside the graph's Jaccard edges — free, exact, and reported at similarity
+1.0. On the corpus this finds exactly the two pairs it was authored to contain:
+
+```
+Group 1 - 2 files, similarity 0.39, 36 KB redundant
+  dup   College/Semester7/DBMS/Assignment2_Normalization_draft.docx
+  keep  College/Semester7/DBMS/Assignment2_Normalization_final.docx
+Group 2 - 2 files, similarity 0.52, 5 KB redundant
+  dup   College/Semester7/MachineLearning/Unit4_Ensemble_Methods.pdf
+  keep  College/Semester7/MachineLearning/Unit4_Ensemble_Methods_annotated.pdf
+```
+
+#### Decision 76 — "Projects" are folders, not a second clustering
+
+The master prompt implies learned project detection. That was deliberately
+downgraded: the Phase 12 activity sessions **already are** the learned grouping,
+and re-clustering into projects would produce a second, differently-shaped
+answer to the same question with no principled way to say which is right.
+Folders are what the user themselves chose, so they are the spine, and sessions
+and meaningful dates are attached as evidence.
+
+Lifecycle stage is recency against two thresholds (60 / 180 days) with one
+override: a folder whose latest **meaningful** date is still in the future is
+`upcoming` regardless of file mtimes, because a deadline that has not passed is
+a stronger signal than two months of silence. This is the one place the Phase 10
+meaningful/incidental distinction earns its keep outside retrieval.
+
+Measured on the corpus: 1 active, 1 dormant, 5 finished, every row carrying its
+own reason string.
+
+#### Decision 77 — Tag "confidence" is labelled as not a probability
+
+`suggest_tags` returns a score that is a fixed per-source prior times a rank
+decay. It orders the list and nothing more. Both the docstring and the CLI
+footer say so, because a bare `0.72` next to a tag reads as calibrated and
+nothing here calibrated it.
+
+Sources are ranked by specificity: session label (0.90) > session kind (0.75) >
+named entity (0.65–0.80) > meaningful date (0.70) > keyword (0.55, decaying).
+On `Unit4_Ensemble_Methods.pdf` — the file from the headline result, which
+contains no exam vocabulary and which semantic search cannot find — the top tag
+is **"exam prep in College/Semester7/MachineLearning (10 Nov 2025)"**. The
+activity layer tags it correctly for a reason its own text does not support.
+
+### A real bug this phase exposed: read-only stores cannot migrate
+
+Adding schema v8 broke `contextfs query` against the existing index. `query`
+opens the store **read-only** (so that searching can never alter an index), and
+read-only opens deliberately skip migrations — so the new `feedback` table did
+not exist and every query crashed with `no such table: feedback`.
+
+This is not a feedback bug; it is a bug that *every future migration* would have
+hit. Fixed generally:
+
+- `Store.has_table()` — reads of newer-than-the-file structures degrade to "no
+  data", which is the truthful answer: an old index genuinely holds no feedback.
+- `Store.is_outdated()` — and `query` now prints a visible notice naming the
+  schema version and telling the user to re-scan, rather than silently
+  degrading.
+
+The read-only guarantee was kept intact. Making read-only opens migrate "just
+this once" would have been the smaller diff and the wrong call.
+
+### Verification — actual output
+
+- 23 new tests (`tests/test_insights.py`), suite now **432 passing**.
+- ruff and black clean across 51 files.
+- All five new commands exercised against the live 40-file index; output quoted
+  above is real, not illustrative.
+- The feedback demo events were cleared afterwards, so the committed index
+  carries no synthetic clicks.
+
+### Honest limitations
+
+- **Feedback is unevaluated.** There is no measurement that it improves
+  retrieval, because with n=1 user there is no honest way to produce one. It is
+  a usability feature that is *provably bounded*, not a learning result.
+- Feedback is exact-query-scoped, so rephrasing loses it. Deliberate (Decision
+  74), but it does mean the feature is weakest for the users who most need it.
+- Project lifecycle thresholds (60/180 days) are conventions, not measured
+  against labelled data — the corpus has no lifecycle ground truth.
+- `near_duplicates` inherits the graph's Jaccard threshold, so its recall is
+  whatever Phase 9 measured; it adds exactness for identical hashes only.
+
+---

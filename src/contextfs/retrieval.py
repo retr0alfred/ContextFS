@@ -315,6 +315,7 @@ class HybridRetriever:
             for file_id, origin in candidates.items()
         ]
         scored = [result for result in scored if result.score > 0]
+        self._apply_feedback(query, scored)
         scored.sort(key=lambda result: -result.score)
 
         for rank, result in enumerate(scored[:top_k], start=1):
@@ -322,6 +323,46 @@ class HybridRetriever:
         response.results = scored[:top_k]
         response.latency_ms = (time.perf_counter() - started) * 1000
         return response
+
+    # -- feedback (Phase 19) -----------------------------------------------
+
+    def _apply_feedback(self, query: str, scored: list[RetrievalResult]) -> None:
+        """Nudge results the user has previously picked for this same query.
+
+        Three constraints shape this, and they matter more than the mechanism:
+
+        1. **It is a re-rank, not a signal.** The boost is added *after* the
+           weighted signal mix and is never folded into ``contributions``, so
+           the four research signals keep summing to the score they earned on
+           their own. An ablation asking "what does the graph contribute?"
+           must not silently be answering "graph plus whatever the user
+           clicked last time".
+        2. **It is bounded and saturating.** ``w / (1 + |w|)`` means the first
+           pick buys half the available boost and further picks buy
+           progressively less, so no amount of clicking can pin a wrong file
+           to rank 1 forever. With the default 0.15 cap, feedback can reorder
+           near-ties but cannot overturn a clear semantic win.
+        3. **It is off unless a feedback store is supplied.** The evaluation
+           harness constructs the retriever without one, so the reported
+           research numbers can never be inflated by feedback recorded while
+           demoing the system - which would be circular.
+        """
+        if self.feedback is None or not scored:
+            return
+        weights = self.feedback.feedback_for_query(query)
+        if not weights:
+            return
+        cap = self.config.retrieval.feedback_max_boost
+        for result in scored:
+            net = weights.get(result.file_id)
+            if not net:
+                continue
+            boost = cap * (net / (1.0 + abs(net)))
+            result.score = max(0.0, result.score + boost)
+            verb = "confirmed" if boost > 0 else "rejected"
+            result.explanation.feedback_note = (
+                f"you {verb} this for this query before ({boost:+.3f} to the score)"
+            )
 
     # -- seeding -----------------------------------------------------------
 
@@ -532,9 +573,12 @@ class HybridRetriever:
         if decomposition.format_hint:
             total *= 1.15 if explanation.format_match else 0.85
 
-        if self.feedback is not None:
-            total, note = self.feedback.adjust(decomposition.text, file_id, total)
-            explanation.feedback_note = note
+        # Feedback is deliberately NOT applied here. It used to be, as a hook
+        # inside per-file scoring, which put it upstream of the format
+        # multiplier and inside the arithmetic the explanation reports - so a
+        # boosted file would have shown inflated `contributions` for signals
+        # that did not earn them. Phase 19 moved it to `_apply_feedback`, after
+        # scoring, where it is visibly a re-rank rather than a signal.
 
         explanation.signal_scores = {s: scores.get(s, 0.0) for s in self.signals}
         explanation.signal_weights = weights

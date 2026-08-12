@@ -302,6 +302,27 @@ MIGRATIONS: list[list[str]] = [
         """,
         "CREATE INDEX IF NOT EXISTS idx_members_file ON session_members(file_id)",
     ],
+    # -- v8: Phase 19, relevance feedback ----------------------------------
+    # `query_norm` is a normalised form of the query (casefolded, whitespace
+    # collapsed, stopwords kept) rather than a foreign key to a stored query:
+    # feedback has to survive the exact query text being retyped slightly
+    # differently, and it must never grow a table of everything the user has
+    # ever searched for. Only queries the user *acted on* are recorded.
+    [
+        """
+        CREATE TABLE IF NOT EXISTS feedback (
+            id         INTEGER PRIMARY KEY,
+            query_norm TEXT    NOT NULL,
+            file_id    INTEGER NOT NULL REFERENCES files(id) ON DELETE CASCADE,
+            path       TEXT    NOT NULL,
+            event      TEXT    NOT NULL DEFAULT 'pick',
+            weight     REAL    NOT NULL DEFAULT 1.0,
+            created_at TEXT    NOT NULL
+        )
+        """,
+        "CREATE INDEX IF NOT EXISTS idx_feedback_query ON feedback(query_norm)",
+        "CREATE INDEX IF NOT EXISTS idx_feedback_file  ON feedback(file_id)",
+    ],
 ]
 
 #: The schema version this build of ContextFS writes.
@@ -1161,6 +1182,92 @@ class Store:
         """Return ``{file_id: session_id}`` for every clustered file."""
         rows = self.conn.execute("SELECT file_id, session_id FROM session_members").fetchall()
         return {row["file_id"]: row["session_id"] for row in rows}
+
+    # -- feedback (Phase 19) -----------------------------------------------
+
+    @staticmethod
+    def normalise_query(query: str) -> str:
+        """Collapse a query to the key feedback is stored under.
+
+        Deliberately crude: casefold and collapse whitespace, nothing more. A
+        smarter normaliser (stemming, stopword removal) would let feedback from
+        one query leak into a semantically different one, and with the tiny
+        amount of feedback a single user generates, a wrong transfer costs more
+        than a missed one.
+        """
+        return " ".join(query.casefold().split())
+
+    def record_feedback(
+        self, query: str, file_id: int, path: str, *, event: str = "pick", weight: float = 1.0
+    ) -> int:
+        """Record that the user picked (or rejected) a result for a query."""
+        cursor = self.conn.execute(
+            "INSERT INTO feedback (query_norm, file_id, path, event, weight, created_at) "
+            "VALUES (?, ?, ?, ?, ?, ?)",
+            (self.normalise_query(query), file_id, path, event, float(weight), utc_now()),
+        )
+        self.conn.commit()
+        return int(cursor.lastrowid)
+
+    def has_table(self, name: str) -> bool:
+        """Whether a table exists in this database.
+
+        Needed because a *read-only* store cannot migrate itself: opening an
+        index written by an older build and then querying a table that a later
+        migration introduced would raise ``no such table``. Reads of
+        newer-than-the-file structures degrade to "no data" instead, which is
+        the truthful answer - an old index genuinely holds no feedback.
+        """
+        return (
+            self.conn.execute(
+                "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ?", (name,)
+            ).fetchone()
+            is not None
+        )
+
+    def is_outdated(self) -> bool:
+        """Whether this database is behind the schema this build writes."""
+        return self.schema_version < SCHEMA_VERSION
+
+    def feedback_for_query(self, query: str) -> dict[int, float]:
+        """Return ``{file_id: net signed weight}`` for one query."""
+        if not self.has_table("feedback"):
+            return {}
+        rows = self.conn.execute(
+            "SELECT file_id, event, SUM(weight) AS total FROM feedback "
+            "WHERE query_norm = ? GROUP BY file_id, event",
+            (self.normalise_query(query),),
+        ).fetchall()
+        out: dict[int, float] = {}
+        for row in rows:
+            sign = -1.0 if row["event"] == "reject" else 1.0
+            out[row["file_id"]] = out.get(row["file_id"], 0.0) + sign * float(row["total"])
+        return out
+
+    def feedback_events(self, limit: int = 50) -> list[sqlite3.Row]:
+        """Most recent feedback events, newest first."""
+        if not self.has_table("feedback"):
+            return []
+        return self.conn.execute(
+            "SELECT * FROM feedback ORDER BY id DESC LIMIT ?", (limit,)
+        ).fetchall()
+
+    def feedback_count(self) -> int:
+        """Total recorded feedback events."""
+        if not self.has_table("feedback"):
+            return 0
+        return int(self.conn.execute("SELECT COUNT(*) FROM feedback").fetchone()[0])
+
+    def clear_feedback(self, query: str | None = None) -> int:
+        """Delete all feedback, or only the feedback for one query."""
+        if query is None:
+            cursor = self.conn.execute("DELETE FROM feedback")
+        else:
+            cursor = self.conn.execute(
+                "DELETE FROM feedback WHERE query_norm = ?", (self.normalise_query(query),)
+            )
+        self.conn.commit()
+        return cursor.rowcount
 
     # -- scan runs ---------------------------------------------------------
 
