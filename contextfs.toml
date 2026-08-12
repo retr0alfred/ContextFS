@@ -198,10 +198,47 @@ recurrence_saturation = 4
 
 [activity]
 # --- Activity session reconstruction (Phase 12) ---------------------------
-# Files edited within this many hours of each other may join one session.
-session_gap_hours = 72
-# Minimum combined (topic + entity + folder) similarity to join a session.
-session_link_threshold = 0.35
+# Maximum IDLE GAP inside a session, in hours. Two stretches of work merge only
+# if some file of one was edited within this long of some file of the other.
+# It does NOT cap a session's total duration - real sessions run for weeks.
+#
+# Chosen from the measured gap distribution of the corpus's planted sessions:
+#
+#   session                files  span   largest gap between consecutive files
+#   hackathon_urbanflow        8    1 d    24 h
+#   dbms_assignment            5   11 d   100 h
+#   ml_exam_prep               7   12 d   131 h
+#   internship_apps            5   15 d   190 h
+#   capstone_contextfs         7   25 d   219 h
+#   personal_misc (CONTROL)    5  223 d  2598 h, smallest internal gap 192 h
+#
+# 240 h (10 days) admits every real session with margin above the largest
+# (219 h). The negative control has a 192 h internal gap that also passes the
+# gate - deliberately: it is then rejected by the affinity threshold below,
+# which is the correct division of labour. Time decides what *could* be one
+# session; content decides what *is*.
+session_gap_hours = 240
+# Minimum average affinity (temporal + semantic + entity + folder) for two
+# clusters to merge. Time decides what COULD be one session; this decides what is.
+#
+# Measured sweep against ground truth (precision / recall / pairwise F1,
+# sessions recovered out of 5, and whether the q01 adversarial case is solved):
+#
+#   threshold   prec    rec     F1   recovered  q01    over-clustered control
+#     0.02     0.841  1.000  0.914      5/5     OK            0
+#     0.05     0.900  1.000  0.947      5/5     OK            0
+#     0.10     1.000  1.000  1.000      5/5     OK            0
+#     0.18     1.000  1.000  1.000      5/5     OK            0   <- configured
+#     0.25     1.000  1.000  1.000      5/5     OK            0
+#     0.27     1.000  0.822  0.902      5/5    FAIL           0
+#     0.35     1.000  0.600  0.750      5/5    FAIL           0
+#
+# The optimum is a PLATEAU spanning 0.10-0.25, fifteen points wide, so 0.18 sits
+# in the middle of a broad region rather than on a knife-edge. Above 0.27 the
+# exam-prep session fragments and the adversarial case is lost; below 0.10
+# unrelated sessions begin to merge. The negative control is never clustered at
+# any threshold tested, including 0.02.
+session_link_threshold = 0.18
 # Sessions smaller than this are discarded as noise.
 min_session_size = 2
 

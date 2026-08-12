@@ -49,6 +49,10 @@ __all__ = [
     "graph_stats",
     "neighbours",
     "shortest_explained_path",
+    "add_temporal_and_activity",
+    "node_id",
+    "session_node_id",
+    "date_node_id",
 ]
 
 #: Every edge type the system may produce, including those added in Phase 13.
@@ -64,6 +68,7 @@ class GraphReport:
     by_type: dict[str, int] = field(default_factory=dict)
     duplicate_pairs: list[tuple[str, str, float]] = field(default_factory=list)
     isolated: list[str] = field(default_factory=list)
+    context_nodes: dict[str, int] = field(default_factory=dict)
     duration_ms: float = 0.0
 
     def summary(self) -> dict[str, Any]:
@@ -78,7 +83,9 @@ class GraphReport:
         }
 
 
-def build_graph(store, vectors=None, config=None) -> tuple[nx.MultiDiGraph, GraphReport]:
+def build_graph(
+    store, vectors=None, config=None, *, include_context: bool = True
+) -> tuple[nx.MultiDiGraph, GraphReport]:
     """Build the relationship graph over the corpus.
 
     Args:
@@ -86,6 +93,8 @@ def build_graph(store, vectors=None, config=None) -> tuple[nx.MultiDiGraph, Grap
         vectors: Optional :class:`VectorStore`; without it, semantic and
             duplicate edges are skipped and the graph is structural/entity only.
         config: Resolved configuration supplying thresholds.
+        include_context: Add Phase 13's session and timeline nodes. Turned off
+            by the ablation harness to measure the graph without them.
 
     Returns:
         ``(graph, report)``.
@@ -105,6 +114,7 @@ def build_graph(store, vectors=None, config=None) -> tuple[nx.MultiDiGraph, Grap
     for row in files:
         graph.add_node(
             node_id(row["id"]),
+            kind="file",
             file_id=row["id"],
             path=row["path"],
             name=row["name"],
@@ -128,10 +138,18 @@ def build_graph(store, vectors=None, config=None) -> tuple[nx.MultiDiGraph, Grap
             report,
         )
 
+    # Phase 13: sessions and timeline dates become first-class nodes. Done here
+    # rather than in a separate pass so the graph is never persisted in a state
+    # that is missing them.
+    if include_context:
+        report.context_nodes = add_temporal_and_activity(graph, store)
+
     report.nodes = graph.number_of_nodes()
     report.edges = graph.number_of_edges()
     report.by_type = _count_by_type(graph)
-    report.isolated = sorted(graph.nodes[n]["path"] for n in graph.nodes if graph.degree(n) == 0)
+    report.isolated = sorted(
+        graph.nodes[n].get("path", n) for n in graph.nodes if graph.degree(n) == 0
+    )
     report.duration_ms = (time.perf_counter() - started) * 1000
     return graph, report
 
@@ -139,6 +157,130 @@ def build_graph(store, vectors=None, config=None) -> tuple[nx.MultiDiGraph, Grap
 def node_id(file_id: int) -> str:
     """Graph node id for a file."""
     return f"file:{file_id}"
+
+
+def session_node_id(session_id: str) -> str:
+    """Graph node id for an activity session."""
+    return session_id if session_id.startswith("session:") else f"session:{session_id}"
+
+
+def date_node_id(iso_date: str) -> str:
+    """Graph node id for a timeline date."""
+    return f"date:{iso_date}"
+
+
+def add_temporal_and_activity(graph, store) -> dict[str, int]:
+    """Add timeline and session nodes to the graph as first-class citizens.
+
+    This is Phase 13, and the wording of the requirement matters: sessions and
+    dates are **nodes**, not attributes on file nodes. Three consequences that a
+    bolt-on would not give:
+
+    1. **Traversal reaches them.** A walk from a query seed can step
+       file -> session -> file, which is exactly how the corpus's central
+       adversarial case is solved: the exam timetable and the lecture PDF share
+       no vocabulary, but they share a session node.
+    2. **They are addressable.** "The hackathon weekend" is a thing the graph
+       contains and an explanation can name, rather than a property that has to
+       be reconstructed by scanning every file.
+    3. **The ablation can switch them off by edge type** without rebuilding
+       anything, because ``activity`` and ``temporal`` were reserved in
+       :data:`EDGE_TYPES` from Phase 9.
+
+    Edge directions are deliberate. ``activity`` edges are symmetric between a
+    session and its members. ``temporal`` edges between *files* are directed
+    from earlier to later, because "was edited before" is a real ordering and
+    Phase 15 uses it to prefer the file a user finished with over the one they
+    started from.
+
+    Returns:
+        Counts of the nodes and edges added.
+    """
+    added = {"session_nodes": 0, "date_nodes": 0, "activity_edges": 0, "temporal_edges": 0}
+
+    # -- activity ----------------------------------------------------------
+    for row in store.sessions():
+        node = session_node_id(row["session_id"])
+        graph.add_node(
+            node,
+            kind="session",
+            label=row["label"],
+            session_kind=row["kind"],
+            start=row["start_at"],
+            end=row["end_at"],
+            size=row["size"],
+            cohesion=row["cohesion"],
+        )
+        added["session_nodes"] += 1
+
+        members = store.session_members(row["session_id"])
+        for member in members:
+            target = node_id(member["file_id"])
+            if not graph.has_node(target):
+                continue
+            _add_edge_pair(
+                graph,
+                node,
+                target,
+                "activity",
+                min(1.0, 0.5 + row["cohesion"]),
+                relation="session_member",
+                session=row["session_id"],
+                label=row["label"],
+            )
+            added["activity_edges"] += 2
+
+        # File-to-file temporal ordering inside a session.
+        ordered = sorted(members, key=lambda m: m["path"])
+        file_rows = [store.get_file_by_id(m["file_id"]) for m in ordered]
+        file_rows = [row for row in file_rows if row is not None]
+        file_rows.sort(key=lambda r: r["mtime"])
+        for earlier, later in zip(file_rows, file_rows[1:], strict=False):
+            source, target = node_id(earlier["id"]), node_id(later["id"])
+            if graph.has_node(source) and graph.has_node(target):
+                graph.add_edge(
+                    source,
+                    target,
+                    key="temporal",
+                    type="temporal",
+                    weight=0.6,
+                    relation="edited_before",
+                    session=row["session_id"],
+                )
+                added["temporal_edges"] += 1
+
+    # -- timeline ----------------------------------------------------------
+    by_date: dict[str, list] = {}
+    for row in store.meaningful_dates():
+        by_date.setdefault(row["iso_date"], []).append(row)
+
+    for iso_date, rows in by_date.items():
+        node = date_node_id(iso_date)
+        graph.add_node(
+            node,
+            kind="date",
+            label=iso_date,
+            iso_date=iso_date,
+            file_count=len({row["file_id"] for row in rows}),
+        )
+        added["date_nodes"] += 1
+        for row in rows:
+            target = node_id(row["file_id"])
+            if not graph.has_node(target):
+                continue
+            _add_edge_pair(
+                graph,
+                node,
+                target,
+                "temporal",
+                float(row["score"]),
+                relation="meaningful_date",
+                surface=row["surface"],
+                reason=row["reason"],
+            )
+            added["temporal_edges"] += 2
+
+    return added
 
 
 _WORD = __import__("re").compile(r"[a-z0-9]+")

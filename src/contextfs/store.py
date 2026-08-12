@@ -275,6 +275,33 @@ MIGRATIONS: list[list[str]] = [
         "CREATE INDEX IF NOT EXISTS idx_cdates_iso  ON classified_dates(iso_date)",
         "CREATE INDEX IF NOT EXISTS idx_cdates_mean ON classified_dates(is_meaningful)",
     ],
+    # -- v7: Phase 12, activity sessions -----------------------------------
+    [
+        """
+        CREATE TABLE IF NOT EXISTS sessions (
+            session_id  TEXT PRIMARY KEY,
+            label       TEXT NOT NULL DEFAULT '',
+            kind        TEXT NOT NULL DEFAULT 'unknown',
+            start_at    TEXT,
+            end_at      TEXT,
+            size        INTEGER NOT NULL DEFAULT 0,
+            cohesion    REAL NOT NULL DEFAULT 0,
+            keywords    TEXT NOT NULL DEFAULT '[]',
+            entities    TEXT NOT NULL DEFAULT '[]',
+            dates       TEXT NOT NULL DEFAULT '[]',
+            built_at    TEXT NOT NULL
+        )
+        """,
+        """
+        CREATE TABLE IF NOT EXISTS session_members (
+            session_id TEXT    NOT NULL REFERENCES sessions(session_id) ON DELETE CASCADE,
+            file_id    INTEGER NOT NULL REFERENCES files(id) ON DELETE CASCADE,
+            path       TEXT    NOT NULL,
+            PRIMARY KEY (session_id, file_id)
+        )
+        """,
+        "CREATE INDEX IF NOT EXISTS idx_members_file ON session_members(file_id)",
+    ],
 ]
 
 #: The schema version this build of ContextFS writes.
@@ -1058,6 +1085,82 @@ class Store:
         total = row["total"] or 0
         meaningful = row["meaningful"] or 0
         return {"meaningful": meaningful, "incidental": total - meaningful, "total": total}
+
+    # -- activity sessions (Phase 12) --------------------------------------
+
+    def save_sessions(self, sessions: Iterable[Any]) -> int:
+        """Replace the stored sessions with a fresh reconstruction.
+
+        Wholesale, like the tree and graph: clustering is global, so adding one
+        file can legitimately re-partition sessions that did not themselves
+        change. A per-file patch would leave the store in a state no full run
+        would ever produce.
+        """
+        import json
+
+        now = utc_now()
+        sessions = list(sessions)
+        with self.transaction() as cursor:
+            cursor.execute("DELETE FROM session_members")
+            cursor.execute("DELETE FROM sessions")
+            cursor.executemany(
+                "INSERT INTO sessions (session_id, label, kind, start_at, end_at, size, "
+                "cohesion, keywords, entities, dates, built_at) VALUES (?,?,?,?,?,?,?,?,?,?,?)",
+                [
+                    (
+                        s.session_id,
+                        s.label,
+                        s.kind,
+                        s.start.isoformat() if s.start else None,
+                        s.end.isoformat() if s.end else None,
+                        s.size,
+                        s.cohesion,
+                        json.dumps(s.keywords),
+                        json.dumps(s.entities),
+                        json.dumps(s.meaningful_dates),
+                        now,
+                    )
+                    for s in sessions
+                ],
+            )
+            cursor.executemany(
+                "INSERT INTO session_members (session_id, file_id, path) VALUES (?,?,?)",
+                [
+                    (s.session_id, file_id, path)
+                    for s in sessions
+                    for file_id, path in zip(s.file_ids, s.paths, strict=False)
+                ],
+            )
+        return len(sessions)
+
+    def sessions(self) -> list[sqlite3.Row]:
+        """Return stored sessions, earliest first."""
+        return self.conn.execute("SELECT * FROM sessions ORDER BY start_at").fetchall()
+
+    def session(self, session_id: str) -> sqlite3.Row | None:
+        """Look up one session."""
+        return self.conn.execute(
+            "SELECT * FROM sessions WHERE session_id = ?", (session_id,)
+        ).fetchone()
+
+    def session_members(self, session_id: str) -> list[sqlite3.Row]:
+        """Return a session's member files."""
+        return self.conn.execute(
+            "SELECT * FROM session_members WHERE session_id = ? ORDER BY path", (session_id,)
+        ).fetchall()
+
+    def sessions_for_file(self, file_id: int) -> list[sqlite3.Row]:
+        """Return sessions containing a file."""
+        return self.conn.execute(
+            "SELECT s.* FROM sessions s JOIN session_members m ON m.session_id = s.session_id "
+            "WHERE m.file_id = ?",
+            (file_id,),
+        ).fetchall()
+
+    def session_membership(self) -> dict[int, str]:
+        """Return ``{file_id: session_id}`` for every clustered file."""
+        rows = self.conn.execute("SELECT file_id, session_id FROM session_members").fetchall()
+        return {row["file_id"]: row["session_id"] for row in rows}
 
     # -- scan runs ---------------------------------------------------------
 

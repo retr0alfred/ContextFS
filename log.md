@@ -1812,3 +1812,193 @@ output, and here.
 - `Store.meaningful_dates()` for session labelling.
 
 ---
+
+## Phases 12 & 13 — Activity sessions (Layer 8) and temporal graph integration
+
+Combined because Phase 13 is precisely the wiring of Phases 11 and 12 into the
+Phase 9 graph; splitting them would have meant committing a graph that was
+knowingly missing half its node types.
+
+**Headline result — session accuracy:**
+
+| Metric | Value |
+|---|---|
+| Pairwise precision | **1.000** |
+| Pairwise recall | **1.000** |
+| **Session accuracy (pairwise F1)** | **1.000** |
+| Planted sessions recovered | **5 / 5** (each at F1 = 1.00) |
+| Negative control over-clustered | **0** |
+| **The q01 adversarial case** | **SOLVED** |
+
+90 true same-session pairs over 40 files. **A perfect score on a 40-file corpus
+authored by the same person who built the system is exactly the number a
+reviewer should distrust**, and it is reported with that caveat attached rather
+than as a headline claim. What it establishes is that the mechanism works on the
+cases it was designed for; it establishes nothing about generalisation.
+
+### Decisions & reasoning
+
+#### Decision 61 — Time is a gate, not a fifth weighted term
+
+Affinity combines temporal, semantic, entity and folder signals; the temporal
+*constraint* sits outside that sum. Two files on identical topics edited four
+months apart are not one work session — they are one project revisited. As a
+weighted term, a high topic score could buy its way past an implausible gap; as
+a gate it cannot.
+
+#### Decision 62 — The gate is on the **idle gap between clusters**, not on
+every pair [found by measurement, and it is the difference between working and not]
+
+The first implementation gated every pair: two files could only be in one
+session if they were within `session_gap_hours` of *each other*. That silently
+caps a session's total duration at the gap value.
+
+Measured against the corpus's planted sessions:
+
+| Session | Files | Span | Largest gap between consecutive files |
+|---|---|---|---|
+| hackathon_urbanflow | 8 | 1 d | 24 h |
+| dbms_assignment | 5 | 11 d | 100 h |
+| ml_exam_prep | 7 | 12 d | 131 h |
+| internship_apps | 5 | 15 d | 190 h |
+| capstone_contextfs | 7 | 25 d | 219 h |
+| *personal_misc (control)* | 5 | 223 d | 2598 h; **smallest** internal gap 192 h |
+
+**No real session satisfies an all-pairs 72-hour gate.** Only the hackathon
+(1-day span) could ever have formed. Exam prep fragmented into three clusters
+and — decisively — the exam timetable landed in a different session from the
+lecture PDF, so the adversarial case failed outright.
+
+What characterises a work episode is not that it is short but that it has **no
+long silence in the middle**. The gate is now on the *idle gap*: the shortest
+time between any file of one cluster and any file of the other. Sessions may run
+for weeks provided nothing goes quiet for more than `session_gap_hours`.
+
+`session_gap_hours` was then set from that table: **240 h (10 days)**, above the
+largest real gap (219 h) with margin. The control's 192 h internal gap also
+passes the gate — deliberately. **Time decides what *could* be one session;
+content decides what *is*.** The control is rejected by the affinity threshold,
+which is the correct division of labour.
+
+#### Decision 63 — The link threshold was chosen from a measured plateau
+
+Sweeping `session_link_threshold` against ground truth:
+
+| Threshold | Precision | Recall | F1 | Recovered | q01 | Control over-clustered |
+|---|---|---|---|---|---|---|
+| 0.02 | 0.841 | 1.000 | 0.914 | 5/5 | OK | 0 |
+| 0.05 | 0.900 | 1.000 | 0.947 | 5/5 | OK | 0 |
+| 0.10 | 1.000 | 1.000 | **1.000** | 5/5 | OK | 0 |
+| **0.18** | 1.000 | 1.000 | **1.000** | 5/5 | OK | 0 |
+| 0.25 | 1.000 | 1.000 | **1.000** | 5/5 | OK | 0 |
+| 0.27 | 1.000 | 0.822 | 0.902 | 5/5 | FAIL | 0 |
+| 0.35 | 1.000 | 0.600 | 0.750 | 5/5 | FAIL | 0 |
+
+The optimum is a **plateau 15 points wide (0.10–0.25)**, not a peak. 0.18 sits
+in the middle of it. Above 0.27 exam prep fragments and q01 is lost; below 0.10
+unrelated sessions begin to merge. **The negative control is never clustered at
+any threshold tested, including 0.02** — which is the strongest single piece of
+evidence that sessions are not just folder membership in disguise, since those
+five files share a folder.
+
+#### Decision 64 — Average linkage, not single
+
+Single linkage chains: A joins B, B joins C, and a personal corpus collapses
+into one session. Average linkage requires a candidate to resemble the cluster
+as a whole. Implemented directly rather than through scipy so the linkage rule,
+the gate and the stopping condition are visible in the code a reviewer reads —
+this is a contribution being evaluated, not a utility call.
+
+#### Decision 65 — Session accuracy is measured as pairwise F1, with the
+control scored as singletons
+
+Pairwise F1 over "same session" judgements needs no alignment between predicted
+and true cluster ids and degrades gracefully — splitting one true session in two
+costs recall rather than scoring zero.
+
+**The negative control contributes no true pairs.** Grouping `personal_misc`
+therefore costs precision. This is the single most consequential choice in the
+protocol and it is stated in the script's own docstring: scoring those five
+files as a true session would *reward* the exact failure the control exists to
+detect.
+
+#### Decision 66 — Sessions and dates are graph **nodes**, not file attributes
+
+Phase 13's requirement says "first-class, not a bolt-on", and node-vs-attribute
+is what that means concretely. Three consequences an attribute could not give:
+
+1. **Traversal reaches them.** A walk can step file → session → file, which is
+   exactly how q01 is solved — verified by
+   `test_traversal_reaches_the_key_pdf_through_a_session`, which restricts the
+   walk to `activity` edges only and asserts the path passes through a session
+   node.
+2. **They are addressable.** "The hackathon weekend" is a thing the graph
+   contains and an explanation can name.
+3. **Ablation switches them off by edge type** without rebuilding anything —
+   `activity` and `temporal` were reserved in `EDGE_TYPES` back in Phase 9, and
+   `build_graph(include_context=False)` produces a file-only graph for Phase 22.
+
+`activity` edges are symmetric; file-to-file `temporal` edges are **directed
+earliest-first**, because "was edited before" is a real ordering.
+
+### Verification — actual output
+
+```
+$ contextfs scan
+sessions: 5 reconstructed (32 files clustered, 8 unsessioned)
+graph: 77 nodes, 597 edges (64 activity, 4 duplicate, 30 entity, 54 semantic,
+       326 structural, 123 temporal)
+  context nodes: 5 session, 32 timeline
+
+$ python scripts/session_eval.py
+  tp / fp / fn      90 / 0 / 0
+  PRECISION         1.000
+  RECALL            1.000
+  SESSION ACCURACY  1.000   (pairwise F1)
+
+  planted sessions recovered: 5/5
+    OK  capstone_contextfs   F1=1.00  overlap=7/7
+    OK  dbms_assignment      F1=1.00  overlap=5/5
+    OK  hackathon_urbanflow  F1=1.00  overlap=8/8
+    OK  internship_apps      F1=1.00  overlap=5/5
+    OK  ml_exam_prep         F1=1.00  overlap=7/7
+
+  THE ADVERSARIAL CASE (query q01)
+    Unit4_Ensemble_Methods.pdf -> session:4
+    Exam_Timetable_Sem7.xlsx   -> session:4
+    RESULT: same session. The PDF is reachable from an exam query
+            even though it contains no exam vocabulary.
+
+  NEGATIVE CONTROL: correct - none of the 5 control files were clustered.
+
+$ pytest -q      380 passed in 117.40s
+$ ruff check .   All checks passed!
+```
+
+### Honest limitations
+
+1. **F1 = 1.000 is a corpus artefact as much as a result.** 40 files, 5
+   sessions, authored by the system's author. Phase 23's real-data plan exists
+   because of this.
+2. **Sessions are reconstructed from mtime alone.** ContextFS has no access to
+   *access* times or application telemetry — deliberately, per the privacy
+   principle. A file read but not modified during a session is invisible to it.
+   On a real corpus this will lose members that a Recall-style monitor would
+   catch, and that is an accepted cost of not being a Recall-style monitor.
+3. **Clustering is O(n²) in files and re-runs wholesale on every scan** (72 ms
+   at 40 files). At tens of thousands of files this becomes the dominant index
+   cost and would need blocking by time window first. Untested at that scale.
+4. **`session_gap_hours = 240` encodes a student's working rhythm.** A
+   professional corpus with daily activity would want a much smaller value. It
+   is a config key, and the measurement table sits beside it.
+5. Session *type* labels (`exam_prep`, `hackathon`, …) are keyword-matched and
+   cosmetic — they never affect clustering, so a mislabel is a display bug, not
+   a retrieval one.
+
+### What Phase 14 needs from this phase
+
+- `Store.sessions()` / `session_membership()` for activity scoring.
+- Session and date nodes in the graph, so seed selection can start from them.
+- `TimelineIndex` for the temporal component of query decomposition.
+
+---

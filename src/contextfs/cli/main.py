@@ -310,6 +310,15 @@ def _run_date_classification(store, cfg):
     }
 
 
+def _run_sessions(store, cfg):
+    """Reconstruct activity sessions and persist them."""
+    from contextfs.activity import SessionBuilder
+
+    report = SessionBuilder(cfg).build(store, _open_vector_store(cfg))
+    store.save_sessions(report.sessions)
+    return report
+
+
 def _run_graph(store, cfg):
     """Rebuild the relationship graph and persist it."""
     from contextfs.graph import build_graph, save_graph
@@ -407,6 +416,7 @@ def scan(
         tree_report = None
         graph_report = None
         date_stats = None
+        session_report = None
         if not dry_run and not no_extract:
             extraction = _run_extraction(store, cfg)
             entity_stats = _run_entities(store, cfg)
@@ -415,6 +425,7 @@ def scan(
             embedding = _run_embeddings(store, cfg)
             tree_report = _run_tree(store, cfg)
             date_stats = _run_date_classification(store, cfg)
+            session_report = _run_sessions(store, cfg)
             graph_report = _run_graph(store, cfg)
 
     table = Table(
@@ -513,6 +524,20 @@ def scan(
             f"in {date_stats['duration_ms']:.0f} ms"
         )
 
+    if session_report is not None and session_report.sessions:
+        summary = session_report.summary()
+        console.print(
+            f"sessions: {summary['sessions']} reconstructed "
+            f"({summary['clustered_files']} files clustered, "
+            f"{summary['unsessioned_files']} unsessioned), "
+            f"kinds {summary['by_kind']} in {session_report.duration_ms:.0f} ms"
+        )
+        if state.verbose:
+            for session in session_report.sessions:
+                console.print(
+                    f"  [dim]{session.session_id}: {session.label} " f"({session.size} files)[/dim]"
+                )
+
     if graph_report is not None:
         by_type = ", ".join(
             f"{count} {name}" for name, count in sorted(graph_report.by_type.items())
@@ -521,6 +546,12 @@ def scan(
             f"graph: {graph_report.nodes} nodes, {graph_report.edges} edges "
             f"({by_type}) in {graph_report.duration_ms:.0f} ms"
         )
+        if graph_report.context_nodes:
+            context = graph_report.context_nodes
+            console.print(
+                f"[dim]  context nodes: {context['session_nodes']} session, "
+                f"{context['date_nodes']} timeline[/dim]"
+            )
         if graph_report.duplicate_pairs:
             console.print(
                 f"[dim]  near-duplicate pairs detected: "
