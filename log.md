@@ -1695,3 +1695,120 @@ birthday list, publication years, unsessioned scholarship deadline).
 - `classified_dates.iso_date` indexed, for interval-tree construction.
 
 ---
+
+## Phase 11 — Timeline index
+
+### What was built
+
+`src/contextfs/temporal/timeline.py` — a natural-language date-range resolver and
+an `intervaltree`-backed index over **meaningful dates only**. `contextfs timeline`
+wired end to end, with `--show-incidental` and `--bench`.
+
+### Decisions & reasoning
+
+#### Decision 58 — Rule-based range resolution, not a model
+
+The phrases people use for time are a small, enumerable set: a month, a month
+and year, a span, an ordinal week, a relative offset, a quarter, a year. A
+rule-based resolver is fast, auditable, and every failure is a *missing rule*
+rather than an inscrutable one — and it reports what it understood, which a
+model would not.
+
+Ordinal weeks count from the 1st in blocks of seven ("third week of October" =
+15th–21st), not ISO week numbering, because that is what people mean; ISO
+numbering would put the boundary on an arbitrary weekday.
+
+#### Decision 59 — Range resolution is disambiguated **against the index**
+[BEYOND SPEC — fixes a confidently-wrong answer]
+
+Found by running the benchmark's own queries. With today at 2026-08-12,
+`contextfs timeline "September"` resolved to **September 2026** — nearest to
+today — and returned nothing, while the files the user wants sit in September
+2025. Same for q02's "third week of October". Both benchmark queries returned a
+confident empty answer.
+
+**Re-finding is backward-looking.** Someone asking about "September" is almost
+always thinking of a September that has happened. But rather than hardcoding
+"prefer the past" — which would break "what's due in September" — `resolve_best()`
+generates the plausible readings and picks the one that **actually contains
+files**, falling back to nearest-to-today when none do.
+
+Crucially the inference is *shown*, not silent:
+
+```
+September -> 2025-09-01 .. 2025-09-30
+   (September 2025 - chosen over September 2026 because it is where your
+    files are (7 dated file(s)))
+```
+
+An index-aware resolver is only defensible if the user can see it happened.
+
+#### Decision 60 — Only meaningful dates enter the timeline
+
+The index is built from `Store.meaningful_dates()`, not from all date mentions.
+This is the entire payoff of Phase 10: an index over every extracted date would
+be dominated by publication years and attendance rows. Asserted by
+`test_historical_dates_are_absent_from_the_timeline` — querying `1947` returns
+nothing even though the corpus contains four 1947 mentions.
+
+### Verification — actual output
+
+```
+$ contextfs timeline "September" --bench
+September -> 2025-09-01 .. 2025-09-30 (September 2025 - chosen over
+             September 2026 because it is where your files are (7 dated file(s)))
+2025-09-01  Personal/Career/application_tracker.xlsx   0.71 +in-table +near-mtime +recurs
+2025-09-13  Projects/UrbanFlow/sensor_data_sample.xlsx 0.75 +in-table +near-mtime +recurs
+2025-09-13  Projects/UrbanFlow/team_notes.md           0.62 +near-mtime +recurs
+2025-09-14  Projects/UrbanFlow/submission_checklist.txt 0.88 +deadline@0
+...
+query latency: median 0.0113 ms (min 0.0075, max 0.0759) over 200 runs,
+               44 timeline nodes
+
+$ contextfs timeline "third week of October"
+third week of October -> 2025-10-15 .. 2025-10-21 (week 3 of October 2025 ...)
+2025-10-17  College/Semester7/DBMS/Assignment2_Normalization_final.docx  0.73 +due@4
+
+$ pytest tests/test_timeline.py -q     43 passed in 0.50s
+$ ruff check .                         All checks passed!
+```
+
+Both queries return their ground-truth targets, with a per-result explanation
+inherited from the Phase 10 verdict.
+
+### On the "speed story" — what this number does and does not show
+
+Median range-query latency is **0.0113 ms over 200 runs at 44 timeline nodes**.
+
+**That number is close to meaningless as evidence.** At 44 nodes a linear scan
+would also be instant; what is being measured is Python call overhead, not the
+interval tree. The interval tree's advantage is asymptotic — O(log n + k) rather
+than O(n) — and demonstrating it requires a corpus with tens of thousands of
+timeline nodes, which does not exist here.
+
+What the measurement *does* establish: range resolution plus index lookup adds
+no perceptible cost to a query, so the temporal layer is free relative to
+embedding (~10 s cold, Phase 7). Any claim that ContextFS's timeline is *fast at
+scale* needs a re-benchmark on a corpus two or three orders of magnitude larger,
+and that requirement is recorded in the module docstring, in the benchmark
+output, and here.
+
+### Known-broken / deferred after Phase 11
+
+- Candidate results are not yet ranked by relevance — `timeline` returns
+  everything in range, chronologically. Graph retrieval and ranking arrive in
+  Phase 15.
+- Relative expressions resolve against the system clock, so `--bench` output and
+  any doc example using "last week" are not reproducible across days. Absolute
+  forms are used everywhere in tests.
+- No support for durations ("the fortnight before the exam") or event-relative
+  phrasing ("before my viva"). Event-relative resolution needs the activity
+  layer, which is Phase 12.
+
+### What Phase 12 needs from this phase
+
+- `TimelineIndex` and `DateRange`, so activity sessions can be bounded in time
+  and cross-referenced with meaningful dates.
+- `Store.meaningful_dates()` for session labelling.
+
+---

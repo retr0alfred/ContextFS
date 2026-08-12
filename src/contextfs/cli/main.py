@@ -573,16 +573,91 @@ def timeline(
     span: Annotated[
         str, typer.Argument(help='A date range, e.g. "March to April" or "last week".')
     ],
-    top_k: Annotated[int, typer.Option("--top-k", "-k", help="Number of results.")] = 10,
+    top_k: Annotated[int, typer.Option("--top-k", "-k", help="Maximum files to show.")] = 10,
+    show_incidental: Annotated[
+        bool,
+        typer.Option(
+            "--show-incidental",
+            help="Also list dates the classifier judged incidental, for comparison.",
+        ),
+    ] = False,
+    bench: Annotated[
+        bool, typer.Option("--bench", help="Report query latency over repeated runs.")
+    ] = False,
 ) -> None:
     """List files whose meaningful dates fall inside a time range."""
-    _ = (span, top_k)
-    _not_implemented(
-        "timeline",
-        11,
-        "Will resolve the natural-language range, query an interval tree over dates that "
-        "were classified meaningful (not incidental), and return the files behind them.",
+    from contextfs.store import Store
+    from contextfs.temporal import RangeResolutionError, TimelineIndex, resolve_best
+
+    cfg = state.config()
+    if not cfg.db_path.is_file():
+        err_console.print(f"[bold red]No index at[/bold red] {cfg.db_path}. Run `contextfs scan`.")
+        raise typer.Exit(EXIT_CONFIG_ERROR)
+
+    with Store(cfg.db_path, read_only=True) as store:
+        index = TimelineIndex.from_store(store)
+        try:
+            # Disambiguate a year-less month against the index rather than
+            # against today, so "September" finds the September the user means.
+            date_range = resolve_best(span, index)
+        except RangeResolutionError as exc:
+            err_console.print(f"[bold red]{exc}[/bold red]")
+            raise typer.Exit(1) from exc
+        grouped = index.files_in_range(date_range)
+        paths = store.path_by_file_id()
+        incidental = (
+            [
+                row
+                for row in store.classified_dates()
+                if not row["is_meaningful"]
+                and date_range.start.isoformat() <= row["iso_date"] <= date_range.end.isoformat()
+            ]
+            if show_incidental
+            else []
+        )
+        measurement = index.benchmark(date_range) if bench else None
+
+    console.print(
+        f"[bold]{date_range.expression}[/bold] -> [cyan]{date_range}[/cyan]  "
+        f"({date_range.days} day(s))"
     )
+    if not grouped:
+        console.print("[yellow]No files have a meaningful date in that range.[/yellow]")
+    else:
+        table = Table(show_header=True, header_style="bold cyan")
+        table.add_column("Date")
+        table.add_column("File", overflow="fold")
+        table.add_column("Matched", overflow="fold")
+        table.add_column("Why", overflow="fold", style="dim")
+        ordered = sorted(grouped.items(), key=lambda kv: kv[1][0].day)[:top_k]
+        for file_id, nodes in ordered:
+            first = nodes[0]
+            table.add_row(
+                first.day.isoformat(),
+                paths.get(file_id, first.rel_path),
+                ", ".join(sorted({node.surface for node in nodes})),
+                first.reason,
+            )
+        console.print(table)
+        console.print(
+            f"{len(grouped)} file(s), {sum(len(v) for v in grouped.values())} "
+            f"meaningful date(s) in range"
+        )
+
+    if show_incidental:
+        console.print(
+            f"\n[dim]{len(incidental)} date(s) in this range were classified "
+            f"INCIDENTAL and excluded:[/dim]"
+        )
+        for row in incidental[:15]:
+            console.print(f"  [dim]{row['iso_date']}  {row['path']}  ({row['reason']})[/dim]")
+
+    if measurement:
+        console.print(
+            f"\n[dim]query latency: median {measurement['median_ms']:.4f} ms "
+            f"(min {measurement['min_ms']:.4f}, max {measurement['max_ms']:.4f}) "
+            f"over {measurement['repeats']} runs, {measurement['nodes']} timeline nodes[/dim]"
+        )
 
 
 @app.command()

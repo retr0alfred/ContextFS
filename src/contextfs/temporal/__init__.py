@@ -17,6 +17,15 @@ from contextfs.temporal.classify import (
     DateSignals,
     DateVerdict,
 )
+from contextfs.temporal.timeline import (
+    DateRange,
+    RangeResolutionError,
+    TimelineIndex,
+    TimelineNode,
+    resolve_best,
+    resolve_range,
+    resolve_range_candidates,
+)
 
 __all__ = [
     "DateClassifier",
@@ -25,4 +34,11 @@ __all__ = [
     "MEANINGFUL_KEYWORDS",
     "PAST_RECORD_KEYWORDS",
     "INCIDENTAL_KEYWORDS",
+    "DateRange",
+    "RangeResolutionError",
+    "TimelineIndex",
+    "TimelineNode",
+    "resolve_range",
+    "resolve_range_candidates",
+    "resolve_best",
 ]

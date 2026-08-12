@@ -52,7 +52,6 @@ def test_no_args_shows_help_not_a_crash():
 #: Entries are removed as phases complete - `scan` went live in Phase 4.
 STUBS = [
     (["query", "some text"], 15),
-    (["timeline", "March to April"], 11),
     (["explain", "abc123"], 16),
     (["stats"], 17),
     (["reset"], 17),
