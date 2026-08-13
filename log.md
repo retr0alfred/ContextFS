@@ -2802,3 +2802,106 @@ Fixed on both sides, because either alone is insufficient:
   strong evidence the value is not overfitted, but n=5 is n=5.
 
 ---
+
+## Post-build pass — monochrome design system, launcher, handbook
+
+### Decision 85 — One design system, three surfaces, no colour
+
+The UI was rebuilt black-and-white: stencil-and-bracket, high contrast, sharp
+corners, monospace for anything machine-generated. Restrained rather than loud -
+no glitch animation, no spray-paint texture.
+
+`src/contextfs/theme.py` is the single source of truth, deliberately at the
+**top level** rather than inside `gui/`, because the CLI must read it without
+importing Qt. The Qt stylesheet, the Rich CLI styling and the generated three.js
+page all consume it, so "activity" cannot come to mean different things in
+different windows.
+
+#### The problem this created, and why desaturating would have been wrong
+
+The old palette used **colour to carry information**: semantic blue, graph
+violet, activity amber, timeline green. Removing colour therefore removes a data
+channel. Desaturating a colour-coded interface yields four indistinguishable
+greys - strictly worse than what it replaced, and the obvious way to do this
+badly.
+
+Colour was replaced by *two* channels rather than none:
+
+1. **Luminance** - each signal owns a fixed grey, spaced ~40 points apart so
+   adjacent rows stay separable.
+2. **A glyph** - `◆ semantic`, `◈ graph`, `● activity`, `▲ timeline`.
+
+The glyph is the **primary** encoding and the grey is reinforcement, not the
+other way around. That ordering matters: shape survives greyscale printing, low
+contrast displays, piped output and colour blindness, none of which the previous
+hue-only encoding did. The redesign therefore ends up *more* accessible than the
+colour version it replaced, which was not the goal but is the honest outcome.
+
+The same encoding now appears in all three surfaces - a glyph column in the CLI
+results table, a glyph column in the desktop table, and a glyph legend in the 3D
+page - so the visual vocabulary transfers between them.
+
+Asserted rather than assumed: a test walks every node and edge tone and fails if
+any has `r != g != b`, and another fails if two glyphs collide.
+
+### Decision 86 — Glyphs need an ASCII fallback, and this is not optional
+
+The first CLI run after adding glyphs **crashed**:
+
+```
+UnicodeEncodeError: 'charmap' codec can't encode character '●'
+```
+
+A Windows console on its default cp1252 code page cannot encode `●`. So can a
+redirected stream (`contextfs query ... > out.txt`). On the project's own target
+platform, a decorative flourish had become a crash.
+
+`signal_glyphs(stream)` now asks the stream's own encoder whether it can encode
+the set, and returns `* + o ^` when it cannot. It tests by *encoding*, not by
+sniffing the platform or the code page, because that is the only question that
+actually matters and it is cheaper to answer directly than to predict. Two tests
+cover it, including one that encodes the fallback set to cp1252 to prove the
+fallback is itself safe.
+
+`start.bat` sets `chcp 65001`, so the launcher path gets the real glyphs; the
+fallback exists for every other path.
+
+### Decision 87 — `start.bat` carries a maintenance obligation, stated in the file
+
+One double-click sets up the environment, installs dependencies, downloads both
+models, generates the corpus, builds the index, and offers a menu. Unrecognised
+arguments pass straight through to the CLI, so `start.bat query "..."` works
+without the launcher having to know every subcommand - and the launcher cannot
+fall behind as commands are added.
+
+The file opens with an instruction to keep it in sync with any change to the
+start-up procedure. A launcher that has silently drifted from reality is worse
+than no launcher, because it fails on exactly the machine that has never been
+set up before - which is the only machine it exists for.
+
+Verified by running it: first-run setup completed, and `start.bat digest`
+returned the digest with exit code 0.
+
+### HANDBOOK.md
+
+One file answering how to run it, how it works, what is novel, what is good,
+what is bad, and what is blocked. The future-scope section is restricted to
+things **current technology cannot do**, each with the reason - destroyed
+mtimes are unrecoverable without durable filesystem provenance; cross-app
+context needs a privacy-preserving OS activity API that does not exist; local
+multimodal models do not fit in the RAM budget; temporal embedding drift over
+decades is unsolved; and ranked retrieval cannot prove a negative. Wishlist
+items that are merely unimplemented were left out.
+
+### Verification
+
+- **477 tests passing** (4 new theme/glyph tests), ruff and black clean.
+- GUI end-to-end after the restyle: load, two queries, glyphs rendered in the
+  result table, every explanation complete, insights refreshed.
+- **GUI/CLI parity re-confirmed: 17/17 identical, every score to 1e-9.** The
+  restyle touched presentation only, and this proves it.
+- 3D page inspected in a real browser: background `rgb(5,5,5)`, all nine legend
+  rows with correct glyphs and counts, 77 nodes / 597 edges, zero chromatic
+  tones in the palette.
+
+---

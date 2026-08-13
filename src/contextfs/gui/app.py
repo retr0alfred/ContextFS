@@ -42,7 +42,16 @@ from PySide6.QtWidgets import (
 )
 
 from contextfs import __version__
-from contextfs.gui.theme import MUTED, SIGNAL_COLOURS, STYLESHEET
+from contextfs.gui.theme import (
+    FAINT,
+    INK,
+    MONO_STACK,
+    MUTED,
+    SIGNAL_GLYPHS,
+    SIGNAL_GREYS,
+    STAGE_GREYS,
+    STYLESHEET,
+)
 from contextfs.gui.workers import JobRunner, RetrievalService
 
 __all__ = ["ContextFSWindow", "launch"]
@@ -100,15 +109,16 @@ class SearchTab(QWidget):
 
         split = QSplitter(Qt.Horizontal)
 
-        self.table = QTableWidget(0, 3)
-        self.table.setHorizontalHeaderLabels(["#", "Score", "File"])
+        self.table = QTableWidget(0, 4)
+        self.table.setHorizontalHeaderLabels(["#", "Score", "", "File"])
         self.table.verticalHeader().setVisible(False)
         self.table.setAlternatingRowColors(True)
         self.table.setSelectionBehavior(QTableWidget.SelectRows)
         self.table.setEditTriggers(QTableWidget.NoEditTriggers)
-        self.table.horizontalHeader().setSectionResizeMode(2, QHeaderView.Stretch)
-        self.table.setColumnWidth(0, 40)
-        self.table.setColumnWidth(1, 70)
+        self.table.horizontalHeader().setSectionResizeMode(3, QHeaderView.Stretch)
+        self.table.setColumnWidth(0, 38)
+        self.table.setColumnWidth(1, 66)
+        self.table.setColumnWidth(2, 26)
         self.table.itemSelectionChanged.connect(self._show_explanation)
         self.table.itemDoubleClicked.connect(self._reveal)
         split.addWidget(self.table)
@@ -180,17 +190,28 @@ class SearchTab(QWidget):
             self.table.setItem(row, 0, QTableWidgetItem(str(result.rank)))
             score = QTableWidgetItem(f"{result.score:.3f}")
             self.table.setItem(row, 1, score)
+            # Mark each row with the glyph of whichever signal contributed
+            # most. This replaces what used to be a colour tint: the glyph
+            # states "this was found by activity, not by text" before the user
+            # reads a word, and unlike a hue it survives greyscale, low
+            # contrast, and colour blindness.
+            contributions = result.explanation.contributions or {}
+            glyph, dominant = " ", ""
+            if contributions:
+                dominant = max(contributions, key=contributions.get)
+                if contributions[dominant] > 0:
+                    glyph = SIGNAL_GLYPHS.get(dominant, " ")
+                else:
+                    dominant = ""
+            mark = QTableWidgetItem(glyph)
+            mark.setToolTip(f"found mainly via {dominant}" if dominant else "")
+            if dominant:
+                mark.setForeground(QColor(SIGNAL_GREYS.get(dominant, INK)))
+            self.table.setItem(row, 2, mark)
+
             item = QTableWidgetItem(result.path)
             item.setData(Qt.UserRole, result.rank)
-            # Tint the row by whichever signal contributed most. The colour is
-            # the point: it makes "this was found by activity, not by text"
-            # visible before the user reads anything.
-            contributions = result.explanation.contributions or {}
-            if contributions:
-                top = max(contributions, key=contributions.get)
-                if contributions[top] > 0:
-                    item.setForeground(QColor(SIGNAL_COLOURS.get(top, "#e6e9f0")))
-            self.table.setItem(row, 2, item)
+            self.table.setItem(row, 3, item)
 
         if hybrid.results:
             self.table.selectRow(0)
@@ -214,7 +235,7 @@ class SearchTab(QWidget):
         rows = {index.row() for index in self.table.selectedIndexes()}
         if not rows or self._response is None:
             return None
-        rank = self.table.item(min(rows), 2).data(Qt.UserRole)
+        rank = self.table.item(min(rows), 3).data(Qt.UserRole)
         for result in self._response.results:
             if result.rank == rank:
                 return result
@@ -229,25 +250,33 @@ class SearchTab(QWidget):
             return
 
         explanation = result.explanation
-        html = [f"<h3 style='margin:0 0 4px 0'>{Path(result.path).name}</h3>"]
+        html = [
+            f"<h3 style='margin:0 0 4px 0;color:{INK};letter-spacing:0.5px'>"
+            f"{Path(result.path).name}</h3>"
+        ]
         html.append(f"<p style='color:{MUTED};margin:0 0 12px 0'>{result.path}</p>")
 
         html.append("<table width='100%' cellpadding='4' style='margin-bottom:12px'>")
         for signal, value in (explanation.signal_scores or {}).items():
             weight = (explanation.signal_weights or {}).get(signal, 0.0)
             contribution = (explanation.contributions or {}).get(signal, 0.0)
-            colour = SIGNAL_COLOURS.get(signal, "#e6e9f0")
+            grey = SIGNAL_GREYS.get(signal, INK)
+            glyph = SIGNAL_GLYPHS.get(signal, "·")
             bar = int(round(value * 100))
             html.append(
-                f"<tr><td style='color:{colour};font-weight:600'>{signal}</td>"
-                f"<td align='right'>{value:.3f}</td>"
-                f"<td><div style='background:{colour};height:8px;width:{bar}%'></div></td>"
-                f"<td align='right' style='color:{MUTED}'>×{weight:.2f} = "
-                f"{contribution:.3f}</td></tr>"
+                f"<tr><td style='color:{grey};font-weight:600'>{glyph}&nbsp;{signal}</td>"
+                f"<td align='right' style='font-family:{MONO_STACK}'>{value:.3f}</td>"
+                f"<td width='45%'><div style='background:{grey};height:7px;"
+                f"width:{bar}%'></div></td>"
+                f"<td align='right' style='color:{MUTED};font-family:{MONO_STACK}'>"
+                f"×{weight:.2f} = {contribution:.3f}</td></tr>"
             )
         html.append("</table>")
 
-        html.append(f"<p style='font-weight:600;margin-bottom:4px'>Score {result.score:.3f}</p>")
+        html.append(
+            f"<p style='color:{FAINT};letter-spacing:1.5px;font-size:11px;"
+            f"margin:14px 0 4px 0'>[ SCORE {result.score:.3f} ]</p>"
+        )
         reasons = explanation.reasons()
         if reasons:
             html.append("<ul style='margin-top:4px'>")
@@ -355,12 +384,7 @@ class InsightsTab(QWidget):
             html.append(f"<tr><td>{label}</td><td align='right'>{count}</td></tr>")
         html.append("</table>")
 
-        stage_colours = {
-            "upcoming": SIGNAL_COLOURS["timeline"],
-            "active": "#34d399",
-            "dormant": SIGNAL_COLOURS["activity"],
-            "finished": MUTED,
-        }
+        stage_colours = STAGE_GREYS
         html.append("<h3>Projects</h3>")
         if found:
             html.append("<table width='100%' cellpadding='4'>")
@@ -385,9 +409,9 @@ class InsightsTab(QWidget):
                 )
                 for path in group["members"]:
                     tag = (
-                        "<span style='color:#34d399'>keep</span>"
+                        f"<span style='color:{INK};font-weight:700'>[KEEP]</span>"
                         if path == group["keeper"]
-                        else f"<span style='color:{MUTED}'>dup</span>"
+                        else f"<span style='color:{MUTED}'>[ dup ]</span>"
                     )
                     html.append(f"<li>{tag} &nbsp; {path}</li>")
                 html.append("</ul>")
@@ -568,8 +592,8 @@ class ContextFSWindow(QMainWindow):
         header = QWidget()
         header_layout = QHBoxLayout(header)
         header_layout.setContentsMargins(16, 12, 16, 0)
-        header_layout.addWidget(_label("ContextFS", name="title"))
-        header_layout.addWidget(_label("find files by what you remember", name="hint"))
+        header_layout.addWidget(_label("CONTEXTFS", name="title"))
+        header_layout.addWidget(_label("// find files by what you remember", name="hint"))
         header_layout.addStretch(1)
         layout.addWidget(header)
 

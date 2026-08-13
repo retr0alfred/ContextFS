@@ -94,6 +94,47 @@ def test_every_edge_type_has_a_style():
     assert set(EDGE_TYPES) <= set(EDGE_STYLES)
 
 
+def test_the_whole_palette_is_greyscale():
+    """The design is monochrome; a stray hue would break the system, not decorate it."""
+    tones = set(NODE_COLOURS.values()) | {style["colour"] for style in EDGE_STYLES.values()}
+    for tone in tones:
+        red, green, blue = (int(tone.lstrip("#")[i : i + 2], 16) for i in (0, 2, 4))
+        assert red == green == blue, f"{tone} is not a grey"
+
+
+def test_every_node_kind_and_edge_type_has_a_distinct_glyph():
+    """Glyphs are the primary encoding; duplicates would collapse two meanings."""
+    from contextfs.theme import NODE_GLYPHS, SIGNAL_GLYPHS, SIGNAL_GLYPHS_ASCII
+
+    edge_glyphs = [style["glyph"] for style in EDGE_STYLES.values()]
+    assert len(set(edge_glyphs)) == len(edge_glyphs)
+    assert len(set(NODE_GLYPHS.values())) == len(NODE_GLYPHS)
+    assert len(set(SIGNAL_GLYPHS.values())) == len(SIGNAL_GLYPHS)
+    assert set(SIGNAL_GLYPHS_ASCII) == set(SIGNAL_GLYPHS)
+    assert len(set(SIGNAL_GLYPHS_ASCII.values())) == len(SIGNAL_GLYPHS_ASCII)
+
+
+def test_glyphs_fall_back_to_ascii_on_a_legacy_code_page():
+    """A Windows console on cp1252 must not crash on a box-drawing character."""
+    from contextfs.theme import SIGNAL_GLYPHS_ASCII, signal_glyphs
+
+    class Stream:
+        def __init__(self, encoding):
+            self.encoding = encoding
+
+    assert signal_glyphs(Stream("cp1252")) == SIGNAL_GLYPHS_ASCII
+    assert signal_glyphs(Stream("ascii")) == SIGNAL_GLYPHS_ASCII
+    assert signal_glyphs(None) == SIGNAL_GLYPHS_ASCII
+    assert signal_glyphs(Stream("utf-8"))["activity"] == "●"
+
+
+def test_ascii_fallback_actually_encodes_on_a_legacy_code_page():
+    """The point of the fallback is that it survives the encoder; prove it does."""
+    from contextfs.theme import SIGNAL_GLYPHS_ASCII
+
+    "".join(SIGNAL_GLYPHS_ASCII.values()).encode("cp1252")
+
+
 # ---------------------------------------------------------------------------
 # Rendered page
 # ---------------------------------------------------------------------------

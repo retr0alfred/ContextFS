@@ -6,50 +6,53 @@
 <style>
   :root { color-scheme: dark; }
   * { box-sizing: border-box; }
-  body { margin:0; background:#0f1117; color:#e6e9f0; overflow:hidden;
+  body { margin:0; background:#050505; color:#e8e8e8; overflow:hidden;
          font-family:"Segoe UI",system-ui,sans-serif; }
   #stage { position:fixed; inset:0; display:block; }
-  .panel { position:fixed; background:rgba(23,26,35,.92); border:1px solid #2a3040;
-           border-radius:10px; padding:14px 16px; }
-  #controls { top:16px; left:16px; width:236px; }
-  #controls h1 { margin:0 0 2px 0; font-size:15px; }
-  #controls .sub { color:#8b93a7; font-size:11px; margin-bottom:10px; line-height:1.5; }
-  .legend { display:flex; align-items:center; gap:8px; margin:6px 0; font-size:12px;
-            cursor:pointer; user-select:none; opacity:.4; transition:opacity .15s; }
+  .panel { position:fixed; background:rgba(5,5,5,.88); border:1px solid #2b2b2b;
+           padding:14px 16px; }
+  #controls { top:18px; left:18px; width:248px; }
+  #controls h1 { margin:0; font-size:13px; letter-spacing:3px; color:#fff;
+                 font-family:"Cascadia Mono",Consolas,monospace; font-weight:700; }
+  #controls .sub { color:#8a8a8a; font-size:11px; margin:4px 0 12px 0; line-height:1.6; }
+  .legend { display:flex; align-items:center; gap:9px; margin:5px 0; font-size:12px;
+            cursor:pointer; user-select:none; opacity:.32; transition:opacity .12s;
+            font-family:"Cascadia Mono",Consolas,monospace; }
   .legend.on { opacity:1; }
-  .legend .n { margin-left:auto; color:#8b93a7; font-size:11px; }
-  .swatch { width:13px; height:13px; border-radius:3px; flex:0 0 auto; }
-  .section { margin-top:12px; padding-top:10px; border-top:1px solid #2a3040;
-             color:#8b93a7; font-size:11px; text-transform:uppercase;
-             letter-spacing:.06em; margin-bottom:4px; }
-  #detail { bottom:16px; left:16px; max-width:560px; font-size:12px; display:none;
-            line-height:1.6; }
-  #detail .name { font-size:14px; font-weight:600; }
-  #detail .path { color:#8b93a7; word-break:break-all; }
-  #hint { bottom:16px; right:16px; color:#8b93a7; font-size:11px; }
-  #count { position:fixed; top:16px; right:16px; color:#8b93a7; font-size:11px;
-           text-align:right; line-height:1.7; }
-  button { background:#1f2430; color:#e6e9f0; border:1px solid #2a3040;
-           border-radius:6px; padding:7px 10px; cursor:pointer; font-size:12px;
-           width:100%; margin-top:10px; }
-  button:hover { border-color:#5b9cff; }
+  .legend .g { width:12px; text-align:center; flex:0 0 auto; font-size:13px; }
+  .legend .n { margin-left:auto; color:#5a5a5a; font-size:11px; }
+  .section { margin-top:14px; padding-top:10px; border-top:1px solid #2b2b2b;
+             color:#5a5a5a; font-size:10px; letter-spacing:2px; margin-bottom:6px;
+             font-family:"Cascadia Mono",Consolas,monospace; }
+  #detail { bottom:18px; left:18px; max-width:560px; font-size:12px; display:none;
+            line-height:1.7; font-family:"Cascadia Mono",Consolas,monospace; }
+  #detail .name { font-size:13px; font-weight:700; color:#fff; letter-spacing:1px; }
+  #detail .path { color:#8a8a8a; word-break:break-all; font-size:11px; }
+  #hint { bottom:18px; right:18px; color:#5a5a5a; font-size:10px; letter-spacing:1px;
+          font-family:"Cascadia Mono",Consolas,monospace; }
+  #count { position:fixed; top:18px; right:18px; color:#8a8a8a; font-size:11px;
+           text-align:right; line-height:1.8; font-family:"Cascadia Mono",Consolas,monospace; }
+  button { background:transparent; color:#e8e8e8; border:1px solid #2b2b2b;
+           padding:8px 10px; cursor:pointer; font-size:11px; letter-spacing:1.5px;
+           width:100%; margin-top:12px; font-family:"Cascadia Mono",Consolas,monospace; }
+  button:hover { border-color:#fff; color:#fff; }
 </style>
 </head>
 <body>
 <canvas id="stage"></canvas>
 
 <div class="panel" id="controls">
-  <h1>Relationship graph</h1>
-  <div class="sub">drag to orbit &middot; scroll to zoom &middot; click a node</div>
-  <div class="section">Relations</div>
+  <h1>CONTEXTFS</h1>
+  <div class="sub">// relationship graph<br>drag orbit &middot; scroll zoom &middot; click node</div>
+  <div class="section">[ RELATIONS ]</div>
   <div id="edgeLegend"></div>
-  <div class="section">Nodes</div>
+  <div class="section">[ NODES ]</div>
   <div id="nodeLegend"></div>
-  <button id="freeze">Pause layout</button>
+  <button id="freeze">PAUSE LAYOUT</button>
 </div>
 
 <div class="panel" id="detail"></div>
-<div class="panel" id="hint">rendered locally &middot; three.js is bundled, nothing is fetched</div>
+<div class="panel" id="hint">RENDERED LOCALLY // THREE.JS BUNDLED // NOTHING FETCHED</div>
 <div id="count"></div>
 
 <script type="module">
@@ -66,8 +69,8 @@ renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
 renderer.setSize(innerWidth, innerHeight);
 
 const scene = new Scene();
-scene.background = new Color(0x0f1117);
-scene.fog = new FogExp2(0x0f1117, 0.0016);
+scene.background = new Color(0x050505);
+scene.fog = new FogExp2(0x050505, 0.0016);
 
 const camera = new PerspectiveCamera(55, innerWidth / innerHeight, 1, 8000);
 camera.position.set(0, 0, 620);
@@ -138,7 +141,7 @@ const nodeCol = new Float32Array(N * 3);
 const nodeSize = new Float32Array(N);
 const c = new Color();
 DATA.nodes.forEach((n, i) => {
-  c.set(DATA.nodeColours[n.kind] || '#5b9cff');
+  c.set(DATA.nodeColours[n.kind] || '#ffffff');
   nodeCol[i * 3] = c.r; nodeCol[i * 3 + 1] = c.g; nodeCol[i * 3 + 2] = c.b;
   nodeSize[i] = 5 + Math.min(16, Math.sqrt(n.degree) * 3.2);
 });
@@ -179,7 +182,7 @@ for (const [type, style] of Object.entries(DATA.edgeStyles)) {
   geom.setAttribute('position', new BufferAttribute(new Float32Array(subset.length * 6), 3));
   const mat = new LineBasicMaterial({
     color: new Color(style.colour), transparent: true,
-    opacity: type === 'structural' ? 0.16 : 0.34, depthWrite: false,
+    opacity: type === 'structural' ? 0.13 : 0.30, depthWrite: false,
     blending: AdditiveBlending,
   });
   const mesh = new LineSegments(geom, mat);
@@ -234,12 +237,12 @@ canvas.addEventListener('click', (e) => {
   const hits = raycaster.intersectObject(scene.children[0]);
   if (!hits.length) { detail.style.display = 'none'; return; }
   const n = DATA.nodes[hits[0].index];
-  const colour = DATA.nodeColours[n.kind] || '#5b9cff';
+  const colour = DATA.nodeColours[n.kind] || '#ffffff';
   const neighbours = DATA.edges
     .filter((x) => x.s === hits[0].index || x.t === hits[0].index)
     .reduce((acc, x) => { acc[x.type] = (acc[x.type] || 0) + 1; return acc; }, {});
   const rel = Object.entries(neighbours)
-    .map(([t, k]) => `<span style="color:${DATA.edgeStyles[t]?.colour || '#8b93a7'}">${t} ${k}</span>`)
+    .map(([t, k]) => `<span style="color:${DATA.edgeStyles[t]?.colour || '#8a8a8a'}">${t} ${k}</span>`)
     .join(' &middot; ') || 'no relations';
   detail.innerHTML =
     `<div class="name" style="color:${colour}">${n.short}</div>` +
@@ -256,7 +259,7 @@ function legend(target, entries, onToggle) {
     const row = document.createElement('div');
     row.className = 'legend' + (meta.on ? ' on' : '');
     row.innerHTML =
-      `<span class="swatch" style="background:${meta.colour}"></span>` +
+      `<span class="g" style="color:${meta.colour}">${meta.glyph || '▪'}</span>` +
       `<span>${key}</span><span class="n">${meta.count}</span>`;
     if (onToggle) {
       row.onclick = () => { row.classList.toggle('on'); onToggle(key, row.classList.contains('on')); };
@@ -271,7 +274,10 @@ legend(
   'edgeLegend',
   Object.entries(DATA.edgeStyles)
     .filter(([t]) => edgeGroups[t])
-    .map(([t, s]) => [t, { colour: s.colour, on: s.on, count: edgeGroups[t].subset.length }]),
+    .map(([t, s]) => [
+      t,
+      { colour: s.colour, on: s.on, glyph: s.glyph, count: edgeGroups[t].subset.length },
+    ]),
   (type, on) => { edgeGroups[type].mesh.visible = on; }
 );
 
@@ -279,17 +285,22 @@ const kindCounts = {};
 for (const n of DATA.nodes) kindCounts[n.kind] = (kindCounts[n.kind] || 0) + 1;
 legend(
   'nodeLegend',
-  Object.entries(kindCounts).map(([k, count]) => [k, { colour: DATA.nodeColours[k], on: true, count }])
+  Object.entries(kindCounts).map(([k, count]) => [
+    k,
+    { colour: DATA.nodeColours[k], glyph: (DATA.nodeGlyphs || {})[k], on: true, count },
+  ])
 );
 
 document.getElementById('count').innerHTML =
-  `${N} nodes &middot; ${DATA.edges.length} edges` +
-  (DATA.dropped ? `<br><span style="color:#fbbf24">${DATA.dropped} lower-degree nodes not shown</span>` : '');
+  `${N} NODES &middot; ${DATA.edges.length} EDGES` +
+  (DATA.dropped
+    ? `<br><span style="color:#fff">! ${DATA.dropped} LOWER-DEGREE NODES NOT SHOWN</span>`
+    : '');
 
 const freeze = document.getElementById('freeze');
 freeze.onclick = () => {
   frozen = !frozen;
-  freeze.textContent = frozen ? 'Resume layout' : 'Pause layout';
+  freeze.textContent = frozen ? 'RESUME LAYOUT' : 'PAUSE LAYOUT';
 };
 
 /* ---- loop --------------------------------------------------------------- */

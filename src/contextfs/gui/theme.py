@@ -1,114 +1,188 @@
-"""Visual style for the desktop GUI.
+"""Qt stylesheet for the desktop application.
 
-A single stylesheet string rather than a theming framework. The palette is
-chosen for a specific reason: retrieval results are ranked by *why* they matched
-and each signal gets its own hue, so the same colour always means the same
-signal — semantic is blue, graph is violet, activity is amber, timeline is
-green. A user who has seen one explanation can read the next one at a glance.
+Every tone comes from :mod:`contextfs.theme`, which the CLI and the 3D page also
+read, so the three surfaces cannot drift apart.
+
+Two rules govern the whole sheet, both of them deliberate:
+
+* **No rounded corners.** Sharp edges throughout. Rounding reads as friendly
+  and consumer; this is meant to read as an instrument.
+* **Structure comes from thin rules, not from fills.** Panels are separated by
+  1px lines rather than by differently-shaded boxes, which keeps the window
+  overwhelmingly black and puts the contrast budget on the content.
 """
 
 from __future__ import annotations
 
-__all__ = ["SIGNAL_COLOURS", "STYLESHEET", "BACKGROUND", "SURFACE", "ACCENT", "TEXT", "MUTED"]
+from contextfs.theme import (
+    FAINT,
+    INK,
+    MONO_STACK,
+    MUTED,
+    PAPER,
+    RULE,
+    SIGNAL_GLYPHS,
+    SIGNAL_GREYS,
+    STAGE_GREYS,
+    SURFACE,
+    SURFACE_HI,
+    TEXT,
+)
 
-BACKGROUND = "#0f1117"
-SURFACE = "#171a23"
-SURFACE_HI = "#1f2430"
-BORDER = "#2a3040"
-TEXT = "#e6e9f0"
-MUTED = "#8b93a7"
-ACCENT = "#5b9cff"
-
-#: One hue per retrieval signal, used everywhere that signal is shown.
-SIGNAL_COLOURS = {
-    "semantic": "#5b9cff",
-    "graph": "#a78bfa",
-    "activity": "#fbbf24",
-    "timeline": "#34d399",
-}
+__all__ = [
+    "STYLESHEET",
+    "SIGNAL_GREYS",
+    "SIGNAL_GLYPHS",
+    "STAGE_GREYS",
+    "MUTED",
+    "INK",
+    "TEXT",
+    "FAINT",
+    "MONO_STACK",
+]
 
 STYLESHEET = f"""
 QWidget {{
-    background: {BACKGROUND};
+    background: {PAPER};
     color: {TEXT};
     font-family: "Segoe UI", system-ui, sans-serif;
     font-size: 13px;
 }}
-QMainWindow, QDialog {{ background: {BACKGROUND}; }}
+QMainWindow, QDialog {{ background: {PAPER}; }}
 
 QLineEdit {{
     background: {SURFACE};
-    border: 1px solid {BORDER};
-    border-radius: 8px;
-    padding: 10px 14px;
+    border: 1px solid {RULE};
+    border-radius: 0px;
+    padding: 11px 14px;
     font-size: 15px;
-    selection-background-color: {ACCENT};
+    font-family: {MONO_STACK};
+    color: {INK};
+    selection-background-color: {INK};
+    selection-color: {PAPER};
 }}
-QLineEdit:focus {{ border: 1px solid {ACCENT}; }}
+QLineEdit:focus {{ border: 1px solid {INK}; }}
 
 QPushButton {{
-    background: {SURFACE_HI};
-    border: 1px solid {BORDER};
-    border-radius: 7px;
+    background: transparent;
+    border: 1px solid {RULE};
+    border-radius: 0px;
     padding: 8px 16px;
+    color: {TEXT};
+    font-size: 12px;
+    letter-spacing: 0.4px;
 }}
-QPushButton:hover {{ background: #262c3a; border-color: {ACCENT}; }}
-QPushButton:pressed {{ background: #303849; }}
-QPushButton:disabled {{ color: {MUTED}; border-color: {BORDER}; background: {SURFACE}; }}
+QPushButton:hover {{ border-color: {INK}; color: {INK}; }}
+QPushButton:pressed {{ background: {SURFACE_HI}; }}
+QPushButton:disabled {{ color: {FAINT}; border-color: #1e1e1e; }}
+/* The one inverted element in the window. Exactly one primary action per
+   screen earns full-white reverse; more than one and none of them read as
+   primary. */
 QPushButton#primary {{
-    background: {ACCENT}; border: none; color: #07101f; font-weight: 600;
+    background: {INK}; border: 1px solid {INK}; color: {PAPER}; font-weight: 700;
 }}
-QPushButton#primary:hover {{ background: #74acff; }}
-QPushButton#primary:disabled {{ background: #33455f; color: {MUTED}; }}
+QPushButton#primary:hover {{ background: {TEXT}; border-color: {TEXT}; }}
+QPushButton#primary:disabled {{ background: #2a2a2a; border-color: #2a2a2a; color: {FAINT}; }}
 
-QTabWidget::pane {{ border: 1px solid {BORDER}; border-radius: 8px; top: -1px; }}
+QTabWidget::pane {{ border: 1px solid {RULE}; border-radius: 0px; top: -1px; }}
 QTabBar::tab {{
-    background: transparent; padding: 9px 18px; margin-right: 2px;
-    border-top-left-radius: 7px; border-top-right-radius: 7px; color: {MUTED};
+    background: transparent; padding: 9px 20px; margin-right: 0px;
+    border: 1px solid transparent; border-bottom: 1px solid {RULE};
+    color: {MUTED}; font-size: 12px; letter-spacing: 1.1px; text-transform: uppercase;
 }}
-QTabBar::tab:selected {{ background: {SURFACE}; color: {TEXT}; border: 1px solid {BORDER};
-                         border-bottom-color: {SURFACE}; }}
+QTabBar::tab:selected {{
+    background: {PAPER}; color: {INK};
+    border: 1px solid {RULE}; border-bottom-color: {PAPER};
+}}
 QTabBar::tab:hover:!selected {{ color: {TEXT}; }}
 
 QTableWidget, QTreeWidget {{
-    background: {SURFACE}; border: 1px solid {BORDER}; border-radius: 8px;
-    gridline-color: {BORDER}; alternate-background-color: #1b1f2a;
+    background: {PAPER}; border: 1px solid {RULE}; border-radius: 0px;
+    gridline-color: transparent; alternate-background-color: {SURFACE};
+    font-family: {MONO_STACK};
+    outline: none;
 }}
-QTableWidget::item, QTreeWidget::item {{ padding: 6px 8px; }}
+QTableWidget::item, QTreeWidget::item {{ padding: 7px 8px; border: none; }}
+/* Selection is inverted rather than tinted - the only way to be unmistakable
+   without a hue to spend. */
 QTableWidget::item:selected, QTreeWidget::item:selected {{
-    background: #24334d; color: {TEXT};
+    background: {INK}; color: {PAPER};
 }}
 QHeaderView::section {{
-    background: {SURFACE_HI}; border: none; border-bottom: 1px solid {BORDER};
-    padding: 8px; color: {MUTED}; font-weight: 600;
+    background: {PAPER}; border: none; border-bottom: 1px solid {RULE};
+    padding: 9px 8px; color: {MUTED}; font-weight: 600;
+    font-size: 11px; letter-spacing: 1.1px; text-transform: uppercase;
+    font-family: "Segoe UI", sans-serif;
 }}
+QTableCornerButton::section {{ background: {PAPER}; border: none; }}
 
 QTextEdit, QPlainTextEdit {{
-    background: {SURFACE}; border: 1px solid {BORDER}; border-radius: 8px; padding: 10px;
+    background: {PAPER}; border: 1px solid {RULE}; border-radius: 0px;
+    padding: 12px; selection-background-color: {INK}; selection-color: {PAPER};
 }}
 
-QScrollBar:vertical {{ background: transparent; width: 10px; margin: 2px; }}
-QScrollBar::handle:vertical {{ background: #333b4d; border-radius: 5px; min-height: 30px; }}
-QScrollBar::handle:vertical:hover {{ background: #414b61; }}
+QScrollBar:vertical {{ background: transparent; width: 8px; margin: 0px; }}
+QScrollBar::handle:vertical {{ background: {RULE}; border-radius: 0px; min-height: 30px; }}
+QScrollBar::handle:vertical:hover {{ background: {MUTED}; }}
 QScrollBar::add-line, QScrollBar::sub-line {{ height: 0; width: 0; }}
-QScrollBar:horizontal {{ background: transparent; height: 10px; margin: 2px; }}
-QScrollBar::handle:horizontal {{ background: #333b4d; border-radius: 5px; min-width: 30px; }}
+QScrollBar::add-page, QScrollBar::sub-page {{ background: transparent; }}
+QScrollBar:horizontal {{ background: transparent; height: 8px; margin: 0px; }}
+QScrollBar::handle:horizontal {{ background: {RULE}; border-radius: 0px; min-width: 30px; }}
+QScrollBar::handle:horizontal:hover {{ background: {MUTED}; }}
 
 QProgressBar {{
-    background: {SURFACE}; border: 1px solid {BORDER}; border-radius: 7px;
-    text-align: center; height: 16px; color: {MUTED};
+    background: {SURFACE}; border: 1px solid {RULE}; border-radius: 0px;
+    text-align: center; height: 14px; color: {MUTED};
 }}
-QProgressBar::chunk {{ background: {ACCENT}; border-radius: 6px; }}
+QProgressBar::chunk {{ background: {INK}; border-radius: 0px; }}
 
-QStatusBar {{ background: {SURFACE}; border-top: 1px solid {BORDER}; color: {MUTED}; }}
-QLabel#hint {{ color: {MUTED}; }}
-QLabel#title {{ font-size: 19px; font-weight: 600; }}
-QCheckBox {{ spacing: 8px; }}
-QSplitter::handle {{ background: {BORDER}; }}
-QComboBox {{
-    background: {SURFACE}; border: 1px solid {BORDER}; border-radius: 7px; padding: 7px 10px;
+QStatusBar {{
+    background: {PAPER}; border-top: 1px solid {RULE}; color: {MUTED};
+    font-family: {MONO_STACK}; font-size: 11px;
 }}
+QStatusBar::item {{ border: none; }}
+
+QMenuBar {{ background: {PAPER}; border-bottom: 1px solid {RULE}; }}
+QMenuBar::item {{ padding: 6px 12px; background: transparent; color: {MUTED}; }}
+QMenuBar::item:selected {{ background: {INK}; color: {PAPER}; }}
+QMenu {{ background: {SURFACE}; border: 1px solid {RULE}; }}
+QMenu::item {{ padding: 7px 24px; }}
+QMenu::item:selected {{ background: {INK}; color: {PAPER}; }}
+QMenu::separator {{ height: 1px; background: {RULE}; margin: 4px 0; }}
+
+QLabel#hint {{ color: {MUTED}; font-size: 12px; }}
+QLabel#title {{
+    font-size: 15px; font-weight: 700; color: {INK};
+    letter-spacing: 3px; font-family: {MONO_STACK};
+}}
+QLabel#stamp {{
+    color: {FAINT}; font-size: 11px; font-family: {MONO_STACK}; letter-spacing: 1px;
+}}
+
+QCheckBox {{ spacing: 9px; color: {MUTED}; font-size: 12px; }}
+QCheckBox:hover {{ color: {TEXT}; }}
+QCheckBox::indicator {{
+    width: 13px; height: 13px; border: 1px solid {RULE}; background: transparent;
+}}
+QCheckBox::indicator:hover {{ border-color: {MUTED}; }}
+QCheckBox::indicator:checked {{ background: {INK}; border-color: {INK}; }}
+
+QSplitter::handle {{ background: {RULE}; }}
+QSplitter::handle:horizontal {{ width: 1px; }}
+QSplitter::handle:vertical {{ height: 1px; }}
+
+QComboBox {{
+    background: {SURFACE}; border: 1px solid {RULE}; border-radius: 0px;
+    padding: 7px 10px; color: {TEXT};
+}}
+QComboBox:hover {{ border-color: {MUTED}; }}
 QComboBox QAbstractItemView {{
-    background: {SURFACE}; border: 1px solid {BORDER}; selection-background-color: #24334d;
+    background: {SURFACE}; border: 1px solid {RULE};
+    selection-background-color: {INK}; selection-color: {PAPER};
+}}
+
+QToolTip {{
+    background: {INK}; color: {PAPER}; border: none; padding: 5px 8px;
+    font-family: {MONO_STACK}; font-size: 11px;
 }}
 """

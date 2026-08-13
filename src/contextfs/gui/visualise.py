@@ -26,27 +26,35 @@ import json
 from pathlib import Path
 from typing import Any
 
+from contextfs.theme import EDGE_GREYS, NODE_GLYPHS, NODE_GREYS
+
 __all__ = ["build_visualisation", "graph_payload", "VENDOR_DIR"]
 
 VENDOR_DIR = Path(__file__).parent / "vendor"
 
-#: Colour per node type. Matches the GUI's signal palette where they overlap.
-NODE_COLOURS = {
-    "file": "#5b9cff",
-    "session": "#fbbf24",
-    "date": "#34d399",
-    "folder": "#a78bfa",
-    "project": "#f472b6",
-}
+#: Grey per node type, from the shared design system.
+NODE_COLOURS = dict(NODE_GREYS)
 
-#: Colour per edge type, and whether it starts visible.
+#: Grey per edge type, and whether it starts visible.
+#:
+#: `structural` starts hidden and is nearly black on purpose: it is by far the
+#: densest relation (326 of 597 edges on the demo corpus) and drawing it over
+#: everything else buries the relations a viewer actually came to look at.
+#: `temporal` starts hidden for the same reason, less severely.
 EDGE_STYLES = {
-    "semantic": {"colour": "#5b9cff", "on": True},
-    "entity": {"colour": "#f472b6", "on": True},
-    "structural": {"colour": "#3f4757", "on": False},
-    "duplicate": {"colour": "#ef4444", "on": True},
-    "temporal": {"colour": "#34d399", "on": False},
-    "activity": {"colour": "#fbbf24", "on": True},
+    name: {
+        "colour": EDGE_GREYS[name],
+        "on": name not in ("structural", "temporal"),
+        "glyph": {
+            "semantic": "─",
+            "entity": "┈",
+            "structural": "·",
+            "duplicate": "═",
+            "temporal": "┄",
+            "activity": "━",
+        }[name],
+    }
+    for name in ("semantic", "entity", "structural", "duplicate", "temporal", "activity")
 }
 
 
@@ -117,6 +125,7 @@ def graph_payload(graph, store=None, max_nodes: int = 1200) -> dict[str, Any]:
         "edges": edges,
         "dropped": dropped,
         "nodeColours": NODE_COLOURS,
+        "nodeGlyphs": NODE_GLYPHS,
         "edgeStyles": EDGE_STYLES,
     }
 

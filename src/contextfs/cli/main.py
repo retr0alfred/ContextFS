@@ -94,7 +94,7 @@ class CLIState:
             try:
                 self._config = load_config(self.config_path, root=self.root, data_dir=self.data_dir)
             except ConfigError as exc:
-                err_console.print(f"[bold red]Configuration error:[/bold red] {exc}")
+                err_console.print(f"[bold reverse]Configuration error:[/bold reverse] {exc}")
                 raise typer.Exit(EXIT_CONFIG_ERROR) from exc
         return self._config
 
@@ -149,11 +149,11 @@ def _not_implemented(command: str, phase: int, what: str) -> None:
     """Report an unimplemented command clearly and exit without a traceback."""
     console.print(
         Panel(
-            f"[yellow]`contextfs {command}` is not yet implemented.[/yellow]\n\n"
+            f"[bold]`contextfs {command}` is not yet implemented.[/bold]\n\n"
             f"{what}\n\n"
             f"[dim]Lands in build Phase {phase}. See log.md for phase status.[/dim]",
             title="Not yet implemented",
-            border_style="yellow",
+            border_style="grey42",
         )
     )
     raise typer.Exit(EXIT_NOT_IMPLEMENTED)
@@ -277,7 +277,7 @@ def _run_embeddings(store, cfg):
     try:
         return embed_documents(store, _open_vector_store(cfg), embedder, cfg)
     except ModelNotCachedError as exc:
-        err_console.print(f"[bold red]{exc}[/bold red]")
+        err_console.print(f"[bold reverse]{exc}[/bold reverse]")
         raise typer.Exit(EXIT_CONFIG_ERROR) from exc
 
 
@@ -392,8 +392,8 @@ def scan(
     cfg = state.config()
     if not cfg.paths.root.is_dir():
         err_console.print(
-            f"[bold red]Scan root does not exist:[/bold red] {cfg.paths.root}\n"
-            "Set [cyan]paths.root[/cyan] in contextfs.toml, or pass --root."
+            f"[bold reverse]Scan root does not exist:[/bold reverse] {cfg.paths.root}\n"
+            "Set [bold]paths.root[/bold] in contextfs.toml, or pass --root."
         )
         raise typer.Exit(EXIT_CONFIG_ERROR)
 
@@ -431,14 +431,14 @@ def scan(
     table = Table(
         title=f"Scan of {cfg.paths.root}" + (" [dry run]" if dry_run else ""),
         show_header=True,
-        header_style="bold cyan",
+        header_style="bold white",
     )
     table.add_column("Classification")
     table.add_column("Files", justify="right")
-    table.add_row("[green]new[/green]", str(len(result.new)))
-    table.add_row("[yellow]modified[/yellow]", str(len(result.modified)))
+    table.add_row("[bold]new[/bold]", str(len(result.new)))
+    table.add_row("[bold]modified[/bold]", str(len(result.modified)))
     table.add_row("[dim]unchanged[/dim]", str(len(result.unchanged)))
-    table.add_row("[red]deleted[/red]", str(len(result.deleted)))
+    table.add_row("[bold reverse]deleted[/bold reverse]", str(len(result.deleted)))
     table.add_section()
     table.add_row("[bold]total present[/bold]", f"[bold]{result.seen}[/bold]")
     console.print(table)
@@ -472,11 +472,13 @@ def scan(
             f"in {extraction.duration_ms:.0f} ms"
         )
         for doc in extraction.failed:
-            err_console.print(f"  [red]extract failed[/red] {doc.rel_path}: {doc.error}")
+            err_console.print(
+                f"  [bold reverse]extract failed[/bold reverse] {doc.rel_path}: {doc.error}"
+            )
         if state.verbose:
             for doc in extraction.with_warnings:
                 for warning in doc.warnings:
-                    err_console.print(f"  [yellow]warn[/yellow] {doc.rel_path}: {warning}")
+                    err_console.print(f"  [bold]warn[/bold] {doc.rel_path}: {warning}")
     elif extraction is not None:
         console.print("[dim]extraction: nothing to do, all documents current[/dim]")
 
@@ -490,7 +492,7 @@ def scan(
             f"over {entity_stats['files']} files in {entity_stats['duration_ms']:.0f} ms"
         )
         for path, error in entity_stats["errors"]:
-            err_console.print(f"  [red]entities failed[/red] {path}: {error}")
+            err_console.print(f"  [bold reverse]entities failed[/bold reverse] {path}: {error}")
     elif entity_stats is not None:
         console.print("[dim]entities: nothing to do, all analyses current[/dim]")
 
@@ -502,7 +504,7 @@ def scan(
             f"({summary['chunks_per_second']} chunks/s)"
         )
         for path, error in embedding.errors:
-            err_console.print(f"  [red]embedding failed[/red] {path}: {error}")
+            err_console.print(f"  [bold reverse]embedding failed[/bold reverse] {path}: {error}")
     elif embedding is not None:
         console.print("[dim]embeddings: nothing to do, all vectors current[/dim]")
 
@@ -563,7 +565,7 @@ def scan(
             )
 
     if result.errors:
-        err_console.print(f"[yellow]{len(result.errors)} error(s) during scan:[/yellow]")
+        err_console.print(f"[bold]{len(result.errors)} error(s) during scan:[/bold]")
         for path, stage, message in result.errors[:10]:
             err_console.print(f"  [{stage}] {path}: {message}")
 
@@ -608,26 +610,58 @@ def _open_retrieval(cfg, store, signals=None):
     return hybrid, SemanticBaseline(store, vectors, embedder)
 
 
+def _dominant_signal(result) -> str:
+    """The signal that contributed most to a result, or "" if none did."""
+    contributions = result.explanation.contributions or {}
+    if not contributions:
+        return ""
+    top = max(contributions, key=contributions.get)
+    return top if contributions[top] > 0 else ""
+
+
 def _render_results(response, show_explanations: bool) -> None:
-    """Print a retrieval response as a table, optionally with reasoning."""
+    """Print a retrieval response as a table, optionally with reasoning.
+
+    The glyph column is the terminal's version of what the desktop app shows as
+    a marked row: it says *which signal found this* before the user reads the
+    path. Terminals cannot be relied on for colour - many are themed, some are
+    monochrome, and piped output has none at all - so shape carries the meaning
+    and everything else is weight and dimming.
+    """
+    import sys
+
+    from contextfs.theme import signal_glyphs
+
+    glyphs = signal_glyphs(sys.stdout)
+
     if not response.results:
-        console.print("[yellow]No results.[/yellow]")
+        console.print("[bold]No results.[/bold]")
         return
 
-    table = Table(show_header=True, header_style="bold cyan")
-    table.add_column("#", justify="right")
+    table = Table(show_header=True, header_style="bold white", border_style="grey42")
+    table.add_column("#", justify="right", style="dim")
     table.add_column("Score", justify="right")
+    table.add_column("", justify="center", width=1)
     table.add_column("File", overflow="fold")
     if not show_explanations:
         table.add_column("Why", overflow="fold", style="dim")
 
     for result in response.results:
-        row = [str(result.rank), f"{result.score:.3f}", result.path]
+        dominant = _dominant_signal(result)
+        row = [
+            str(result.rank),
+            f"{result.score:.3f}",
+            glyphs.get(dominant, " "),
+            result.path,
+        ]
         if not show_explanations:
             reasons = result.explanation.reasons()
             row.append(reasons[0] if reasons else "-")
         table.add_row(*row)
     console.print(table)
+
+    legend = "  ".join(f"{glyph} {name}" for name, glyph in glyphs.items())
+    console.print(f"[dim]{legend}[/dim]")
 
     if show_explanations:
         for result in response.results:
@@ -669,7 +703,9 @@ def query(
 
     cfg = state.config()
     if not cfg.db_path.is_file():
-        err_console.print(f"[bold red]No index at[/bold red] {cfg.db_path}. Run `contextfs scan`.")
+        err_console.print(
+            f"[bold reverse]No index at[/bold reverse] {cfg.db_path}. Run `contextfs scan`."
+        )
         raise typer.Exit(EXIT_CONFIG_ERROR)
 
     chosen = tuple(s.strip() for s in signals.split(",") if s.strip()) or None
@@ -680,8 +716,8 @@ def query(
             # by an older build still answers - it just cannot use anything a
             # later schema added. Saying so beats silently degrading.
             err_console.print(
-                "[yellow]This index was written by an older build "
-                f"(schema v{store.schema_version}).[/yellow] It still works; "
+                "[bold]This index was written by an older build "
+                f"(schema v{store.schema_version}).[/bold] It still works; "
                 "run `contextfs scan` to upgrade it and enable newer features."
             )
         hybrid, flat = _open_retrieval(cfg, store, chosen)
@@ -691,10 +727,10 @@ def query(
             baseline_response = flat.search(text, top_k)
             console.print(f"[bold]Query:[/bold] {text}")
             console.print(f"[dim]read as: {hybrid_response.decomposition.describe()}[/dim]\n")
-            console.print("[bold cyan]BASELINE (semantic only)[/bold cyan]")
+            console.print("[bold white]BASELINE (semantic only)[/bold white]")
             _render_results(baseline_response, False)
             console.print(f"[dim]{baseline_response.latency_ms:.0f} ms[/dim]\n")
-            console.print("[bold green]CONTEXTFS (hybrid)[/bold green]")
+            console.print("[bold white]CONTEXTFS (hybrid)[/bold white]")
             _render_results(hybrid_response, explain)
             console.print(
                 f"[dim]{hybrid_response.latency_ms:.0f} ms, "
@@ -759,7 +795,9 @@ def feedback(
 
     cfg = state.config()
     if not cfg.db_path.is_file():
-        err_console.print(f"[bold red]No index at[/bold red] {cfg.db_path}. Run `contextfs scan`.")
+        err_console.print(
+            f"[bold reverse]No index at[/bold reverse] {cfg.db_path}. Run `contextfs scan`."
+        )
         raise typer.Exit(EXIT_CONFIG_ERROR)
 
     with Store(cfg.db_path) as store:
@@ -772,11 +810,11 @@ def feedback(
             events = store.feedback_events()
             if not events:
                 console.print(
-                    "[yellow]No feedback recorded yet.[/yellow] "
+                    "[bold]No feedback recorded yet.[/bold] "
                     "Run a query, then `contextfs feedback --pick 1`."
                 )
                 return
-            table = Table(show_header=True, header_style="bold cyan")
+            table = Table(show_header=True, header_style="bold white")
             table.add_column("When")
             table.add_column("Query", overflow="fold")
             table.add_column("File", overflow="fold")
@@ -794,7 +832,7 @@ def feedback(
 
         cached = _load_last_query(cfg)
         if cached is None:
-            err_console.print("[bold red]No previous query to give feedback on.[/bold red]")
+            err_console.print("[bold reverse]No previous query to give feedback on.[/bold reverse]")
             raise typer.Exit(EXIT_CONFIG_ERROR)
 
         by_rank = {result["rank"]: result for result in cached["results"]}
@@ -803,7 +841,7 @@ def feedback(
                 continue
             result = by_rank.get(rank)
             if result is None:
-                err_console.print(f"[bold red]No result at rank {rank}.[/bold red]")
+                err_console.print(f"[bold reverse]No result at rank {rank}.[/bold reverse]")
                 raise typer.Exit(EXIT_CONFIG_ERROR)
             store.record_feedback(cached["query"], result["file_id"], result["path"], event=event)
             verb = "Recorded" if event == "pick" else "Recorded rejection of"
@@ -830,7 +868,9 @@ def duplicates(
 
     cfg = state.config()
     if not cfg.db_path.is_file():
-        err_console.print(f"[bold red]No index at[/bold red] {cfg.db_path}. Run `contextfs scan`.")
+        err_console.print(
+            f"[bold reverse]No index at[/bold reverse] {cfg.db_path}. Run `contextfs scan`."
+        )
         raise typer.Exit(EXIT_CONFIG_ERROR)
 
     with Store(cfg.db_path, read_only=True) as store:
@@ -840,7 +880,7 @@ def duplicates(
         console.print_json(json.dumps([g.as_dict() for g in groups]))
         return
     if not groups:
-        console.print("[green]No near-duplicates found.[/green]")
+        console.print("[bold]No near-duplicates found.[/bold]")
         return
 
     for index, group in enumerate(groups, start=1):
@@ -850,7 +890,7 @@ def duplicates(
             f"{group.wasted_bytes / 1024:.0f} KB redundant"
         )
         for member in group.members:
-            marker = "[green]keep[/green]" if member is group.keeper else "[dim]dup [/dim]"
+            marker = "[bold]keep[/bold]" if member is group.keeper else "[dim]dup [/dim]"
             console.print(f"  {marker}  {member['path']}")
         console.print()
     console.print("[dim]ContextFS never deletes anything. This is a report, not an action.[/dim]")
@@ -868,7 +908,9 @@ def projects(
 
     cfg = state.config()
     if not cfg.db_path.is_file():
-        err_console.print(f"[bold red]No index at[/bold red] {cfg.db_path}. Run `contextfs scan`.")
+        err_console.print(
+            f"[bold reverse]No index at[/bold reverse] {cfg.db_path}. Run `contextfs scan`."
+        )
         raise typer.Exit(EXIT_CONFIG_ERROR)
 
     with Store(cfg.db_path, read_only=True) as store:
@@ -878,7 +920,7 @@ def projects(
         console.print_json(json.dumps([p.as_dict() for p in found]))
         return
     if not found:
-        console.print("[yellow]No multi-file folders in the index.[/yellow]")
+        console.print("[bold]No multi-file folders in the index.[/bold]")
         return
 
     colours = {
@@ -887,7 +929,7 @@ def projects(
         "dormant": "yellow",
         "finished": "dim",
     }
-    table = Table(show_header=True, header_style="bold cyan")
+    table = Table(show_header=True, header_style="bold white")
     table.add_column("Stage")
     table.add_column("Folder", overflow="fold")
     table.add_column("Files", justify="right")
@@ -918,7 +960,9 @@ def digest(
 
     cfg = state.config()
     if not cfg.db_path.is_file():
-        err_console.print(f"[bold red]No index at[/bold red] {cfg.db_path}. Run `contextfs scan`.")
+        err_console.print(
+            f"[bold reverse]No index at[/bold reverse] {cfg.db_path}. Run `contextfs scan`."
+        )
         raise typer.Exit(EXIT_CONFIG_ERROR)
 
     graph = load_graph(cfg.graph_file) if cfg.graph_file.is_file() else None
@@ -934,7 +978,7 @@ def digest(
         f"[bold]{report.bytes / 1024 / 1024:.1f} MB[/bold] indexed\n"
     )
 
-    table = Table(title="By file type", show_header=True, header_style="bold cyan")
+    table = Table(title="By file type", show_header=True, header_style="bold white")
     table.add_column("Type")
     table.add_column("Files", justify="right")
     table.add_column("Size", justify="right")
@@ -942,7 +986,7 @@ def digest(
         table.add_row(ext, str(count), f"{size / 1024:.0f} KB")
     console.print(table)
 
-    ages = Table(title="By age", show_header=True, header_style="bold cyan")
+    ages = Table(title="By age", show_header=True, header_style="bold white")
     ages.add_column("Age")
     ages.add_column("Files", justify="right")
     for label, count in report.by_age.items():
@@ -951,8 +995,8 @@ def digest(
 
     if report.duplicate_groups:
         console.print(
-            f"\n[yellow]{report.duplicate_groups}[/yellow] near-duplicate group(s), "
-            f"about [yellow]{report.duplicate_waste / 1024:.0f} KB[/yellow] redundant "
+            f"\n[bold]{report.duplicate_groups}[/bold] near-duplicate group(s), "
+            f"about [bold]{report.duplicate_waste / 1024:.0f} KB[/bold] redundant "
             "([dim]contextfs duplicates[/dim])"
         )
     if report.unextracted or report.unembedded:
@@ -975,7 +1019,9 @@ def tags(
 
     cfg = state.config()
     if not cfg.db_path.is_file():
-        err_console.print(f"[bold red]No index at[/bold red] {cfg.db_path}. Run `contextfs scan`.")
+        err_console.print(
+            f"[bold reverse]No index at[/bold reverse] {cfg.db_path}. Run `contextfs scan`."
+        )
         raise typer.Exit(EXIT_CONFIG_ERROR)
 
     with Store(cfg.db_path, read_only=True) as store:
@@ -985,10 +1031,10 @@ def tags(
                 row["path"] for row in store.all_files() if path.lower() in row["path"].lower()
             ]
             if not matches:
-                err_console.print(f"[bold red]No indexed file matching[/bold red] {path}")
+                err_console.print(f"[bold reverse]No indexed file matching[/bold reverse] {path}")
                 raise typer.Exit(EXIT_CONFIG_ERROR)
             if len(matches) > 1:
-                err_console.print(f"[yellow]Ambiguous;[/yellow] {len(matches)} files match:")
+                err_console.print(f"[bold]Ambiguous;[/bold] {len(matches)} files match:")
                 for match in matches[:10]:
                     err_console.print(f"  {match}")
                 raise typer.Exit(EXIT_CONFIG_ERROR)
@@ -1000,9 +1046,9 @@ def tags(
         return
     console.print(f"[bold]{resolved}[/bold]\n")
     if not suggestions:
-        console.print("[yellow]No tags could be derived - is the file indexed?[/yellow]")
+        console.print("[bold]No tags could be derived - is the file indexed?[/bold]")
         return
-    table = Table(show_header=True, header_style="bold cyan")
+    table = Table(show_header=True, header_style="bold white")
     table.add_column("Tag", overflow="fold")
     table.add_column("Drawn from")
     table.add_column("Rank score", justify="right")
@@ -1038,7 +1084,9 @@ def timeline(
 
     cfg = state.config()
     if not cfg.db_path.is_file():
-        err_console.print(f"[bold red]No index at[/bold red] {cfg.db_path}. Run `contextfs scan`.")
+        err_console.print(
+            f"[bold reverse]No index at[/bold reverse] {cfg.db_path}. Run `contextfs scan`."
+        )
         raise typer.Exit(EXIT_CONFIG_ERROR)
 
     with Store(cfg.db_path, read_only=True) as store:
@@ -1048,7 +1096,7 @@ def timeline(
             # against today, so "September" finds the September the user means.
             date_range = resolve_best(span, index)
         except RangeResolutionError as exc:
-            err_console.print(f"[bold red]{exc}[/bold red]")
+            err_console.print(f"[bold reverse]{exc}[/bold reverse]")
             raise typer.Exit(1) from exc
         grouped = index.files_in_range(date_range)
         paths = store.path_by_file_id()
@@ -1065,13 +1113,13 @@ def timeline(
         measurement = index.benchmark(date_range) if bench else None
 
     console.print(
-        f"[bold]{date_range.expression}[/bold] -> [cyan]{date_range}[/cyan]  "
+        f"[bold]{date_range.expression}[/bold] -> [bold]{date_range}[/bold]  "
         f"({date_range.days} day(s))"
     )
     if not grouped:
-        console.print("[yellow]No files have a meaningful date in that range.[/yellow]")
+        console.print("[bold]No files have a meaningful date in that range.[/bold]")
     else:
-        table = Table(show_header=True, header_style="bold cyan")
+        table = Table(show_header=True, header_style="bold white")
         table.add_column("Date")
         table.add_column("File", overflow="fold")
         table.add_column("Matched", overflow="fold")
@@ -1126,7 +1174,7 @@ def explain(
     cached = cfg.paths.data_dir / "last_query.json"
     if not cached.is_file():
         err_console.print(
-            "[bold red]No previous query to explain.[/bold red] Run `contextfs query` first."
+            "[bold reverse]No previous query to explain.[/bold reverse] Run `contextfs query` first."
         )
         raise typer.Exit(1)
 
@@ -1141,7 +1189,7 @@ def explain(
         match = next((r for r in results if needle in r["path"].lower()), None)
     if match is None:
         err_console.print(
-            f"[bold red]No result matching[/bold red] {result_id!r} in the last query.\n"
+            f"[bold reverse]No result matching[/bold reverse] {result_id!r} in the last query.\n"
             f"Available: " + ", ".join(f"{r['rank']}={Path(r['path']).name}" for r in results[:5])
         )
         raise typer.Exit(1)
@@ -1155,15 +1203,15 @@ def explain(
         Panel(
             f"[bold]{match['path']}[/bold]\n" f"rank {match['rank']}  ·  score {match['score']}",
             title=f"Why this matched: {payload['query']!r}",
-            border_style="cyan",
+            border_style="grey42",
         )
     )
 
-    console.print("\n[bold cyan]Reasons[/bold cyan]")
+    console.print("\n[bold white]Reasons[/bold white]")
     for reason in explanation["reasons"]:
         console.print(f"  • {reason}")
 
-    table = Table(show_header=True, header_style="bold cyan", title="\nScore breakdown")
+    table = Table(show_header=True, header_style="bold white", title="\nScore breakdown")
     table.add_column("Signal")
     table.add_column("Value", justify="right")
     table.add_column("Weight", justify="right")
@@ -1187,24 +1235,24 @@ def explain(
 
     if explanation["matched_entities"]:
         console.print(
-            "\n[bold cyan]Shared entities[/bold cyan]  "
+            "\n[bold white]Shared entities[/bold white]  "
             + ", ".join(explanation["matched_entities"])
         )
     if explanation["matched_session"]:
         session = explanation["matched_session"]
         console.print(
-            f"\n[bold cyan]Activity session[/bold cyan]  {session['label']}\n"
+            f"\n[bold white]Activity session[/bold white]  {session['label']}\n"
             f"  {session['size']} files, {session['start']} to {session['end']}"
         )
     if explanation["matched_timeline"]:
-        console.print("\n[bold cyan]Timeline matches[/bold cyan]")
+        console.print("\n[bold white]Timeline matches[/bold white]")
         for item in explanation["matched_timeline"]:
             console.print(
                 f"  {item['date']}  ({item['surface']})  "
                 f"relevance {item['score']}  [dim]{item.get('reason', '')}[/dim]"
             )
     if explanation["graph_path"]:
-        console.print("\n[bold cyan]Graph path[/bold cyan]")
+        console.print("\n[bold white]Graph path[/bold white]")
         for hop in explanation["graph_path"]:
             console.print(f"  {hop['from']} --[{hop['type']}]--> {hop['to_label']}")
 
@@ -1223,7 +1271,9 @@ def stats() -> None:
 
     cfg = state.config()
     if not cfg.db_path.is_file():
-        err_console.print(f"[bold red]No index at[/bold red] {cfg.db_path}. Run `contextfs scan`.")
+        err_console.print(
+            f"[bold reverse]No index at[/bold reverse] {cfg.db_path}. Run `contextfs scan`."
+        )
         raise typer.Exit(EXIT_CONFIG_ERROR)
 
     with Store(cfg.db_path, read_only=True) as store:
@@ -1235,7 +1285,7 @@ def stats() -> None:
         graph = load_graph(cfg.graph_file)
         vectors = _open_vector_store(cfg).counts()
 
-        corpus = Table(title="Corpus", show_header=True, header_style="bold cyan")
+        corpus = Table(title="Corpus", show_header=True, header_style="bold white")
         corpus.add_column("Metric")
         corpus.add_column("Value", justify="right")
         corpus.add_row("scan root", str(cfg.paths.root))
@@ -1245,7 +1295,7 @@ def stats() -> None:
         corpus.add_row("by extension", ", ".join(f"{k} {v}" for k, v in extensions.items()))
         console.print(corpus)
 
-        index = Table(title="\nIndex", show_header=True, header_style="bold cyan")
+        index = Table(title="\nIndex", show_header=True, header_style="bold white")
         index.add_column("Layer")
         index.add_column("Size", justify="right")
         index.add_row("entities (L3)", str(store.entity_count()))
@@ -1278,7 +1328,7 @@ def stats() -> None:
         if span:
             console.print(f"[dim]timeline spans {span[0]} to {span[1]}[/dim]")
 
-        freshness = Table(title="\nFreshness", show_header=True, header_style="bold cyan")
+        freshness = Table(title="\nFreshness", show_header=True, header_style="bold white")
         freshness.add_column("Metric")
         freshness.add_column("Value", justify="right")
         if last:
@@ -1295,7 +1345,7 @@ def stats() -> None:
         pending = len(store.files_needing_extraction()) + len(store.files_needing_embedding())
         freshness.add_row(
             "index state",
-            "[green]current[/green]" if pending == 0 else f"[yellow]{pending} stale[/yellow]",
+            "[bold]current[/bold]" if pending == 0 else f"[bold]{pending} stale[/bold]",
         )
         console.print(freshness)
 
@@ -1321,11 +1371,11 @@ def reset(
     console.print(
         Panel(
             f"This deletes [bold]{target}[/bold] ({size / 1024 / 1024:.2f} MB).\n\n"
-            f"Your scanned files in [cyan]{cfg.paths.root}[/cyan] are [bold]not[/bold] "
+            f"Your scanned files in [bold]{cfg.paths.root}[/bold] are [bold]not[/bold] "
             "touched - ContextFS never had write access to them.\n"
             "You can rebuild the index with `contextfs scan`.",
             title="Reset the ContextFS index",
-            border_style="yellow",
+            border_style="grey42",
         )
     )
     if not yes and not typer.confirm("Delete the derived data?"):
@@ -1333,7 +1383,7 @@ def reset(
         raise typer.Exit(1)
 
     shutil.rmtree(target)
-    console.print(f"[green]Deleted[/green] {target}")
+    console.print(f"[bold]Deleted[/bold] {target}")
 
 
 @app.command(name="fetch-models")
@@ -1351,15 +1401,15 @@ def fetch_models() -> None:
     console.print(
         Panel(
             "This is the only ContextFS command that uses the network.\n"
-            f"Fetching [cyan]{cfg.embeddings.model}[/cyan] into the local model cache.\n"
+            f"Fetching [bold]{cfg.embeddings.model}[/bold] into the local model cache.\n"
             "Nothing about your files is sent anywhere.",
             title="Fetching models",
-            border_style="cyan",
+            border_style="grey42",
         )
     )
     for line in download_models(cfg.embeddings.model, cfg.entities.spacy_model):
         console.print(f"  {line}")
-    console.print("[green]Done.[/green] Indexing will now run fully offline.")
+    console.print("[bold]Done.[/bold] Indexing will now run fully offline.")
 
 
 @app.command()
@@ -1370,7 +1420,7 @@ def gui() -> None:
         from contextfs.gui import launch
     except ImportError as exc:
         err_console.print(
-            "[bold red]The desktop application needs the `gui` extra.[/bold red]\n"
+            "[bold reverse]The desktop application needs the `gui` extra.[/bold reverse]\n"
             'Install it with: pip install -e ".[gui]"'
         )
         raise typer.Exit(EXIT_CONFIG_ERROR) from exc
@@ -1397,14 +1447,14 @@ def visualise(
     cfg = state.config()
     if not cfg.graph_file.is_file():
         err_console.print(
-            f"[bold red]No relationship graph at[/bold red] {cfg.graph_file}. "
+            f"[bold reverse]No relationship graph at[/bold reverse] {cfg.graph_file}. "
             "Run `contextfs scan` first."
         )
         raise typer.Exit(EXIT_CONFIG_ERROR)
 
     target = build_visualisation(cfg, out)
     size_mb = target.stat().st_size / 1024 / 1024
-    console.print(f"[green]Wrote[/green] {target} [dim]({size_mb:.1f} MB, self-contained)[/dim]")
+    console.print(f"[bold]Wrote[/bold] {target} [dim]({size_mb:.1f} MB, self-contained)[/dim]")
     if open_it:
         webbrowser.open(target.as_uri())
 
@@ -1422,7 +1472,7 @@ def config_cmd(
     cfg = state.config()
     info = cfg.describe()
 
-    table = Table(show_header=True, header_style="bold cyan", title="ContextFS configuration")
+    table = Table(show_header=True, header_style="bold white", title="ContextFS configuration")
     table.add_column("Setting", style="dim", no_wrap=True)
     # `overflow="fold"` rather than the default ellipsis: a truncated path in
     # the one command whose job is showing paths would be actively misleading.
@@ -1441,14 +1491,14 @@ def config_cmd(
         if show_paths and key not in path_keys:
             continue
         if key == "root_exists":
-            value = "[green]yes[/green]" if value else "[yellow]no (not scanned yet)[/yellow]"
+            value = "[bold]yes[/bold]" if value else "[bold]no (not scanned yet)[/bold]"
         table.add_row(key, str(value))
 
     console.print(table)
 
     if cfg.source_file is None:
         err_console.print(
-            "[yellow]No config file found; using built-in defaults.[/yellow] "
+            "[bold]No config file found; using built-in defaults.[/bold] "
             "Create contextfs.toml, or pass --config."
         )
 
