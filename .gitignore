@@ -97,3 +97,8 @@ $RECYCLE.BIN/
 *.log
 scratch/
 tmp/
+
+# Private working document: raw material for the research paper. Deliberately
+# not published - it contains framing, anticipated reviewer objections and
+# paper scaffolding that belong to the authors, not to the public artefact.
+RESEARCH_DOSSIER.md
