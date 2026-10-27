@@ -1,138 +1,145 @@
 @echo off
 REM ============================================================================
-REM  ContextFS launcher
+REM  ContextFS developer bootstrap + launcher   (log.md Phase 29, Decision 89)
 REM
-REM  One entry point for the whole project. Sets up the environment on first
-REM  run, then offers the three surfaces: desktop app, CLI, 3D graph.
+REM  FOR DEVELOPERS. End users get the installer (v2 Phase 4) and never see this.
 REM
-REM  KEEP THIS FILE IN SYNC. If the start-up procedure changes anywhere -
-REM  a new dependency, a new model, a changed command - change it here too.
-REM  A launcher that silently drifts from reality is worse than none, because
-REM  it fails on the one machine that has never been set up before.
+REM  Every run checks each prerequisite and installs ONLY what is missing:
+REM    1. uv (Astral's standalone Python/package manager)   -> .tools\uv
+REM    2. Python 3.12 (portable, no registry, no C: writes) -> .tools\python
+REM       fallback: winget into .tools\python-winget; else stop with a link
+REM    3. .venv  (created only if missing or broken)
+REM    4. torch (CUDA build if a usable NVIDIA GPU is present, else CPU),
+REM       contextfs + extras, spaCy model, embedding weights, smoke corpus
+REM       -> scripts\dev_bootstrap.py does these checks
+REM  then launches the app (or passes arguments straight to the CLI).
+REM
+REM  Everything lives inside this folder. Nothing is written to C:.
+REM  The project path may contain spaces and '&': keep EVERY path quoted or
+REM  relative to the project folder.
+REM
+REM  KEEP IN SYNC with any change to the start-up procedure.
 REM ============================================================================
 
-setlocal enabledelayedexpansion
+setlocal
 cd /d "%~dp0"
-
-REM UTF-8 code page so the box-drawing glyphs render instead of falling back to
-REM ASCII. ContextFS degrades gracefully without this, but it looks better with.
 chcp 65001 >nul 2>&1
 
+set "UV_VERSION=0.13.6"
+set "UV=.tools\uv\uv.exe"
 set "PY=.venv\Scripts\python.exe"
-set "MARKER=.venv\.contextfs-ready"
+
+REM All caches inside the project, never under %LOCALAPPDATA% or %USERPROFILE%.
+set "UV_PYTHON_INSTALL_DIR=%CD%\.tools\python"
+set "UV_CACHE_DIR=%CD%\.tools\cache\uv"
+set "UV_PYTHON_PREFERENCE=only-managed"
+set "UV_LINK_MODE=copy"
+set "PIP_CACHE_DIR=%CD%\.tools\cache\pip"
+set "HF_HOME=%CD%\models\hf"
+set "HF_HUB_DISABLE_TELEMETRY=1"
+set "HF_HUB_DISABLE_XET=1"
+set "PYTHONUTF8=1"
 
 echo.
 echo  ================================================================
-echo    C O N T E X T F S
-echo    find files by what you remember
+echo    C O N T E X T F S   -   find files by what you remember
 echo  ================================================================
 echo.
 
 REM ---------------------------------------------------------------------------
-REM  First-run setup
+REM  1. uv
 REM ---------------------------------------------------------------------------
-if not exist "%PY%" (
-    echo  [ SETUP ] No virtual environment found. Creating one...
-    echo.
-    where python >nul 2>&1
-    if errorlevel 1 (
-        echo  ERROR: Python is not on your PATH.
-        echo  Install Python 3.10-3.12 from python.org, tick "Add to PATH",
-        echo  then run this file again.
-        echo.
-        pause
-        exit /b 1
-    )
-    python -m venv .venv
-    if errorlevel 1 (
-        echo  ERROR: could not create the virtual environment.
-        pause
-        exit /b 1
-    )
-    echo  [ SETUP ] Virtual environment created.
-    echo.
+if exist "%UV%" goto :have_uv
+echo  [ SETUP ] Downloading uv %UV_VERSION% into .tools\uv ...
+where curl.exe >nul 2>&1 || (echo  [ ERROR ] curl.exe not found ^(needs Windows 10 1803 or later^). & goto :fail)
+where tar.exe  >nul 2>&1 || (echo  [ ERROR ] tar.exe not found ^(needs Windows 10 1803 or later^). & goto :fail)
+if not exist ".tools\uv" mkdir ".tools\uv"
+curl.exe -sSfL --retry 2 -o ".tools\uv\uv.zip" "https://github.com/astral-sh/uv/releases/download/%UV_VERSION%/uv-x86_64-pc-windows-msvc.zip"
+if errorlevel 1 (echo  [ ERROR ] Could not download uv from github.com. Check the internet connection. & goto :fail)
+tar.exe -xf ".tools\uv\uv.zip" -C ".tools\uv"
+if errorlevel 1 (echo  [ ERROR ] Could not unpack uv. Is the disk full? & goto :fail)
+del ".tools\uv\uv.zip" >nul 2>&1
+:have_uv
+
+REM ---------------------------------------------------------------------------
+REM  2 + 3. Python and the virtual environment
+REM ---------------------------------------------------------------------------
+if exist "%PY%" (
+    "%PY%" -c "import sys; sys.exit(0 if (3,10) <= sys.version_info[:2] <= (3,12) else 1)" >nul 2>&1
+    if not errorlevel 1 goto :have_venv
+    echo  [ SETUP ] The existing .venv is broken or the wrong Python version. Rebuilding it.
 )
 
-if not exist "%MARKER%" (
-    echo  [ SETUP ] Installing dependencies. This takes a few minutes once.
-    echo.
+echo  [ SETUP ] Installing portable Python 3.12 into .tools\python ...
+"%UV%" python install 3.12 --no-bin --no-registry
+if errorlevel 1 goto :python_fallback
+"%UV%" venv ".venv" --python 3.12 --seed --clear
+if errorlevel 1 (echo  [ ERROR ] Could not create .venv. Is the disk full? & goto :fail)
+goto :have_venv
 
-    echo  [ 1/4 ] PyTorch ^(CPU-only build - ContextFS never uses a GPU^)...
-    "%PY%" -m pip install --quiet --disable-pip-version-check "torch>=2.2,<3" --index-url https://download.pytorch.org/whl/cpu
-    if errorlevel 1 goto :setupfailed
+:python_fallback
+echo  [ WARN  ] uv could not install Python. Trying winget ...
+where winget >nul 2>&1 || goto :no_python
+winget install -e --id Python.Python.3.12 --scope user --location "%CD%\.tools\python-winget" --accept-package-agreements --accept-source-agreements
+if errorlevel 1 goto :no_python
+".tools\python-winget\python.exe" -m venv --clear ".venv"
+if errorlevel 1 (echo  [ ERROR ] Could not create .venv. Is the disk full? & goto :fail)
+goto :have_venv
 
-    echo  [ 2/4 ] ContextFS and its dependencies...
-    "%PY%" -m pip install --quiet --disable-pip-version-check -e ".[dev,datagen,gui]"
-    if errorlevel 1 goto :setupfailed
+:no_python
+echo  [ ERROR ] Could not install Python 3.12 automatically.
+echo            Install Python 3.12 from https://www.python.org/downloads/
+echo            then delete the .venv folder and run start.bat again.
+goto :fail
 
-    echo  [ 3/4 ] Language model ^(en_core_web_md, ~40 MB^)...
-    "%PY%" -m spacy download en_core_web_md --quiet
-    if errorlevel 1 goto :setupfailed
-
-    echo  [ 4/4 ] Embedding model...
-    "%PY%" -m contextfs fetch-models
-    if errorlevel 1 goto :setupfailed
-
-    echo ok> "%MARKER%"
-    echo.
-    echo  [ SETUP ] Complete.
-    echo.
-)
+:have_venv
 
 REM ---------------------------------------------------------------------------
-REM  Demo corpus - ContextFS needs something to index.
-REM  Only ever writes into data\synthetic\corpus. Your own files are untouched.
+REM  4. Everything else (torch build, package, models, smoke corpus)
 REM ---------------------------------------------------------------------------
-if not exist "data\synthetic\corpus" (
-    echo  [ DATA ] Generating the 40-file demo corpus...
-    "%PY%" scripts\generate_corpus.py >nul
-    echo  [ DATA ] Done.
-    echo.
-)
+"%PY%" scripts\dev_bootstrap.py
+if errorlevel 1 goto :fail
 
 REM ---------------------------------------------------------------------------
-REM  Index
+REM  Smoke index - ContextFS needs something to show on a fresh checkout.
 REM ---------------------------------------------------------------------------
 if not exist ".contextfs\contextfs.db" (
-    echo  [ INDEX ] No index yet. Building one - about 30 seconds.
-    echo.
+    echo  [ INDEX ] No index yet. Building one over the smoke corpus...
     "%PY%" -m contextfs scan
-    echo.
+    if errorlevel 1 (echo  [ ERROR ] Index build failed - see the output above. & goto :fail)
 )
 
 REM ---------------------------------------------------------------------------
-REM  Direct pass-through: `start.bat query "..."` runs the CLI and exits.
-REM  Anything this script does not recognise is handed straight to the CLI, so
-REM  every subcommand works without being listed here.
+REM  Pass-through: `start.bat query "..."` runs the CLI and exits.
 REM ---------------------------------------------------------------------------
-if not "%~1"=="" (
-    if /i "%~1"=="gui"  goto :gui
-    if /i "%~1"=="app"  goto :gui
-    if /i "%~1"=="3d"   goto :viz
-    if /i "%~1"=="test" goto :test
-    if /i "%~1"=="eval" goto :eval
-    "%PY%" -m contextfs %*
-    exit /b !errorlevel!
-)
+if "%~1"=="" goto :menu
+if /i "%~1"=="gui"  goto :gui
+if /i "%~1"=="app"  goto :gui
+if /i "%~1"=="3d"   goto :viz
+if /i "%~1"=="test" goto :test
+if /i "%~1"=="eval" goto :eval
+if /i "%~1"=="check" goto :check
+"%PY%" -m contextfs %*
+exit /b %errorlevel%
 
-REM ---------------------------------------------------------------------------
-REM  Menu
-REM ---------------------------------------------------------------------------
+:check
+"%PY%" scripts\dev_bootstrap.py --check
+exit /b %errorlevel%
+
 :menu
+echo.
 echo  ----------------------------------------------------------------
 echo    [1]  Desktop application
 echo    [2]  Command line
 echo    [3]  3D relationship graph
 echo    [4]  Re-scan / update the index
-echo    [5]  Run the research evaluation
+echo    [5]  Run the evaluation (smoke fixture)
 echo    [6]  Run the test suite
 echo    [Q]  Quit
 echo  ----------------------------------------------------------------
-echo.
 set "choice="
 set /p "choice=  Select: "
 echo.
-
 if /i "%choice%"=="1" goto :gui
 if /i "%choice%"=="2" goto :shell
 if /i "%choice%"=="3" goto :viz
@@ -141,32 +148,19 @@ if /i "%choice%"=="5" goto :eval
 if /i "%choice%"=="6" goto :test
 if /i "%choice%"=="q" exit /b 0
 echo  Not an option.
-echo.
 goto :menu
 
 :gui
-echo  Starting the desktop application...
-echo  ^(models load once, about 25 seconds - then every search is instant^)
-echo.
 "%PY%" -m contextfs gui
 goto :done
 
 :shell
-echo  ContextFS command line. Try:
-echo.
-echo     contextfs query "the PDF I studied before my ML exam" --explain
-echo     contextfs query "notes from the ML exam" --compare
-echo     contextfs timeline "March to April"
-echo     contextfs digest
-echo     contextfs --help
-echo.
+echo  ContextFS command line. Try:   contextfs query "the PDF I studied before my ML exam" --explain
 echo  Type `exit` to close this shell.
-echo.
-cmd /k ""%~dp0.venv\Scripts\activate.bat" && doskey contextfs="%~dp0.venv\Scripts\python.exe" -m contextfs $*"
+cmd /k "".venv\Scripts\activate.bat" && doskey contextfs=python -m contextfs $*"
 goto :done
 
 :viz
-echo  Building the 3D relationship graph...
 "%PY%" -m contextfs visualise
 goto :done
 
@@ -175,8 +169,6 @@ goto :done
 goto :done
 
 :eval
-echo  Running the full evaluation. Takes a couple of minutes.
-echo.
 "%PY%" scripts\evaluate.py
 goto :done
 
@@ -184,11 +176,10 @@ goto :done
 "%PY%" -m pytest -q
 goto :done
 
-:setupfailed
+:fail
 echo.
-echo  ERROR: setup failed at the step above.
-echo  Scroll up for the reason. Common causes: no internet connection,
-echo  or Python is not 3.10-3.12.
+echo  Setup stopped. Fix the problem above and run start.bat again -
+echo  steps that already succeeded will be skipped.
 echo.
 pause
 exit /b 1

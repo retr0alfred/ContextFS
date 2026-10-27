@@ -102,3 +102,12 @@ tmp/
 # not published - it contains framing, anticipated reviewer objections and
 # paper scaffolding that belong to the authors, not to the public artefact.
 RESEARCH_DOSSIER.md
+
+# --- v2 bootstrap (log.md Phase 29): portable Python, uv, caches, old-laptop artefacts ---
+.tools/
+.contextfs.oldlaptop/
+repomixOfContextFS.md
+
+# Private paper-strategy material (log.md Decision 93): audit with draft reviews, prior-art notes.
+docs/AUDIT_AND_ROADMAP.md
+docs/research/

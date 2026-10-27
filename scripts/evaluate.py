@@ -101,9 +101,9 @@ def main() -> int:
 
     if args.queries:
         print("\n" + "=" * 100)
-        print("PER-QUERY DETAIL (baseline vs full)")
+        print("PER-QUERY DETAIL (dense_flat vs full)")
         print("=" * 100)
-        base = results.get("baseline")
+        base = results.get("dense_flat")
         full = results.get("full")
         if base and full:
             for b, f in zip(base.outcomes, full.outcomes, strict=False):

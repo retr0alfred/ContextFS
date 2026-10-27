@@ -2905,3 +2905,204 @@ items that are merely unimplemented were left out.
   tones in the palette.
 
 ---
+
+## Phase 29 — v2 programme, Phase 1: handover, environment bootstrap, audit
+
+**Date:** 2026-10-27 · **v2 phase:** P1 (Audit) · **Machine:** new laptop — Lenovo LOQ, Ryzen 7 250
+(8C/16T), RTX 5060 Laptop 8 GB (Blackwell sm_120, driver 621.01, CUDA UMD 13.5), 16 GB single-channel,
+Windows 11 26200.
+
+The project was handed over to a new programme ("v2": audit → architecture debate → procedural
+benchmark → desktop app → hardening → novelty → final evaluation → optimisation → paper kit). Standing
+rules are in `CLAUDE.md`; the 30-second view is `docs/STATUS.md`. Full findings are in
+`docs/AUDIT_AND_ROADMAP.md`. This entry records what was run and decided.
+
+### Decision 88 — v2 phases continue this log's numbering
+
+v2-P1…P9 are logged as Phases 29…37; decisions continue from 88. Mapping table in `CLAUDE.md`.
+
+### STANDING CORRECTION — every number above this entry is unverified
+
+Per the v2 rules, every figure in this log (Phases 0–28 and the post-build pass), the README, the
+comments in `contextfs.toml`, `data/eval/*` and both paper drafts is treated as **unverified**: some
+were produced on a self-authored 40-file corpus with components tuned on the same data, and the
+paper drafts contain numbers with no source here (Draft A: "51 ms", "42.2×"). Nothing from before
+this entry may enter the README or the paper kit. Numbers re-measured in this phase are recorded
+below with their commands; they are **smoke-fixture** numbers and also may not enter the paper.
+
+**Specific corrections to earlier entries (not rewritten, corrected here):**
+
+- **Phase 14–22 headline table** (full MRR 0.584, semantic_graph 0.536, etc.) is stale: it predates
+  Decision 84. Current code gives full 0.632, semantic_graph 0.552 (see below).
+- **Decision 67** says "the 0.503 → 0.518 gap is machinery, not context". **Wrong.** The entire gap is
+  the format-hint multiplier (Decision 90 below).
+- **Phase 24** reports total coverage 81.5%. Re-measured on this machine: **76%** (`pytest --cov`).
+
+### Decision 89 — Developer bootstrap rewritten; everything installs inside the project
+
+**What was found.** The new machine had no Python (only the Microsoft Store alias). The old `.venv`
+was hard-wired to `C:\Users\manue\…\Python312` and unusable. `git` refuses the repo ("dubious
+ownership": folder owned by the old machine's SID; worked around per command with
+`-c safe.directory=*`, global gitconfig untouched). `contextfs fetch-models` hung >10 min on
+HuggingFace's Xet transfer backend with one `.incomplete` blob. HF weights default to `C:\Users\…\.cache`.
+
+**What was done.**
+- `uv` 0.13.6 (Astral standalone zip) → `.tools/uv/`; portable CPython **3.12.16** → `.tools/python/`
+  via `uv python install --no-bin --no-registry` (no registry keys, no Start-menu entries, nothing on C:).
+- `.venv` rebuilt with `uv venv --seed`. All caches redirected into the project:
+  `UV_CACHE_DIR`, `PIP_CACHE_DIR` → `.tools/cache/`, `HF_HOME` → `models/hf/`.
+- **torch 2.14.1+cu130** (newest Windows cp312 CUDA wheel; cu130 includes sm_120). Install: 6 m 20 s.
+- `HF_HUB_DISABLE_XET=1` → MiniLM downloaded in seconds (`models/` = 88 MB).
+- `start.bat` rewritten as developer bootstrap + launcher; per-prerequisite checks moved to
+  `scripts/dev_bootstrap.py` (robust against the `&` in this project's path). Torch channel chosen
+  from `nvidia-smi` (compute capability ≥ 7.5 and driver CUDA ≥ 13.0 → cu130, ≥ 12.8 → cu128, else
+  CPU; `--cpu` / `CONTEXTFS_TORCH=cpu` override). Package reinstall keyed on a hash of
+  `pyproject.toml`. Disk-space and network pre-checks with exact error messages.
+- `.gitignore`: `.tools/`, `.contextfs.oldlaptop/`, `repomixOfContextFS.md`.
+
+**Deviation from the brief, stated:** the brief says "use winget where available" for Python. The
+winget/python.org installer writes the registry and Start menu on C:, which conflicts with the
+install-location rule, so uv's portable Python is tried first and **winget is the fallback**
+(`--location .tools\python-winget`), then a stop with a python.org link.
+
+**Measured (this machine):**
+```
+start.bat check   (first run: venv had no install marker → installed package once)  29.6 s
+start.bat check   (everything present)   "prerequisites checked in 3.1 s"
+start.bat stats   (pass-through to CLI)   exit 0, 3.9 s wall
+```
+**Not yet exercised:** the from-zero path as one uninterrupted `start.bat` run (each step was run
+individually this session with the same commands), and the no-internet / disk-full error paths.
+
+### GPU device check (diagnostic only — no real workload has run on the GPU)
+
+`.tools/gpu_check.py` (one 4096² matmul, no model):
+```
+torch 2.14.1+cu130 | built for CUDA 13.0
+cuda.is_available(): True
+get_device_name(0): NVIDIA GeForce RTX 5060 Laptop GPU
+capability: (12, 0) | arch list: ['sm_75','sm_80','sm_86','sm_90','sm_100','sm_120']
+4096x4096 matmul on cuda:0: 6763.5 ms   (first call: CUDA context + cuBLAS init, not throughput)
+nvidia-smi --query-compute-apps:  26572, ...\.tools\python\...\python.exe, [N/A]   (this PID)
+nvidia-smi: RTX 5060 Laptop GPU, 414 MiB used / 8151 MiB
+```
+The Python PID appears as a compute process on the RTX 5060 (per-process VRAM shows `[N/A]`, normal
+under WDDM). **Awaiting user confirmation before any real GPU workload.** All Phase 29 re-runs used
+`device = "cpu"` as configured.
+
+### Re-runs on this machine (smoke fixture; raw output in `.tools/*.txt`)
+
+- Old index moved to `.contextfs.oldlaptop/`; old `data/eval/*` copied to `.tools/oldlaptop-eval/`.
+- `verify_corpus.py` on the copied corpus: **FAILED 1 of 11** —
+  `Personal/Misc/movie_watchlist.txt: expected 2026-01-05T23:40:00, got 2026-08-11T22:17:59`.
+  The mtime dependence, demonstrated on the project's own data. Regenerated → 11/11 pass.
+- `contextfs scan`: 40/40 extracted; 254 entity mentions; 65 chunks; 46 meaningful / 42 incidental
+  dates; 5 sessions; graph 77 nodes / 597 edges; 55.7 s wall (concurrent with pytest).
+- `pytest` concurrent with the scan: **6 failed / 471 passed** (all `tests/test_activity.py`).
+  Isolated re-run: **477 passed in 61.8 s**. Cause: `test_activity.py:133-141`, `:243-251` read the
+  live `.contextfs/` index (and skip silently if it is absent). Open defect.
+- Coverage: **76%** (`cli/main.py` 48%, `evaluation.py` 32%, `extract/extractors.py` 64%).
+- `evaluate.py` (MRR): dense_flat 0.5029 · dense_format 0.5176 · semantic_graph 0.5520 ·
+  semantic_graph_temporal 0.6010 · semantic_graph_activity 0.5828 · full **0.6319**; full R@10
+  0.856, hit@1 0.471; median latency full 32.0 ms (CPU). **Bit-identical to the old laptop's
+  `data/eval/results.json` on MRR and R@10 for all six configurations** (Python 3.12.10→3.12.16,
+  torch 2.13+cpu→2.14.1+cu130 running on CPU).
+- `date_eval.py` P 0.972 / R 1.000 / F1 0.986 (naive 0.700). `session_eval.py` F1 1.000, 5/5, control
+  not clustered. `entity_eval.py` micro P 0.489 / R 0.759 / F1 0.595. `extraction_report.py` 40/40.
+- `incremental_check.py`: 2/40 reprocessed, **563 ms vs 19,788 ms → 35.1×** (log said 25.1×,
+  Draft A 42.2× — machine-dependent ratio that includes model load; not a stable metric).
+- `bench_scan.py`: cold 21.4 ms, warm 6.0 ms, 1-changed 15.0 ms (page-cache-bound).
+
+### Decision 90 — 0.503 vs 0.518 traced; the two configurations renamed, not merged
+
+`scripts/audit_baseline_diff.py` removes each difference between `SemanticBaseline` (0.503) and
+`HybridRetriever(signals=("semantic",))` (0.518):
+```
+baseline (flat, LanceDB search)             0.5029  0.4118  0.6858
+semantic_only (as published)                0.5176  0.4118  0.6858
+semantic_only, format x1.0                  0.5029  0.4118  0.6858
+semantic_only, semantic seeds only          0.5176  0.4118  0.6858
+semantic_only, format x1.0 + seeds only     0.5029  0.4118  0.6858
+C. LanceDB top-10 vs in-memory top-10 ranking mismatches: 0/17
+```
+The whole gap is the **format-hint multiplier** (one query, q14 "the code …", RR 0.25→0.50); the
+extended candidate pool and the similarity implementation change nothing. They are intentionally
+different experiments, so they were **renamed**: `baseline` → `dense_flat`, `semantic_only` →
+`dense_format` (`evaluation.py`, `scripts/evaluate.py`, `tests/test_retrieval.py:60`); `data/eval/*`
+regenerated with identical values; suite 477/477 after the rename. **Every hybrid row also applies
+the format multiplier**, so "full − dense_flat" mixes the format hint into every layer's credit; the
+fair control is `dense_format`, and v2-P3 must add a format-off ablation axis.
+
+### Decision 91 — Audit-only lexical baselines and significance on the smoke fixture
+
+`scripts/audit_lexical_and_stats.py` (BM25 k1=1.2 b=0.75; RRF k=60; exact sign-flip over 2^17
+patterns; bootstrap 10k, seed 0). **Smoke fixture, not a paper result:**
+```
+dense_flat 0.5029 | dense_format 0.5176 | full 0.6319 | bm25 0.4211 | bm25_path 0.4485 | rrf 0.4281
+full - dense_flat     +0.1289  CI [+0.0260, +0.2696]  p=0.0312  W/L/T 6/0/11
+full - dense_format   +0.1142  CI [+0.0064, +0.2598]  p=0.0938  W/L/T 5/1/11
+full - rrf            +0.2038  CI [-0.0010, +0.4157]  p=0.0845  W/L/T 9/3/5
+```
+Against the fair control the gain is not significant at 0.05, and these p-values are optimistic
+because the format penalty, activity cues and session parameters were tuned on these queries
+(audit §5). BM25 is weaker on average but wins q02/q05/q11/q15 where full does not → lexical
+evidence is complementary; naive RRF hurts here, so fusion must be chosen on the dev split.
+
+### Other findings recorded (detail in the audit document)
+
+- Explanations are unfaithful: `matched_topic` lists *query* terms whether or not the file contains
+  them. Live: q01 rank 1 `Unit4_Ensemble_Methods.pdf` → "topic match (0.18): study, machine, learn,
+  exam" for a file guaranteed to contain no exam vocabulary. 100% explanation coverage is true by
+  construction.
+- The semantic tree is never used by retrieval. No BM25 / TF-IDF / ANN exists despite Draft A.
+- Query understanding is a closed vocabulary: all 4 activity queries hit a listed cue; 8 of 21 cues
+  ever fire.
+- Scale walls: sessions O(n³) with three n² matrices; graph n² similarity; per-query full loads.
+- Scanner: no `onerror`, placeholder hydration, single root, no resume, oversized-file staleness.
+- A research subagent (no part in writing the code) checked prior art for the novelty ideas and the
+  16 draft references: `docs/research/prior_art_and_references.md`; verdicts summarised in audit §9
+  and §10.3.
+
+### Still open after Phase 29
+
+- User to confirm the GPU device before any real GPU workload.
+- User to pick novelty directions (audit §12) — gates v2-P6.
+- `test_activity.py` live-index dependency; from-zero `start.bat` run; failure-path tests.
+- `.contextfs.oldlaptop/` and `.tools/oldlaptop-eval/` can be deleted once no longer needed.
+
+**Addendum (same day).** Prior-art headline: *Connections* (Soules & Ganger, SOSP 2005,
+10.1145/1095810.1095822) already used temporal-locality file relations to expand/re-rank desktop
+search, so the session+graph idea is **not novel**; the open gaps are post-hoc (no tracing)
+reconstruction, meaningful-date extraction, robustness to rewritten mtimes, and beating a strong
+baseline. Of the 16 draft references, [3] [5] [7] [8] should be dropped and [2] [6] replaced (audit §10.3).
+Recommended directions: D (benchmark) as foundation + A (temporal provenance) as primary (audit §12).
+Lint: new/edited scripts pass `ruff check`.
+
+### Decision 92 — Paper directions chosen at the v2-P1 checkpoint (user decision, 2026-10-27)
+
+- **D — procedural multi-persona benchmark:** the **foundation** (built in v2-P3).
+- **A — temporal provenance reconciliation / robustness to rewritten mtimes:** the **primary**
+  contribution (v2-P6).
+- **B — personal temporal grounding** (event-anchored + memory-decay-aware time): **secondary, only
+  if time allows once A is solid**. Not committed upfront.
+- **C — learned fusion:** general engineering under Must-do 4, **not** a paper direction.
+
+Consequence for v2-P2: the architecture must carry per-file *time evidence* from several sources
+(file-system times, Office `docProps/core.xml`, PDF Info/XMP, EXIF, zip entry times), not a single
+`mtime` column, and the benchmark generator must be able to inject mtime damage.
+
+### GPU status (user, 2026-10-27)
+
+The user did not watch the Phase 29 device check live and is **trusting the reported output** (RTX
+5060 listed by `nvidia-smi` as running the Python process). Standing instruction: the **first real
+GPU workload** (model load / embeddings / training — not another device check) must be flagged
+again so the user can verify with eyes on screen.
+
+### Decision 93 — Git workflow and what stays private
+
+- All v2 work goes on branch **`v2`**, committed and pushed as phases progress, until the user says
+  to branch again or merge. `main` is untouched.
+- `retr0alfred/ContextFS` is **public**. At the user's choice, `docs/AUDIT_AND_ROADMAP.md` and
+  `docs/research/` (draft reviews, novelty assessment, paper strategy) are **git-ignored and kept
+  local**, the same treatment v1 gave `RESEARCH_DOSSIER.md`. Everything else (environment bootstrap,
+  `start.bat`, the config rename, audit scripts, log, STATUS, CLAUDE.md, ADRs) is pushed.

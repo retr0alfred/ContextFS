@@ -57,7 +57,7 @@ def test_reciprocal_rank():
 def test_ablation_grid_covers_every_research_question():
     answered = {spec["answers"] for spec in ABLATIONS.values()}
     assert {"RQ1", "RQ2", "RQ4", "RQ5"} <= answered
-    assert "baseline" in ABLATIONS and ABLATIONS["baseline"]["flat"]
+    assert "dense_flat" in ABLATIONS and ABLATIONS["dense_flat"]["flat"]
     assert ABLATIONS["full"]["signals"] == ("semantic", "graph", "activity", "timeline")
 
 

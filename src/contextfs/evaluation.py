@@ -53,21 +53,28 @@ __all__ = [
 #: The ablation grid. Each entry maps a configuration name to the signal subset
 #: it may use, and to the research question that row answers.
 #:
-#: ``baseline`` is not a signal subset - it is the separate flat-search system,
-#: which is the honest comparison point because "hybrid with only the semantic
-#: signal" still pays for seed selection and graph expansion.
+#: ``dense_flat`` is not a signal subset - it is the separate flat-search system.
+#:
+#: Renamed in log.md Phase 29 / Decision 88 (formerly ``baseline`` and
+#: ``semantic_only``). ``scripts/audit_baseline_diff.py`` showed the two differ by
+#: exactly one thing - the format-hint multiplier from the query decomposer - and
+#: nothing else (same candidate ranking, same similarity values). The old label
+#: "isolates pipeline overhead" was wrong. Note that every hybrid row below ALSO
+#: applies the format multiplier, so a hybrid row minus ``dense_flat`` mixes the
+#: format hint with the layer being ablated; compare hybrid rows to
+#: ``dense_format`` to isolate a layer.
 ABLATIONS: dict[str, dict[str, Any]] = {
-    "baseline": {
+    "dense_flat": {
         "signals": ("semantic",),
         "flat": True,
         "answers": "control",
-        "description": "Pure semantic retrieval. Flat nearest-neighbour, no context layers.",
+        "description": "Dense-only kNN over document vectors. No query understanding at all.",
     },
-    "semantic_only": {
+    "dense_format": {
         "signals": ("semantic",),
         "flat": False,
         "answers": "control",
-        "description": "Hybrid machinery, semantic signal only. Isolates pipeline overhead.",
+        "description": "dense_flat + the query decomposer's format-hint multiplier. Nothing else.",
     },
     "semantic_graph": {
         "signals": ("semantic", "graph"),
@@ -380,10 +387,10 @@ def format_report(results: dict[str, EvalResult], k_values=(1, 3, 5, 10)) -> str
     )
 
     # -- deltas against the baseline ---------------------------------------
-    if "baseline" in results and "full" in results:
-        base, full = results["baseline"], results["full"]
+    if "dense_flat" in results and "full" in results:
+        base, full = results["dense_flat"], results["full"]
         add("")
-        add("FULL SYSTEM vs BASELINE")
+        add("FULL SYSTEM vs DENSE_FLAT")
         add(f"  MRR      {base.mrr:.3f} -> {full.mrr:.3f}   ({full.mrr - base.mrr:+.3f})")
         add(
             f"  hit@1    {base.hit_at_1:.3f} -> {full.hit_at_1:.3f}   "
