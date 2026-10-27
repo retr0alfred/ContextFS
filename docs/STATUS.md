@@ -1,6 +1,6 @@
 # ContextFS v2 — status
 
-Last updated: 2026-10-27 (v2-P3 in progress) · Branch: `v2`
+Last updated: 2026-10-28 (v2-P3 in progress) · Branch: `v2`
 
 **▶ MILESTONE M1 (2026-10-27): architecture frozen; app scope reduced (Decision 95): portable app, no installer; clean-VM testing is a 1-day stretch goal; signing off the critical path.**
 
@@ -9,7 +9,7 @@ Last updated: 2026-10-27 (v2-P3 in progress) · Branch: `v2`
 | Bootstrap | Phase 29 | **done** | Portable Py 3.12.16 + uv in `.tools/`, torch 2.14.1+cu130 (dev only), models in `models/hf`, `start.bat` + `scripts/dev_bootstrap.py` |
 | P1 Audit | Phase 29 | **done** | `docs/AUDIT_AND_ROADMAP.md` (local only). Directions: Decision 92 |
 | P2 Architecture debate | Phase 30 | **done** | `docs/adr/` 0001–0016 + debate record + fresh review + response. Decision 94 |
-| P3 Evaluation foundation | Phase 31 | **in progress** | Paper path first (ADR-0014 Rev. 1 plan): T → donor histograms → generator fix → personas/queries → freeze → harness/baselines |
+| P3 Evaluation foundation | Phase 31 | **in progress** | ✔ T v1 frozen · ✔ smoke fixture moved · ✔ benchgen + zero-damage audit · ✔ template queries · ✔ harness/baselines/stats · ✔ power calc · ✔ study protocol. ⏳ LLM test queries (GPU, needs you) · ⏳ donor stats (consent) · then dev/test generation + freeze, CE rerank, ablations, faithfulness |
 | P4 Build the app | Phase 32 | not started | Engine refactor, fsio, indexer child, GUI MVP, **portable** build, GPU spike; light clean-account check |
 | P5 Hardening | Phase 33 | not started | must pass on the packaged portable `.exe` |
 | P6 Novelty features | Phase 34 | not started | A primary (probabilistic estimator); B only if time allows |
@@ -18,10 +18,11 @@ Last updated: 2026-10-27 (v2-P3 in progress) · Branch: `v2`
 | P9 Paper kit | Phase 37 | not started | |
 
 ## Open items needing the user
-1. **SignPath:** submit `docs/release/signpath_application.md` yourself after the first CI-built release (P4). Blocked now by reCAPTCHA and eligibility. Prerequisites: a LICENSE file (MIT is declared but no file exists; your and your co-author's call), a code-signing policy page, GitHub 2FA.
-2. **Smart App Control is in Evaluation mode on this laptop**: it may switch to On by itself and block an unsigned build. This is an open risk; the SAC state is checked before every demo build.
-3. **First real GPU workload** is the P3 local-LLM query generation. It will be flagged before it runs (eyes on screen).
-4. Light clean-account check (P4): you create a second standard account or use the old laptop, then launch the copied folder.
+1. **GPU go-ahead (blocking P3):** LLM-written test queries are the first real GPU workload. Approve the download (portable llama.cpp CUDA + ~5 GB 8B instruct model, all on D:) and be at the screen when it first runs.
+2. **Donor statistics consent (blocking the estimator):** which of your folders `scripts/donor_time_stats.py` may read. Histograms only, reviewed on screen before saving.
+3. Optional: the user-only transfer-table rows (OneDrive, USB stick, browser download, Word Save As, 7-Zip).
+4. SignPath: submit after the first CI-built release (P4). Needs a LICENSE file (your and your co-author's call).
+5. Smart App Control is in Evaluation mode: an open risk, checked before every demo build.
 
 ## Standing reminders
 - Paper-strategy docs stay local (public repo).

@@ -3283,3 +3283,115 @@ again so the user can verify with eyes on screen.
 The app path loses the installer, the VM pipeline and signing as a blocker, which frees about a
 week for the research path. The v2-P3 order is unchanged: T → donor statistics → generator fix →
 personas and queries → freeze → harness and baselines.
+
+---
+
+## Phase 31 — v2 programme, Phase 3: evaluation foundation (IN PROGRESS — entry 1)
+
+**Dates:** 2026-10-27 to 2026-10-28 · **v2 phase:** P3 · **Branch:** `v2`
+
+### Done so far
+1. **Transfer table T v1 measured and frozen** (ADR-0006 E1).
+   - Commit `4c027cc`: `data/transfer_table/T_v1.{json,md}`, sha256 `cbdc2809…`.
+   - Script: `scripts/measure_transfer_table.py`. 17 tools × 5 formats on NTFS (D:). Results:
+     - In-file times survived **every** tool.
+     - `birth > mtime` marks exactly the CopyFile family: Copy-Item, cmd copy, xcopy, Explorer's
+       copy engine (Shell COM), `shutil.copy2`, Expand-Archive, tar.
+     - robocopy (default and `/COPY:D`) and same-volume moves keep all times, so they are invisible.
+     - `shutil.copy`, `copyfile`, `zipfile.extractall` and **`git clone`** reset both times to now.
+     - An NTFS safe-save (tunnelling) keeps birth; an in-place edit moves mtime only.
+     - No Mark-of-the-Web from any scripted tool.
+   - Pending, user-only rows: Explorer drag copy (GUI), OneDrive round trip, USB FAT32/exFAT,
+     browser download, Word Save As, 7-Zip, messenger download. Not covered: cross-volume moves
+     (C: excluded), SMB.
+2. **Smoke fixture demoted** (commit `0c88636`).
+   - `data/synthetic/` moved to `tests/fixtures/smoke/` (`git mv`).
+   - Verified after the move: `verify_corpus` 11/11, graph 77/597, regression anchor `dense_flat`
+     0.503 / `dense_format` 0.518 / full 0.632 unchanged, **477/477 tests**.
+3. **Procedural benchmark generator `contextfs.benchgen`** (commit `773a04b`).
+   - Personas: student, professional, researcher.
+   - The timeline simulation gives every file true per-event times (authored / arrived_here /
+     last_user_edit), an activity (the ground-truth session) and labelled date mentions.
+   - Files carry consistent in-file times (core.xml, PDF Info, EXIF, zip entries), all three NTFS
+     times (`SetFileTime`, `contextfs.datagen.filetimes`) and Mark-of-the-Web on downloads.
+   - The sealed truth is written outside the corpus.
+   - Damage profiles (`none`, `copyfile_all`, `content_copy_all`, `robocopy_all`, `mixed`) apply
+     only T-measured effects.
+4. **Zero-damage audit** (`scripts/audit_benchmark.py`, closes skeptic **N1**).
+   - Measured: ALL PASS for student s1 (231 files: copy signature on 20/231, exactly the phone
+     photos), professional s2 (72), researcher s3 (69).
+   - Also ALL PASS for damage `mixed` (student s4: 97/231 as expected), `copyfile_all`
+     (professional s5: 64/69) and `content_copy_all` (researcher s6: 4/60).
+   - The first damaged run failed. Two causes: the audit's expectations ignored post-migration
+     edits, and the damage code erased edits made after a content copy (a real generator bug).
+     Both were fixed.
+   - Regression tests: `tests/test_benchgen.py`, 5 passed.
+5. **Template query generator** (commit `f56eb37`).
+   - Seven cue types, ~15% typos, families A (dev) and B (test), written from a degraded memory
+     view.
+   - Graded qrels: target 3, duplicate or sibling 2, same activity 1.
+   - The first samples exposed doubled prepositions, origin-blind verbs, unanswerable entity
+     queries and nonsense queries on photos. All fixed, and re-inspected.
+6. **Harness + baselines + statistics** (commit `aa955ab`).
+   - `contextfs.evalkit`: graded nDCG@10, MRR, Hit@1, R@10, seeded bootstrap, paired sign-flip,
+     Holm, tunable BM25, RRF, z-fusion.
+   - `scripts/bench_eval.py` (interim, over the v1 index): `path_mtime`, `bm25`, `dense_maxp`,
+     `dense_flat`, `rrf60`, `rrf10`, `zfuse`, `v1_full`. It refuses test-family personas unless
+     the run is tagged `TEST-*`.
+7. **Donor statistics tool** (`scripts/donor_time_stats.py`): histograms only, on-screen review
+   before saving, placeholders never opened. Self-tested on a synthetic persona. **Not yet run on
+   any real folder** (needs consent).
+8. **Power calculation** (`scripts/power_calc.py`) and the **study protocol and consent form**
+   (`docs/study/`). The study tool waits for the v2-P4 engine and app.
+
+### Measured: first dev-smoke run (NOT paper numbers)
+`python scripts/bench_eval.py data/bench/student-s1-A-x1-none data/bench/professional-s2-A-x1-none data/bench/researcher-s3-A-x1-none --tag dev-smoke-template-v1`
+(3 dev personas, 109 template queries, 3 m 50 s):
+```
+system                nDCG@10     MRR   Hit@1    R@10
+path_mtime   0.206 [0.151,0.267]   0.111   0.046   0.294
+bm25         0.478 [0.418,0.538]   0.289   0.156   0.624
+dense_maxp   0.450 [0.391,0.509]   0.265   0.128   0.587
+dense_flat   0.450 [0.391,0.509]   0.265   0.128   0.587
+rrf60        0.474 [0.414,0.534]   0.276   0.147   0.633
+rrf10        0.504 [0.450,0.558]   0.289   0.156   0.670
+zfuse        0.512 [0.457,0.567]   0.298   0.156   0.670
+v1_full      0.480 [0.421,0.540]   0.314   0.183   0.596
+by cue (nDCG@10)   activity entity format mixed semantic temporal vague
+  bm25              0.537   0.519  0.571  0.632  0.545    0.083    0.533
+  zfuse             0.611   0.444  0.607  0.646  0.582    0.206    0.536
+  v1_full           0.381   0.218  0.768  0.650  0.522    0.370    0.495
+paired vs v1_full: bm25 +0.0021 p=0.948; zfuse -0.0323 p=0.213 (p_holm 0.853)
+```
+**Reading:**
+- On this benchmark, v1 ContextFS is **statistically indistinguishable from BM25** and slightly
+  below a plain BM25+dense z-fusion.
+- v1 wins format (0.768) and temporal (0.370, best of all) cues. It loses activity and entity cues
+  badly, because it has no lexical channel (as the audit predicted).
+- Temporal cues are hard for every system: the headroom for direction A.
+- The caveats are strong: template queries, 3 personas, and the template content is far simpler
+  than real text.
+
+### Measured: power (`scripts/power_calc.py`, on the run above)
+- Paired σ_d of nDCG@10 is 0.26–0.27 against the fusion baselines.
+- Detecting Δ = 0.03 needs **~640 test queries** at α = 0.05, or **~850** at the Holm α ≈ 0.0167.
+- So the test split is sized at about 20 personas × ~42 queries.
+
+### Disclosure: test-family exposure
+During development one family-**B** persona (professional, seed 2) was generated to inspect
+phrasing, and 8 of its template queries were read. That persona was deleted. Test personas will
+use **different seeds** (1001+), and test queries are to be LLM-written (ADR-0015 §6), so no
+inspected item will be in the frozen test split. Recorded for transparency.
+
+### Still open in Phase 3 (blocked on the user, then continuing)
+1. **LLM-written queries for the test split.** This is the project's **first real GPU workload**.
+   It needs the user's go-ahead, with eyes on screen, plus a download of a local LLM runtime and
+   model (proposed: portable llama.cpp CUDA build in `.tools/`, an 8B instruct GGUF in
+   `models/llm/`, about 5 GB, all on D:).
+2. **Donor statistics** need the user's consent and choice of folders. They must be frozen before
+   any estimator rule.
+3. User-only T rows (optional before the estimator).
+4. After 1–2: generate dev (seeds 1–20, family A) and test (seeds 1001–1020, family B) personas;
+   freeze the test split (hash); add the cross-encoder rerank baseline (eval-only; model
+   download); the per-layer ablation runner; the explanation-faithfulness metric; the v1 smoke
+   regression anchor inside the harness.
