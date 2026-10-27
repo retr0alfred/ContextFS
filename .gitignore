@@ -30,8 +30,8 @@ contextfs.local.toml
 .contextfs.toml
 *.local.toml
 
-# --- Generated synthetic corpus (reproducible from scripts, not committed) --
-data/synthetic/corpus/
+# --- Generated smoke corpus (reproducible from scripts, not committed) -------
+tests/fixtures/smoke/corpus/
 
 # --- Python ----------------------------------------------------------------
 __pycache__/

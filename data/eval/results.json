@@ -16,7 +16,7 @@
     "r@3": 0.4314,
     "r@5": 0.5637,
     "r@10": 0.6858,
-    "median_latency_ms": 16.11,
+    "median_latency_ms": 17.41,
     "explanation_coverage": 1.0,
     "by_kind": {
       "activity": {
@@ -78,7 +78,7 @@
     "r@3": 0.4608,
     "r@5": 0.5637,
     "r@10": 0.6858,
-    "median_latency_ms": 30.11,
+    "median_latency_ms": 32.56,
     "explanation_coverage": 1.0,
     "by_kind": {
       "activity": {
@@ -141,7 +141,7 @@
     "r@3": 0.4725,
     "r@5": 0.6363,
     "r@10": 0.7387,
-    "median_latency_ms": 30.96,
+    "median_latency_ms": 32.98,
     "explanation_coverage": 1.0,
     "by_kind": {
       "activity": {
@@ -205,7 +205,7 @@
     "r@3": 0.5755,
     "r@5": 0.7392,
     "r@10": 0.8564,
-    "median_latency_ms": 30.38,
+    "median_latency_ms": 32.01,
     "explanation_coverage": 1.0,
     "by_kind": {
       "activity": {
@@ -269,7 +269,7 @@
     "r@3": 0.4608,
     "r@5": 0.6363,
     "r@10": 0.7387,
-    "median_latency_ms": 30.9,
+    "median_latency_ms": 32.38,
     "explanation_coverage": 1.0,
     "by_kind": {
       "activity": {
@@ -334,7 +334,7 @@
     "r@3": 0.5637,
     "r@5": 0.7392,
     "r@10": 0.8564,
-    "median_latency_ms": 31.97,
+    "median_latency_ms": 33.17,
     "explanation_coverage": 1.0,
     "by_kind": {
       "activity": {

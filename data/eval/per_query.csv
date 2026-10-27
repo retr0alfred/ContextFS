@@ -1,103 +1,103 @@
 configuration,query_id,kind,difficulty,rr,target_rank,p@5,r@10,latency_ms,text
-dense_flat,q01,activity,hard,0.0,,0.4,0.4,32.59,the pdf I studied before my machine learning exam
-dense_flat,q02,temporal,hard,0.0,,0.0,0.0,19.32,what was due in the third week of October
-dense_flat,q03,semantic,easy,1.0,1,1.0,1.0,18.13,my notes on support vector machines and the kernel trick
-dense_flat,q04,activity,hard,0.0,,0.0,0.125,18.24,everything from the hackathon weekend
-dense_flat,q05,entity,easy,0.5,2,0.3333,1.0,18.44,documents where my supervisor Dr Murari is mentioned
-dense_flat,q06,hybrid,easy,1.0,1,1.0,1.0,16.26,the slides I presented about the traffic project
-dense_flat,q07,temporal,hard,0.0,,0.0,0.0,15.38,deadlines I had in September
-dense_flat,q08,activity,hard,1.0,1,0.6,0.8,16.1,what I was working on while applying for internships
-dense_flat,q09,semantic,easy,1.0,1,0.75,1.0,15.48,database normalization with BCNF decomposition examples
-dense_flat,q10,hybrid,easy,1.0,1,1.0,1.0,17.57,the spreadsheet that told me when my exams were
-dense_flat,q11,semantic,easy,0.0,,0.0,0.3333,15.74,my final year project proposal document
-dense_flat,q12,hybrid,hard,1.0,1,1.0,1.0,15.79,meetings I had with my guide in February
-dense_flat,q13,entity,hard,1.0,1,1.0,1.0,16.11,anything related to my Zoho application
-dense_flat,q14,activity,hard,0.25,4,0.5,0.5,15.94,the code I wrote during the hackathon
-dense_flat,q15,semantic,easy,0.5,2,1.0,1.0,16.06,how do bagging and boosting differ
-dense_flat,q16,hybrid,hard,0.1,10,0.0,0.5,15.82,the assignment I revised and submitted a version of
-dense_flat,q17,temporal,hard,0.2,5,1.0,1.0,16.55,what deadline is coming up that I might have forgotten
-dense_format,q01,activity,hard,0.0,,0.4,0.4,31.97,the pdf I studied before my machine learning exam
-dense_format,q02,temporal,hard,0.0,,0.0,0.0,34.64,what was due in the third week of October
-dense_format,q03,semantic,easy,1.0,1,1.0,1.0,33.85,my notes on support vector machines and the kernel trick
-dense_format,q04,activity,hard,0.0,,0.0,0.125,28.89,everything from the hackathon weekend
-dense_format,q05,entity,easy,0.5,2,0.3333,1.0,31.66,documents where my supervisor Dr Murari is mentioned
-dense_format,q06,hybrid,easy,1.0,1,1.0,1.0,30.07,the slides I presented about the traffic project
-dense_format,q07,temporal,hard,0.0,,0.0,0.0,29.19,deadlines I had in September
-dense_format,q08,activity,hard,1.0,1,0.6,0.8,31.36,what I was working on while applying for internships
-dense_format,q09,semantic,easy,1.0,1,0.75,1.0,29.49,database normalization with BCNF decomposition examples
-dense_format,q10,hybrid,easy,1.0,1,1.0,1.0,32.82,the spreadsheet that told me when my exams were
-dense_format,q11,semantic,easy,0.0,,0.0,0.3333,29.24,my final year project proposal document
-dense_format,q12,hybrid,hard,1.0,1,1.0,1.0,29.95,meetings I had with my guide in February
-dense_format,q13,entity,hard,1.0,1,1.0,1.0,246.13,anything related to my Zoho application
-dense_format,q14,activity,hard,0.5,2,0.5,0.5,27.99,the code I wrote during the hackathon
-dense_format,q15,semantic,easy,0.5,2,1.0,1.0,28.68,how do bagging and boosting differ
-dense_format,q16,hybrid,hard,0.1,10,0.0,0.5,30.39,the assignment I revised and submitted a version of
-dense_format,q17,temporal,hard,0.2,5,1.0,1.0,30.11,what deadline is coming up that I might have forgotten
-semantic_graph,q01,activity,hard,0.3333,3,0.8,0.8,32.5,the pdf I studied before my machine learning exam
-semantic_graph,q02,temporal,hard,0.0,,0.0,0.0,31.0,what was due in the third week of October
-semantic_graph,q03,semantic,easy,1.0,1,1.0,1.0,32.16,my notes on support vector machines and the kernel trick
-semantic_graph,q04,activity,hard,0.0,,0.0,0.125,33.37,everything from the hackathon weekend
-semantic_graph,q05,entity,easy,0.5,2,0.3333,1.0,34.64,documents where my supervisor Dr Murari is mentioned
-semantic_graph,q06,hybrid,easy,1.0,1,1.0,1.0,33.6,the slides I presented about the traffic project
-semantic_graph,q07,temporal,hard,0.0,,0.0,0.0,29.54,deadlines I had in September
-semantic_graph,q08,activity,hard,1.0,1,0.6,0.8,30.22,what I was working on while applying for internships
-semantic_graph,q09,semantic,easy,1.0,1,0.75,1.0,29.86,database normalization with BCNF decomposition examples
-semantic_graph,q10,hybrid,easy,1.0,1,1.0,1.0,30.96,the spreadsheet that told me when my exams were
-semantic_graph,q11,semantic,easy,0.25,4,0.3333,0.3333,32.0,my final year project proposal document
-semantic_graph,q12,hybrid,hard,1.0,1,1.0,1.0,30.53,meetings I had with my guide in February
-semantic_graph,q13,entity,hard,1.0,1,1.0,1.0,29.87,anything related to my Zoho application
-semantic_graph,q14,activity,hard,0.5,2,1.0,1.0,30.04,the code I wrote during the hackathon
-semantic_graph,q15,semantic,easy,0.5,2,1.0,1.0,29.23,how do bagging and boosting differ
-semantic_graph,q16,hybrid,hard,0.1,10,0.0,0.5,29.6,the assignment I revised and submitted a version of
-semantic_graph,q17,temporal,hard,0.2,5,1.0,1.0,32.41,what deadline is coming up that I might have forgotten
-semantic_graph_temporal,q01,activity,hard,0.3333,3,0.8,0.8,31.22,the pdf I studied before my machine learning exam
-semantic_graph_temporal,q02,temporal,hard,0.5,2,1.0,1.0,33.86,what was due in the third week of October
-semantic_graph_temporal,q03,semantic,easy,1.0,1,1.0,1.0,33.33,my notes on support vector machines and the kernel trick
-semantic_graph_temporal,q04,activity,hard,0.0,,0.0,0.125,29.71,everything from the hackathon weekend
-semantic_graph_temporal,q05,entity,easy,0.5,2,0.3333,1.0,30.64,documents where my supervisor Dr Murari is mentioned
-semantic_graph_temporal,q06,hybrid,easy,1.0,1,1.0,1.0,29.54,the slides I presented about the traffic project
-semantic_graph_temporal,q07,temporal,hard,0.3333,3,0.75,1.0,29.56,deadlines I had in September
-semantic_graph_temporal,q08,activity,hard,1.0,1,0.6,0.8,30.77,what I was working on while applying for internships
-semantic_graph_temporal,q09,semantic,easy,1.0,1,0.75,1.0,30.14,database normalization with BCNF decomposition examples
-semantic_graph_temporal,q10,hybrid,easy,1.0,1,1.0,1.0,30.38,the spreadsheet that told me when my exams were
-semantic_graph_temporal,q11,semantic,easy,0.25,4,0.3333,0.3333,29.89,my final year project proposal document
-semantic_graph_temporal,q12,hybrid,hard,1.0,1,1.0,1.0,29.87,meetings I had with my guide in February
-semantic_graph_temporal,q13,entity,hard,1.0,1,1.0,1.0,30.13,anything related to my Zoho application
-semantic_graph_temporal,q14,activity,hard,0.5,2,1.0,1.0,30.74,the code I wrote during the hackathon
-semantic_graph_temporal,q15,semantic,easy,0.5,2,1.0,1.0,29.36,how do bagging and boosting differ
-semantic_graph_temporal,q16,hybrid,hard,0.1,10,0.0,0.5,30.46,the assignment I revised and submitted a version of
-semantic_graph_temporal,q17,temporal,hard,0.2,5,1.0,1.0,31.46,what deadline is coming up that I might have forgotten
-semantic_graph_activity,q01,activity,hard,1.0,1,0.8,0.8,30.58,the pdf I studied before my machine learning exam
-semantic_graph_activity,q02,temporal,hard,0.0,,0.0,0.0,36.63,what was due in the third week of October
-semantic_graph_activity,q03,semantic,easy,1.0,1,1.0,1.0,31.0,my notes on support vector machines and the kernel trick
-semantic_graph_activity,q04,activity,hard,0.0,,0.0,0.125,29.15,everything from the hackathon weekend
-semantic_graph_activity,q05,entity,easy,0.5,2,0.3333,1.0,30.9,documents where my supervisor Dr Murari is mentioned
-semantic_graph_activity,q06,hybrid,easy,1.0,1,1.0,1.0,30.23,the slides I presented about the traffic project
-semantic_graph_activity,q07,temporal,hard,0.0,,0.0,0.0,31.38,deadlines I had in September
-semantic_graph_activity,q08,activity,hard,1.0,1,0.6,0.8,33.57,what I was working on while applying for internships
-semantic_graph_activity,q09,semantic,easy,1.0,1,0.75,1.0,33.22,database normalization with BCNF decomposition examples
-semantic_graph_activity,q10,hybrid,easy,1.0,1,1.0,1.0,31.29,the spreadsheet that told me when my exams were
-semantic_graph_activity,q11,semantic,easy,0.25,4,0.3333,0.3333,29.86,my final year project proposal document
-semantic_graph_activity,q12,hybrid,hard,1.0,1,1.0,1.0,29.9,meetings I had with my guide in February
-semantic_graph_activity,q13,entity,hard,1.0,1,1.0,1.0,29.6,anything related to my Zoho application
-semantic_graph_activity,q14,activity,hard,0.3333,3,1.0,1.0,32.12,the code I wrote during the hackathon
-semantic_graph_activity,q15,semantic,easy,0.5,2,1.0,1.0,29.18,how do bagging and boosting differ
-semantic_graph_activity,q16,hybrid,hard,0.125,8,0.0,0.5,30.21,the assignment I revised and submitted a version of
-semantic_graph_activity,q17,temporal,hard,0.2,5,1.0,1.0,31.61,what deadline is coming up that I might have forgotten
-full,q01,activity,hard,1.0,1,0.8,0.8,34.07,the pdf I studied before my machine learning exam
-full,q02,temporal,hard,0.5,2,1.0,1.0,30.44,what was due in the third week of October
-full,q03,semantic,easy,1.0,1,1.0,1.0,31.97,my notes on support vector machines and the kernel trick
-full,q04,activity,hard,0.0,,0.0,0.125,30.4,everything from the hackathon weekend
-full,q05,entity,easy,0.5,2,0.3333,1.0,30.61,documents where my supervisor Dr Murari is mentioned
-full,q06,hybrid,easy,1.0,1,1.0,1.0,29.87,the slides I presented about the traffic project
-full,q07,temporal,hard,0.3333,3,0.75,1.0,29.74,deadlines I had in September
-full,q08,activity,hard,1.0,1,0.6,0.8,30.88,what I was working on while applying for internships
-full,q09,semantic,easy,1.0,1,0.75,1.0,32.8,database normalization with BCNF decomposition examples
-full,q10,hybrid,easy,1.0,1,1.0,1.0,32.15,the spreadsheet that told me when my exams were
-full,q11,semantic,easy,0.25,4,0.3333,0.3333,36.46,my final year project proposal document
-full,q12,hybrid,hard,1.0,1,1.0,1.0,33.32,meetings I had with my guide in February
-full,q13,entity,hard,1.0,1,1.0,1.0,32.4,anything related to my Zoho application
-full,q14,activity,hard,0.3333,3,1.0,1.0,30.6,the code I wrote during the hackathon
-full,q15,semantic,easy,0.5,2,1.0,1.0,30.26,how do bagging and boosting differ
-full,q16,hybrid,hard,0.125,8,0.0,0.5,33.46,the assignment I revised and submitted a version of
-full,q17,temporal,hard,0.2,5,1.0,1.0,36.71,what deadline is coming up that I might have forgotten
+dense_flat,q01,activity,hard,0.0,,0.4,0.4,33.82,the pdf I studied before my machine learning exam
+dense_flat,q02,temporal,hard,0.0,,0.0,0.0,17.18,what was due in the third week of October
+dense_flat,q03,semantic,easy,1.0,1,1.0,1.0,20.41,my notes on support vector machines and the kernel trick
+dense_flat,q04,activity,hard,0.0,,0.0,0.125,20.5,everything from the hackathon weekend
+dense_flat,q05,entity,easy,0.5,2,0.3333,1.0,20.62,documents where my supervisor Dr Murari is mentioned
+dense_flat,q06,hybrid,easy,1.0,1,1.0,1.0,17.01,the slides I presented about the traffic project
+dense_flat,q07,temporal,hard,0.0,,0.0,0.0,16.57,deadlines I had in September
+dense_flat,q08,activity,hard,1.0,1,0.6,0.8,17.08,what I was working on while applying for internships
+dense_flat,q09,semantic,easy,1.0,1,0.75,1.0,16.95,database normalization with BCNF decomposition examples
+dense_flat,q10,hybrid,easy,1.0,1,1.0,1.0,19.5,the spreadsheet that told me when my exams were
+dense_flat,q11,semantic,easy,0.0,,0.0,0.3333,16.57,my final year project proposal document
+dense_flat,q12,hybrid,hard,1.0,1,1.0,1.0,18.14,meetings I had with my guide in February
+dense_flat,q13,entity,hard,1.0,1,1.0,1.0,16.78,anything related to my Zoho application
+dense_flat,q14,activity,hard,0.25,4,0.5,0.5,16.96,the code I wrote during the hackathon
+dense_flat,q15,semantic,easy,0.5,2,1.0,1.0,18.13,how do bagging and boosting differ
+dense_flat,q16,hybrid,hard,0.1,10,0.0,0.5,17.41,the assignment I revised and submitted a version of
+dense_flat,q17,temporal,hard,0.2,5,1.0,1.0,18.33,what deadline is coming up that I might have forgotten
+dense_format,q01,activity,hard,0.0,,0.4,0.4,60.38,the pdf I studied before my machine learning exam
+dense_format,q02,temporal,hard,0.0,,0.0,0.0,33.09,what was due in the third week of October
+dense_format,q03,semantic,easy,1.0,1,1.0,1.0,33.39,my notes on support vector machines and the kernel trick
+dense_format,q04,activity,hard,0.0,,0.0,0.125,31.62,everything from the hackathon weekend
+dense_format,q05,entity,easy,0.5,2,0.3333,1.0,35.48,documents where my supervisor Dr Murari is mentioned
+dense_format,q06,hybrid,easy,1.0,1,1.0,1.0,32.36,the slides I presented about the traffic project
+dense_format,q07,temporal,hard,0.0,,0.0,0.0,32.04,deadlines I had in September
+dense_format,q08,activity,hard,1.0,1,0.6,0.8,33.23,what I was working on while applying for internships
+dense_format,q09,semantic,easy,1.0,1,0.75,1.0,32.56,database normalization with BCNF decomposition examples
+dense_format,q10,hybrid,easy,1.0,1,1.0,1.0,32.75,the spreadsheet that told me when my exams were
+dense_format,q11,semantic,easy,0.0,,0.0,0.3333,33.05,my final year project proposal document
+dense_format,q12,hybrid,hard,1.0,1,1.0,1.0,32.11,meetings I had with my guide in February
+dense_format,q13,entity,hard,1.0,1,1.0,1.0,32.45,anything related to my Zoho application
+dense_format,q14,activity,hard,0.5,2,0.5,0.5,31.09,the code I wrote during the hackathon
+dense_format,q15,semantic,easy,0.5,2,1.0,1.0,31.71,how do bagging and boosting differ
+dense_format,q16,hybrid,hard,0.1,10,0.0,0.5,31.66,the assignment I revised and submitted a version of
+dense_format,q17,temporal,hard,0.2,5,1.0,1.0,36.72,what deadline is coming up that I might have forgotten
+semantic_graph,q01,activity,hard,0.3333,3,0.8,0.8,34.29,the pdf I studied before my machine learning exam
+semantic_graph,q02,temporal,hard,0.0,,0.0,0.0,33.65,what was due in the third week of October
+semantic_graph,q03,semantic,easy,1.0,1,1.0,1.0,33.43,my notes on support vector machines and the kernel trick
+semantic_graph,q04,activity,hard,0.0,,0.0,0.125,32.18,everything from the hackathon weekend
+semantic_graph,q05,entity,easy,0.5,2,0.3333,1.0,33.55,documents where my supervisor Dr Murari is mentioned
+semantic_graph,q06,hybrid,easy,1.0,1,1.0,1.0,32.16,the slides I presented about the traffic project
+semantic_graph,q07,temporal,hard,0.0,,0.0,0.0,32.98,deadlines I had in September
+semantic_graph,q08,activity,hard,1.0,1,0.6,0.8,37.08,what I was working on while applying for internships
+semantic_graph,q09,semantic,easy,1.0,1,0.75,1.0,35.37,database normalization with BCNF decomposition examples
+semantic_graph,q10,hybrid,easy,1.0,1,1.0,1.0,37.32,the spreadsheet that told me when my exams were
+semantic_graph,q11,semantic,easy,0.25,4,0.3333,0.3333,31.5,my final year project proposal document
+semantic_graph,q12,hybrid,hard,1.0,1,1.0,1.0,31.82,meetings I had with my guide in February
+semantic_graph,q13,entity,hard,1.0,1,1.0,1.0,32.04,anything related to my Zoho application
+semantic_graph,q14,activity,hard,0.5,2,1.0,1.0,32.31,the code I wrote during the hackathon
+semantic_graph,q15,semantic,easy,0.5,2,1.0,1.0,31.53,how do bagging and boosting differ
+semantic_graph,q16,hybrid,hard,0.1,10,0.0,0.5,33.35,the assignment I revised and submitted a version of
+semantic_graph,q17,temporal,hard,0.2,5,1.0,1.0,32.16,what deadline is coming up that I might have forgotten
+semantic_graph_temporal,q01,activity,hard,0.3333,3,0.8,0.8,32.59,the pdf I studied before my machine learning exam
+semantic_graph_temporal,q02,temporal,hard,0.5,2,1.0,1.0,31.79,what was due in the third week of October
+semantic_graph_temporal,q03,semantic,easy,1.0,1,1.0,1.0,32.29,my notes on support vector machines and the kernel trick
+semantic_graph_temporal,q04,activity,hard,0.0,,0.0,0.125,31.48,everything from the hackathon weekend
+semantic_graph_temporal,q05,entity,easy,0.5,2,0.3333,1.0,32.72,documents where my supervisor Dr Murari is mentioned
+semantic_graph_temporal,q06,hybrid,easy,1.0,1,1.0,1.0,31.63,the slides I presented about the traffic project
+semantic_graph_temporal,q07,temporal,hard,0.3333,3,0.75,1.0,32.01,deadlines I had in September
+semantic_graph_temporal,q08,activity,hard,1.0,1,0.6,0.8,32.65,what I was working on while applying for internships
+semantic_graph_temporal,q09,semantic,easy,1.0,1,0.75,1.0,31.68,database normalization with BCNF decomposition examples
+semantic_graph_temporal,q10,hybrid,easy,1.0,1,1.0,1.0,32.39,the spreadsheet that told me when my exams were
+semantic_graph_temporal,q11,semantic,easy,0.25,4,0.3333,0.3333,31.63,my final year project proposal document
+semantic_graph_temporal,q12,hybrid,hard,1.0,1,1.0,1.0,33.03,meetings I had with my guide in February
+semantic_graph_temporal,q13,entity,hard,1.0,1,1.0,1.0,31.82,anything related to my Zoho application
+semantic_graph_temporal,q14,activity,hard,0.5,2,1.0,1.0,31.76,the code I wrote during the hackathon
+semantic_graph_temporal,q15,semantic,easy,0.5,2,1.0,1.0,31.16,how do bagging and boosting differ
+semantic_graph_temporal,q16,hybrid,hard,0.1,10,0.0,0.5,32.01,the assignment I revised and submitted a version of
+semantic_graph_temporal,q17,temporal,hard,0.2,5,1.0,1.0,33.73,what deadline is coming up that I might have forgotten
+semantic_graph_activity,q01,activity,hard,1.0,1,0.8,0.8,32.25,the pdf I studied before my machine learning exam
+semantic_graph_activity,q02,temporal,hard,0.0,,0.0,0.0,32.15,what was due in the third week of October
+semantic_graph_activity,q03,semantic,easy,1.0,1,1.0,1.0,33.64,my notes on support vector machines and the kernel trick
+semantic_graph_activity,q04,activity,hard,0.0,,0.0,0.125,31.81,everything from the hackathon weekend
+semantic_graph_activity,q05,entity,easy,0.5,2,0.3333,1.0,32.45,documents where my supervisor Dr Murari is mentioned
+semantic_graph_activity,q06,hybrid,easy,1.0,1,1.0,1.0,31.38,the slides I presented about the traffic project
+semantic_graph_activity,q07,temporal,hard,0.0,,0.0,0.0,31.83,deadlines I had in September
+semantic_graph_activity,q08,activity,hard,1.0,1,0.6,0.8,33.68,what I was working on while applying for internships
+semantic_graph_activity,q09,semantic,easy,1.0,1,0.75,1.0,33.58,database normalization with BCNF decomposition examples
+semantic_graph_activity,q10,hybrid,easy,1.0,1,1.0,1.0,32.38,the spreadsheet that told me when my exams were
+semantic_graph_activity,q11,semantic,easy,0.25,4,0.3333,0.3333,33.91,my final year project proposal document
+semantic_graph_activity,q12,hybrid,hard,1.0,1,1.0,1.0,32.01,meetings I had with my guide in February
+semantic_graph_activity,q13,entity,hard,1.0,1,1.0,1.0,33.0,anything related to my Zoho application
+semantic_graph_activity,q14,activity,hard,0.3333,3,1.0,1.0,32.88,the code I wrote during the hackathon
+semantic_graph_activity,q15,semantic,easy,0.5,2,1.0,1.0,31.44,how do bagging and boosting differ
+semantic_graph_activity,q16,hybrid,hard,0.125,8,0.0,0.5,31.96,the assignment I revised and submitted a version of
+semantic_graph_activity,q17,temporal,hard,0.2,5,1.0,1.0,34.07,what deadline is coming up that I might have forgotten
+full,q01,activity,hard,1.0,1,0.8,0.8,33.52,the pdf I studied before my machine learning exam
+full,q02,temporal,hard,0.5,2,1.0,1.0,32.4,what was due in the third week of October
+full,q03,semantic,easy,1.0,1,1.0,1.0,32.92,my notes on support vector machines and the kernel trick
+full,q04,activity,hard,0.0,,0.0,0.125,34.38,everything from the hackathon weekend
+full,q05,entity,easy,0.5,2,0.3333,1.0,34.02,documents where my supervisor Dr Murari is mentioned
+full,q06,hybrid,easy,1.0,1,1.0,1.0,35.85,the slides I presented about the traffic project
+full,q07,temporal,hard,0.3333,3,0.75,1.0,40.67,deadlines I had in September
+full,q08,activity,hard,1.0,1,0.6,0.8,40.07,what I was working on while applying for internships
+full,q09,semantic,easy,1.0,1,0.75,1.0,31.94,database normalization with BCNF decomposition examples
+full,q10,hybrid,easy,1.0,1,1.0,1.0,32.05,the spreadsheet that told me when my exams were
+full,q11,semantic,easy,0.25,4,0.3333,0.3333,31.57,my final year project proposal document
+full,q12,hybrid,hard,1.0,1,1.0,1.0,32.53,meetings I had with my guide in February
+full,q13,entity,hard,1.0,1,1.0,1.0,32.2,anything related to my Zoho application
+full,q14,activity,hard,0.3333,3,1.0,1.0,33.17,the code I wrote during the hackathon
+full,q15,semantic,easy,0.5,2,1.0,1.0,31.33,how do bagging and boosting differ
+full,q16,hybrid,hard,0.125,8,0.0,0.5,35.42,the assignment I revised and submitted a version of
+full,q17,temporal,hard,0.2,5,1.0,1.0,35.62,what deadline is coming up that I might have forgotten

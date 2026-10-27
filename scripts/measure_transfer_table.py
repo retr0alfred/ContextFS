@@ -422,7 +422,7 @@ def to_markdown(table: dict) -> str:
             lines.append(f"| {tool} | error: {rows[0]['error'][:60]} | | | | | |")
             continue
 
-        def agg(key):
+        def agg(key, ok=ok):
             vals = sorted({str(r[key]) for r in ok})
             return "/".join(vals)
 

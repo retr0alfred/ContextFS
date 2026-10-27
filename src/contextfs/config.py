@@ -77,7 +77,7 @@ class GeneralConfig(_Section):
 class PathsConfig(_Section):
     """Filesystem locations. All are resolved to absolute paths at load time."""
 
-    root: Path = Path("data/synthetic/corpus")
+    root: Path = Path("tests/fixtures/smoke/corpus")
     data_dir: Path = Path(".contextfs")
     sqlite_path: Path = Path("contextfs.db")
     vector_path: Path = Path("vectors.lance")
@@ -316,7 +316,7 @@ class RetrievalConfig(_Section):
 class EvalConfig(_Section):
     """Evaluation harness inputs and outputs (Phases 21-22)."""
 
-    ground_truth: Path = Path("data/synthetic/ground_truth.json")
+    ground_truth: Path = Path("tests/fixtures/smoke/ground_truth.json")
     results_dir: Path = Path("data/eval")
     k_values: list[int] = Field(default_factory=lambda: [1, 3, 5, 10])
 

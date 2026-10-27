@@ -262,7 +262,7 @@ def ensure_embedding(model: str, check_only: bool) -> str:
 
 
 def ensure_corpus(check_only: bool) -> str:
-    corpus = PROJECT_ROOT / "data" / "synthetic" / "corpus"
+    corpus = PROJECT_ROOT / "tests" / "fixtures" / "smoke" / "corpus"
     if corpus.is_dir() and any(corpus.rglob("*.*")):
         return "smoke corpus present"
     if check_only:
