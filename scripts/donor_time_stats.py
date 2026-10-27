@@ -1,4 +1,4 @@
-"""Donor time statistics: histograms of real file-time behaviour (ADR-0015 §3).
+r"""Donor time statistics: histograms of real file-time behaviour (ADR-0015 §3).
 
 Calibrates the benchmark's model of *undamaged* time behaviour on real folders. That model must be
 frozen (hashed) before any estimator rule exists, which breaks the circularity found in the fresh

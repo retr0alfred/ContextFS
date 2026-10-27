@@ -3395,3 +3395,80 @@ inspected item will be in the frozen test split. Recorded for transparency.
    freeze the test split (hash); add the cross-encoder rerank baseline (eval-only; model
    download); the per-layer ablation runner; the explanation-faithfulness metric; the v1 smoke
    regression anchor inside the harness.
+
+### Phase 31 — entry 2 (2026-10-28)
+
+#### Decision 96 — Donor statistics skipped; the undamaged-time model uses documented defaults (user decision)
+- The planned donor (the old laptop) is no longer available. The user chose not to block on donor
+  statistics, and may revisit later with another source (a phone's files, a classmate's machine).
+- The benchmark's undamaged-time model is therefore a set of **documented default assumptions**.
+- It is frozen before any estimator rule: `data/calibration/undamaged_model_v1.md`, with sha256 of
+  the generator sources it describes:
+  - `simulate.py` `998b8680…`
+  - `materialise.py` `d3f282b3…`
+  - `damage.py` `620bcf1d…`
+- **Limitation, stated for the paper:** the undamaged time behaviour is not calibrated on real
+  folders. The known gaps vs reality are listed in that file. `scripts/donor_time_stats.py` stays
+  available for later.
+- Supersedes the donor-statistics step of ADR-0015 §3 (the freeze order T → calibration → rules is
+  unchanged).
+
+#### First real GPU workload: local LLM for query writing (user at the screen)
+- **Runtime:** llama.cpp **b11606** (2026-10-13, Windows x64, CUDA 13.4, chosen to satisfy the
+  two-week pin rule) in `.tools/llamacpp/b11606/`.
+- **Model:** `Qwen/Qwen3-8B-GGUF : Qwen3-8B-Q4_K_M.gguf` (Apache-2.0) in `models/llm/qwen3-8b-q4km/`.
+- **Download incidents:**
+  - a curl resume first stopped at 2.2 GB, then a second resume produced a **corrupt 5,297,087,296-byte
+    file** (the published size is 5,027,783,488), so it was deleted;
+  - re-downloaded with `huggingface_hub` in a visible terminal tab;
+  - per the user's request, `HF_HUB_DISABLE_TELEMETRY` is no longer set for this download;
+  - verified: `size 5027783488`, `sha256 d98cdcbd03e17ce47681435b5150e34c1417f50b5c0019dd560e4882c5745785`,
+    matching the published file.
+- **Device check before any generation** (user watching):
+  ```
+  llama-server --list-devices  ->  CUDA0: NVIDIA GeForce RTX 5060 Laptop GPU (8123 MiB, 7043 MiB free)   [only device]
+  nvidia-smi compute apps      ->  24928, ...\.tools\llamacpp\b11606\llama-server.exe, [N/A]
+  nvidia-smi                   ->  NVIDIA GeForce RTX 5060 Laptop GPU, 5248 MiB / 8151 MiB, 0 %
+  server bound to 127.0.0.1:8080 (-ngl 99, -c 4096, --jinja, --seed 42)
+  ```
+  **The user confirmed on screen that it is the RTX 5060**, and generation was then allowed.
+- **Smoke run on one dev persona:** 36 queries in 12.5 s. The queries read like search-box text.
+  The same run exposed generator problems, all fixed:
+  - near-duplicate targets (many photos of one trip), now capped at 3 targets per activity;
+  - entity hints were topical keywords ("UX"), now a person first, then a known organisation;
+  - the LLM occasionally invented a date, so outputs naming a month or year absent from the hints
+    are rejected and retried.
+- **Sizing:** with the diversity cap, professional and researcher personas gave too few targets
+  (12 queries), so the split now generates them at scale 2.5 (students stay at 1.0) —
+  `scripts/make_splits.py` `SCALE`. All 40 split personas were regenerated from scratch, and the
+  early ad-hoc dev personas were deleted (their dev-smoke results stay committed).
+- Added `scripts/regen_queries.py`, which rebuilds template queries from sealed truth without
+  touching the corpus. `scripts/llm_rewrite_queries.py` gained `--quiet` (counts only), used for
+  every **test** persona so no test query is ever displayed.
+
+#### State at end of 2026-10-28 (paused at the user's request)
+- All 40 split personas are generated: dev seeds 1–20 family A, test seeds 1001–1020 family B.
+  **Not yet frozen.**
+- Next, in order:
+  1. LLM-rewrite queries for all 40 (test with `--quiet`).
+  2. Leakage/overlap report on dev.
+  3. `make_splits.py freeze` and commit the hash.
+  4. Index the dev personas.
+  5. Cross-encoder rerank baseline; ablation runner; faithfulness metric.
+  6. Full dev evaluation.
+  7. End-of-phase log and stop.
+- The llama-server tab is stopped overnight; restart it with the same command (logged above).
+
+#### Measured at pause (2026-10-28 02:3x)
+- All 40 split personas generated (`scripts/make_splits.py generate`):
+  - **dev:** 20 personas, 4,884 files, 758 template queries;
+  - **test:** 20 personas, 4,785 files, 761 template queries.
+- **Power gap:** 761 test queries clears the ~640 needed at α = 0.05 but not the ~850 needed with
+  Holm across 3 primaries. Plan: add ~4 test personas (seeds 1021–1024) before freezing.
+- **Local server hygiene:**
+  - llama-server's log showed two long generations (1,267 and 234 tokens) that did not come from
+    the project's scripts, which cap every request at 48 tokens;
+  - the server had warned "no API key is set and CORS allows all origins";
+  - **from now on it starts with `--api-key`** (a random key held by the scripts) so no other local
+    program or web page can use it.
+- The GPU was released at pause (`nvidia-smi`: 0 MiB, no compute processes).

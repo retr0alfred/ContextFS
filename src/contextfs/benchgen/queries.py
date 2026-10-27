@@ -19,7 +19,12 @@ import random
 from dataclasses import dataclass, field
 from datetime import datetime
 
+from contextfs.benchgen.simulate import COMPANIES, VENUES
+
 __all__ = ["Query", "generate_queries", "CUE_TYPES"]
+
+#: Organisations a person would name in a query (client, company, venue).
+ORGANISATIONS = set(COMPANIES) | set(VENUES)
 
 CUE_TYPES = ("temporal", "activity", "entity", "semantic", "format", "mixed", "vague")
 
@@ -168,19 +173,19 @@ def generate_queries(
     templates = _T[family]
     queries: list[Query] = []
     used: set[str] = set()
+    per_activity: dict[str, int] = {}
     cues = [CUE_TYPES[i % len(CUE_TYPES)] for i in range(n)]
     for cue in cues:
         for r in candidates:
             if r["rel_path"] in used:
                 continue
+            # Diversity: at most three targets per activity (a trip has many near-identical photos).
+            if per_activity.get(r["activity_id"], 0) >= 3:
+                continue
             act = acts.get(r["activity_id"]) or {}
-            entity = (
-                next(iter(r["keywords"]), "")
-                if act.get("kind") in {"job_search", "client_project"}
-                else ""
-            )
-            if act.get("people"):
-                entity = entity or act["people"][0]
+            # Entity: a named person first, then a known organisation; never a topical keyword.
+            orgs = [k for k in r["keywords"] if k in ORGANISATIONS]
+            entity = (act.get("people") or [""])[0] or (orgs[0] if orgs else "")
             if cue == "entity" and not entity:
                 continue
             if r["kind"] in {"jpg", "zip"} and cue not in _TEXTLESS_CUES:
@@ -210,6 +215,7 @@ def generate_queries(
                     )
                     qrels[other["rel_path"]] = 2 if same_doc else 1
             used.add(r["rel_path"])
+            per_activity[r["activity_id"]] = per_activity.get(r["activity_id"], 0) + 1
             queries.append(
                 Query(
                     query_id=f"{persona['persona_id']}:q{len(queries) + 1:03d}",
