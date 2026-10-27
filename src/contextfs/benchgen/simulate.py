@@ -255,6 +255,7 @@ class _Sim:
                 keywords=list(keywords or act.keywords),
                 dates=list(dates),
                 infile_author=self.p.name,
+                people=list(act.people),
             )
         )
 
@@ -271,6 +272,8 @@ class _Sim:
                 keywords=list(act.keywords) if act else [],
                 dates=list(dates),
                 infile_author=author or self.person(),
+                # A lecturer or supervisor who wrote a handout is named in it.
+                people=[author] if author.startswith(("Prof.", "Dr.")) else [],
             )
         )
 

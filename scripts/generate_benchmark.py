@@ -26,13 +26,14 @@ from contextfs.benchgen.content import TemplateProvider  # noqa: E402
 from contextfs.benchgen.damage import PROFILES, apply_damage  # noqa: E402
 from contextfs.benchgen.materialise import materialise  # noqa: E402
 from contextfs.benchgen.model import Persona  # noqa: E402
-from contextfs.benchgen.simulate import (
+from contextfs.benchgen.queries import generate_queries  # noqa: E402
+from contextfs.benchgen.simulate import (  # noqa: E402
     ARCHETYPES,
     CITIES,
     FIRST_NAMES,
     LAST_NAMES,
     simulate,
-)  # noqa: E402
+)
 
 #: The persona's "now". Fixed, so generation never depends on the wall clock.
 OBSERVED_AT = datetime(2026, 9, 30, 21, 0, 0)
@@ -69,6 +70,7 @@ def main() -> int:
     parser.add_argument("--migration-days-before-end", type=int, default=120)
     parser.add_argument("--out", type=Path, default=PROJECT_ROOT / "data" / "bench")
     parser.add_argument("--force", action="store_true")
+    parser.add_argument("--queries", type=int, default=42, help="template queries per persona")
     args = parser.parse_args()
 
     persona = make_persona(args.archetype, args.seed, args.family)
@@ -102,6 +104,19 @@ def main() -> int:
     (out_dir / "truth" / "activities.jsonl").write_text(
         "".join(json.dumps(vars(a), default=str) + "\n" for a in activities), encoding="utf-8"
     )
+    from dataclasses import asdict
+
+    records = [p.truth_record() for p in plans]
+    records = json.loads(json.dumps(records, default=str))
+    acts = json.loads(json.dumps([vars(a) for a in activities], default=str))
+    queries = generate_queries(
+        meta["persona"], acts, records, args.queries, persona.family, persona.seed
+    )
+    (out_dir / "truth" / "queries.jsonl").write_text(
+        "".join(json.dumps(asdict(q)) + "\n" for q in queries), encoding="utf-8"
+    )
+    meta["queries"] = len(queries)
+    (out_dir / "truth" / "persona.json").write_text(json.dumps(meta, indent=2), encoding="utf-8")
     print(json.dumps(meta, indent=2))
     return 0
 

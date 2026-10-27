@@ -76,6 +76,7 @@ class FilePlan:
     title: str = ""
     topic: str = ""
     keywords: list[str] = field(default_factory=list)
+    people: list[str] = field(default_factory=list)  # named in the text
     dates: list[DateMention] = field(default_factory=list)
     content: Any = None  # format-specific payload, filled by the content provider
     infile_author: str = ""

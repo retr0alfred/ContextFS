@@ -46,6 +46,7 @@ _FAMILY = {
             "Printed {d}.",
             "Reference dated {d}.",
         ],
+        "people": ["Discussed with {who}.", "From {who}.", "{who} asked about this."],
         "code": "# {title}\n# {topic}: {kw}, {kw2}\n\ndef main():\n    data = load('{kw}')\n    return analyse(data, method='{kw2}')\n",
     },
     "B": {
@@ -73,6 +74,7 @@ _FAMILY = {
             "Copy made {d}.",
             "Source year {d}.",
         ],
+        "people": ["Talked to {who} about it.", "Shared by {who}.", "cc {who}"],
         "code": '"""{title}."""\n\n\ndef run(path):\n    rows = read(path)  # {kw}\n    return fit(rows, strategy="{kw2}")  # {topic}\n',
     },
 }
@@ -113,6 +115,11 @@ class TemplateProvider:
         """Return the format-specific payload for ``plan`` (see datagen.writers)."""
         intro = rng.choice(self.t["intro"]).format(topic=plan.topic or "this", title=plan.title)
         body = self._sentences(plan, rng, rng.randint(3, 7))
+        if plan.people:
+            body.insert(
+                rng.randrange(len(body) + 1),
+                rng.choice(self.t["people"]).format(who=", ".join(plan.people)),
+            )
         dates = self._dates(plan, rng)
         kws = plan.keywords or [plan.topic or "notes", "details"]
         kw, kw2 = (kws[0], kws[1 % len(kws)])
