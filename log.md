@@ -3204,3 +3204,82 @@ again so the user can verify with eyes on screen.
   VirtualBox with the Windows 11 evaluation ISO plus the old laptop. The downloads are the user's.
 - Release pins at least two weeks old (ORT 1.31.1 and symspellpy 6.10.1 were days old at debate
   time).
+
+---
+
+## ▶ MILESTONE M1 — Architecture frozen, app scope reduced (2026-10-27)
+
+### Decision 95 — User adjustments before Phase 3 (user decision, 2026-10-27)
+
+1. **No installer: a portable app.**
+   - A folder containing `ContextFS.exe`, double-click to run. No Add/Remove Programs entry,
+     Start-menu or registry integration, or uninstaller.
+   - Built PyInstaller one-dir, not one-file: one-file would unpack about 0.5 GB to `%TEMP%` on
+     every launch.
+   - → ADR-0004 Rev. 2; ADR-0016 Rev. 1.
+2. **Acceptance bar = the demo on the author's own laptop.**
+   - Full clean-VM testing (VirtualBox, evaluation ISO) is downgraded to a **stretch goal,
+     time-boxed to 1 day**, after the research work.
+   - The MVP check is light: (a) Claude runs the build in a scrubbed environment as Alfred;
+     (b) the user copies the folder to a second Windows account or the old laptop and launches it.
+   - → ADR-0004 Rev. 2; ADR-0014 Rev. 2.
+3. **Code signing.**
+   - The user asked for a SignPath Foundation application now, with an email the user supplied.
+     Kept out of the public repo; it will be entered only on SignPath's own form.
+   - **Not submitted, for two reasons:**
+     - the form is behind reCAPTCHA, which Claude may not complete;
+     - SignPath's terms require an already-released, CI-built binary, a published "Code signing
+       policy" page, MFA, and an OSI licence. **The repo has no LICENSE file.**
+   - The application is prepared in `docs/release/signpath_application.md`, for the user to submit
+     after the first CI-built release (v2-P4). Off the critical path.
+   - The working path is unsigned. The "SAC must be off" fallback applies only to disposable test
+     environments and other people's machines; the author will not disable SAC on their daily
+     machine.
+4. **GPU deviation acknowledged:** ADR-0003 is accepted as written (gated GPU, CPU-only with
+   sign-off on failure, one model at first).
+5. **Who can do what in the light clean-machine check** (measured 2026-10-27, not assumed):
+   - **Claude's actual access:**
+     - user `alfred\alfred`, medium integrity, **not elevated**: a member of Administrators, but
+       with the admin token filtered by UAC;
+     - Bash and PowerShell in this session; no screen or keyboard control tools;
+     - the built-in browser pane (web pages only).
+   - **Claude can:**
+     - build the portable folder;
+     - copy it to a fresh path on D:;
+     - run `ContextFS.exe --selftest` headless under Alfred, with a scrubbed environment (no
+       Python on PATH, no `PYTHON*`/`HF_*`/`PIP_*`/`UV_*`) and an empty data directory;
+     - verify the no-network audit hook, the exit codes and the logs;
+     - list the process's loaded modules to prove nothing comes from `.venv` or `.tools`;
+     - measure startup time;
+     - read the SAC policy state and the Authenticode status.
+   - **Claude cannot:**
+     - see or click the GUI;
+     - create a Windows account (no elevation, and it is not permitted to create accounts);
+     - sign in as another user;
+     - answer SmartScreen or SAC prompts;
+     - touch the old laptop.
+   - **Needs the user at the keyboard:**
+     - create a standard local account (Settings → Accounts → Other users);
+     - sign in to it;
+     - copy the folder to a place that account can read;
+     - double-click it and walk the first-run checklist Claude will provide;
+     - the same on the old laptop;
+     - report anything odd (a screenshot is enough).
+
+### Measured: Smart App Control on the author's laptop
+
+`HKLM\SYSTEM\CurrentControlSet\Control\CI\Policy\VerifiedAndReputablePolicyState = 2`, which is
+**Evaluation mode**.
+- It does not block now, but Windows may switch it to **On** automatically. An unsigned
+  `ContextFS.exe` could then be blocked **on the demo laptop**, and SAC cannot be re-enabled once
+  turned off, so "turn it off" is not an option the author accepts.
+- **Mitigation:** check the state before each demo build (part of `selftest`); sign if SignPath
+  approves in time; keep the run-from-source path (`start.bat`) as the last resort.
+- Also measured: the portable `python.exe` in `.tools` is `NotSigned`, so the run-from-source path
+  could be affected too if SAC turns On.
+- **Open risk.**
+
+### Effect on the plan
+The app path loses the installer, the VM pipeline and signing as a blocker, which frees about a
+week for the research path. The v2-P3 order is unchanged: T → donor statistics → generator fix →
+personas and queries → freeze → harness and baselines.

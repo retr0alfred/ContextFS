@@ -111,3 +111,17 @@ Additional tests:
 - the on-device GPU probe (ADR-0003 Rev. 1);
 - simulator-fidelity replay (ADR-0015 §4);
 - the licence gate (ADR-0016).
+
+## Revision 2 — user decision before Phase 3 (2026-10-27, log.md Decision 95)
+Supersedes conflicting items in the MVP list and Revision 1.
+
+**Removed from the MVP:**
+- the per-user installer (ADR-0004 Rev. 2);
+- VirtualBox and clean-VM testing (now a stretch goal, time-boxed to 1 day, after P7);
+- signing as a blocker.
+
+**Never cut:** "signing (or the approved SAC deviation)" is replaced by "the SAC state is checked
+before every demo build".
+
+**The plan shrinks on the app path**, freeing about 1 week for the research path (benchmark,
+direction A, evaluation).

@@ -1,4 +1,4 @@
-# ADR-0004: Packaging — PyInstaller one-dir, per-user Inno Setup installer, unsigned with published hashes
+# ADR-0004: Packaging — portable PyInstaller one-dir app (no installer; Revision 2), signing when eligible
 
 - **Status:** Accepted · **Date:** 2026-10-27 · **Phase:** v2-P2
 - **Debate record:** packaging R1/R2; skeptic R1 (V-claims), R2 (N8, N14, N17)
@@ -80,3 +80,53 @@ Supersedes §4. Source: `review/fresh_review.md` B3.
   clean install), plus SmartScreen, plus the old laptop.
 - **Fallback if no certificate in time:** document that SAC must be off (it is off on most upgraded
   machines). Record this as a deviation the user approves.
+
+## Revision 2 — user decision before Phase 3 (2026-10-27, log.md Decision 95)
+Supersedes §2, §5 and Revision 1 where they conflict.
+
+**No installer.** The deliverable is a **portable app**: a folder (PyInstaller one-dir) containing
+`ContextFS.exe`, run by double-clicking. It looks and behaves like a normal app once open.
+- There is no Inno Setup, no Add/Remove Programs entry, no Start-menu or registry integration, and
+  no uninstaller.
+- To remove it, delete the folder. The index is deleted from Settings → "Delete my index".
+- **One-dir, not one-file.** A one-file exe unpacks about 0.5 GB to `%TEMP%` on **every** launch,
+  which adds seconds to startup and leaves junk behind after a crash. The one-dir folder is the
+  portable form. A one-file build can be produced later if wanted; the trade-off is recorded here.
+- The index and settings still default to `%LOCALAPPDATA%\ContextFS`, configurable. On the author's
+  machine they are set to D:.
+
+**Acceptance bar** (the demo runs on the author's own laptop):
+- **MVP check (light):**
+  - (a) Run the built folder **as Alfred** from a fresh location, in a scrubbed environment: no
+    Python on PATH, no `PYTHON*`/`HF_*`/`PIP_*` variables, and an empty data directory to force
+    first run. Run `ContextFS.exe --selftest` headless with the no-network audit hook. Verify the
+    process loads nothing from `.venv` or `.tools`.
+  - (b) **User at the keyboard:** copy the folder to a second, standard Windows account on the same
+    laptop (or the old laptop), double-click it, and walk through the first-run checklist.
+- **Stretch goal, time-boxed to 1 day, after the research work:** the VirtualBox / evaluation-ISO /
+  unattended-install pipeline. It is no longer blocking. It can be resumed calmly after submission
+  if the app is distributed more widely.
+
+**Code signing:**
+- **SignPath Foundation: prepared, not yet submitted.** Facts as of 2026-10-27:
+  - Its terms require a project "already released in the form that should be signed", binaries
+    "built from source code in a verifiable way" (CI), a published "Code signing policy" page, and
+    MFA for all team members.
+  - Its application form sits behind reCAPTCHA, which Claude is not permitted to complete.
+  - Therefore: after the first CI-built release of the portable app (v2-P4), the user submits the
+    prepared application (`docs/release/signpath_application.md`) with the email the user chose.
+  - Not on the critical path.
+- **Working path:** unsigned build. The documented fallback "Smart App Control must be off" applies
+  **only to disposable test environments and other people's machines**. The author will not
+  disable SAC on their daily machine.
+- **Measured risk on the author's machine:** SAC is in **Evaluation mode**
+  (`VerifiedAndReputablePolicyState = 2`).
+  - In this mode it does not block, but Windows may switch it to **On** automatically.
+  - If that happens before the demo, an unsigned `ContextFS.exe` could be blocked on the demo
+    laptop itself, and SAC cannot be re-enabled once turned off.
+  - Mitigations, in order:
+    1. Re-check the SAC state before every demo build (one PowerShell line, part of `selftest`).
+    2. Get the build signed if SignPath approves in time.
+    3. As a last resort, the dev-mode path: run from source through `start.bat`. This depends on
+       how SAC treats the unsigned portable Python, which must be re-checked if SAC turns On.
+  - **Recorded as an open risk.**

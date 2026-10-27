@@ -1,6 +1,6 @@
 # ADR-0003: Inference runtime — ONNX Runtime in the app, MiniLM int8 default, GPU only for bulk indexing behind parity gates
 
-- **Status:** Accepted, with a **recorded deviation awaiting user acknowledgement** (§Deviation)
+- **Status:** Accepted (deviation acknowledged by the user 2026-10-27, Decision 95)
 - **Date:** 2026-10-27 · **Phase:** v2-P2
 - **Debate record:** IR R1/R2, packaging R1/R2, performance R1/R2, skeptic R1 (claims V1–V17),
   skeptic R2 (N6, N7, N8, N16, D3, D9)
@@ -106,3 +106,11 @@ Supersedes §2 and §4 where they conflict. Source: `review/fresh_review.md` M4,
 - **Evaluation bundle (M5).** Baselines that are not shipped (MiniLM cross-encoder, granite) are
   exported to ONNX into an **eval bundle** built from the same lockfile and ORT wheel as the app.
   Paper numbers for every system come from that frozen eval bundle.
+
+## Status update — 2026-10-27 (log.md Decision 95)
+The user **acknowledged** this ADR's deviation:
+- GPU ships only if GPU-built results match CPU-built ones (the gates in Revision 1, plus the
+  on-device probe);
+- otherwise CPU-only, with the user's sign-off at that point;
+- one embedding model ships at first.
+Status: **Accepted (deviation acknowledged).**

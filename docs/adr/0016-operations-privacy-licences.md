@@ -41,3 +41,8 @@
 5. **Language scope.** MiniLM is English-only. Non-English text (e.g. Hindi, Tamil) gets lexical
    BM25 only, and dense similarity there is unreliable. The README and the paper state this.
    Multilingual support is the granite evaluation row (ADR-0003), not a claim.
+
+## Revision 1 — portable app (2026-10-27, log.md Decision 95)
+There is no uninstaller (ADR-0004 Rev. 2). "Delete my index" lives in Settings only, and deleting
+the app folder removes the program. Removing the app's settings and index is a Settings action, and
+the README documents it.
