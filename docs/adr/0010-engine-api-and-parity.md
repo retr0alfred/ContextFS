@@ -45,3 +45,13 @@ The CLI and GUI become thin. `cli/main.py`'s pipeline code moves into `engine/`.
 ## How we will know it was wrong
 The parity test fails under either thread environment, or the cross-CPU top-10 overlap (ADR-0003)
 is below 95%.
+
+## Revision 1 — after the fresh review (2026-10-27)
+Supersedes §1–§4 where they conflict. Source: `review/fresh_review.md` M2, M6.
+- `engine.update(roots, progress, cancel, clock)`: the clock is injected (M2).
+- **Index-build parity (M6):**
+  - the CLI `update` and the GUI child, with 1 and 2 workers, must produce the same **logical index
+    hash**: a hash over (root-relative path, content hash, chunk texts, entity rows, `file_time`,
+    session partition up to relabelling), independent of `file_id` assignment order;
+  - a test builds the smoke fixture both ways and compares hashes.
+- **Ties:** scores within 1e-6 are tied, and ties break on (root id, **root-relative** path).

@@ -67,3 +67,20 @@ naive RRF (k=60) underperformed dense-only (Decision 91).
 ## How we will know it was wrong
 P0 recall on dev is below 90% for any query kind; the linear scorer does not beat the best fusion
 baseline on dev; or blind-query results contradict template-query results.
+
+## Revision 1 — after the fresh review (2026-10-27)
+Supersedes §1 and §6 where they conflict. Source: `review/fresh_review.md` B2, M5, m5.
+- **BM25 is tunable** (M5).
+  - FTS5's built-in `bm25()` hard-codes k1 = 1.2 and b = 0.75.
+  - So FTS5 generates the top-1,000 lexical candidates, and the **lexical score** is re-computed in
+    Python with tunable k1/b from `fts5vocab` statistics and per-document term frequencies.
+  - BM25 is **document-level** (one FTS row per document's text); the chunk FTS table is used for
+    evidence spans only.
+  - k1, b and the fusion weights are tuned on dev **with the same search budget as the ContextFS
+    scorer**. The tuning budget per system is reported.
+- **Dense:** MaxP for every system (ADR-0005 Rev. 1).
+- **Primaries:** three pre-registered primaries with Holm correction (ADR-0015 §7). The system
+  primary P-S is no longer the only one.
+- **Regression anchor (m5):** the v1 configuration must reproduce `dense_flat` MRR **0.5029 ±
+  0.0005** on the smoke fixture. A miss is a blocker, not "explained". MRR is used for
+  single-target queries and nDCG@10 for graded ones.

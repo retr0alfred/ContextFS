@@ -85,3 +85,24 @@
 - Export parity is below 0.9999.
 - Cross-CPU top-10 overlap is below 95% (the reported number would then not describe users'
   machines).
+
+## Revision 1 — after the fresh review (2026-10-27)
+Supersedes §2 and §4 where they conflict. Source: `review/fresh_review.md` M4, M5.
+- **One precision per index.**
+  - The embedder model file (including its precision) is part of `embedder_fp`, and queries always
+    use **the same model file** as the index.
+  - The GPU spike therefore gates the **fp32** model on DirectML vs the **fp32** model on the CPU EP
+    (matched precision).
+  - If a GPU-built index is adopted, that index and its queries use fp32. The CPU query cost of fp32
+    is measured and must stay under 50 ms per query.
+  - The int8 model is the CPU-only default. Switching precision means a re-embed (ADR-0016 §4).
+- **The parity check runs on the user's device, not only on the dev GPU.**
+  - On first GPU use, the child embeds a bundled 200-text probe on the GPU and on the CPU EP.
+  - If mean cosine is below 0.999, it falls back to the CPU with a logged reason, and the probe
+    result is stored in `embedder_fp`.
+  - This covers AMD and Intel GPUs that were never tested in development.
+- DirectML is in sustained-engineering (maintenance) mode. Recorded as a risk; it does not change
+  the decision, because the gate and the probe make failure safe.
+- **Evaluation bundle (M5).** Baselines that are not shipped (MiniLM cross-encoder, granite) are
+  exported to ONNX into an **eval bundle** built from the same lockfile and ORT wheel as the app.
+  Paper numbers for every system come from that frozen eval bundle.

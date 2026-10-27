@@ -43,3 +43,10 @@
 ## How we will know it was wrong
 Time-to-window or a keystroke stall misses the targets (M-S1, M-U1), or study participants cannot
 explain why a result appeared after reading its row.
+
+## Revision 1 — after the fresh review (2026-10-27)
+Source: `review/fresh_review.md` m1.
+- Startup targets follow ADR-0002 Rev. 1.
+- **Wording fix.** "Never reorders" means results are never reordered **once the user has
+  interacted** with the list (selection or scroll). A list nobody has touched may be upgraded from
+  word-match to full results, and is labelled so.

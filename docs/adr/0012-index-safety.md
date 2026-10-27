@@ -29,3 +29,14 @@
 ## How we will know it was wrong
 Any v2-P5 case fails: two instances writing; DB corrupted and not recovered; an old-schema upgrade
 failing; or disk-full leaving a broken index.
+
+## Revision 1 — after the fresh review (2026-10-27)
+Supersedes §2–§3 where they conflict. Source: `review/fresh_review.md` M3, M2.
+- **Recovery never blocks search.** After a real crash, the **child** runs `quick_check` while the
+  app searches the last committed snapshot; a failure triggers a background rebuild.
+- **Migrations run on a copy and swap.**
+  - The child migrates a copy of the database (`VACUUM INTO`, then migrate), validates it, then
+    atomically swaps the manifest. The app keeps searching the old generation meanwhile.
+  - Refuse to migrate when free space is below 2.2× the database, and say why.
+- **The append-only `observations` table** (ADR-0006 Rev. 1) is copied into every rebuild and
+  backed up with settings.

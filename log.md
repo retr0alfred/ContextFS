@@ -3106,3 +3106,101 @@ again so the user can verify with eyes on screen.
   `docs/research/` (draft reviews, novelty assessment, paper strategy) are **git-ignored and kept
   local**, the same treatment v1 gave `RESEARCH_DOSSIER.md`. Everything else (environment bootstrap,
   `start.bat`, the config rename, audit scripts, log, STATUS, CLAUDE.md, ADRs) is pushed.
+
+---
+
+## Phase 30 — v2 programme, Phase 2: architecture debate → ADRs 0001–0016
+
+**Date:** 2026-10-27 · **v2 phase:** P2 · **Branch:** `v2`
+
+### What was done
+- **Brief:** `docs/adr/debate/BRIEF.md` gives the v1 facts, the product requirements, the six
+  questions to settle, and measured install sizes (torch+cu130 2.9 GB, of which CUDA libs 2,425 MB;
+  PySide6 209 MB; lancedb 148 MB; spaCy+md 141 MB; whole `.venv` 3,883 MB).
+- **Round 1:** five independent role agents (systems architect, IR/ML, Windows/packaging,
+  performance, UX) each wrote a proposal → `debate/round1/`. Then a red-team skeptic attacked all
+  five: 17 external claims checked, 17 attacks, 3 blockers → `debate/round1/skeptic.md`.
+- **Facilitator measurement M1** (`debate/measurements.md`): what six copy methods do to NTFS times
+  on the dev machine. CopyFile-style copies (Copy-Item, `cmd copy`, `shutil.copy2`, Expand-Archive)
+  set created = now and keep modified, so `created > modified` means the mtime **survived**.
+  robocopy keeps both (copy invisible); `shutil.copy` destroys both. This resolved the architect's
+  open question and inverted the architect's `fs_rewritten` rule, which the skeptic attacked
+  independently.
+- **Round 2:** each role revised with its context intact, answered every attack and resolved
+  contradictions → `debate/round2/`. Then the skeptic attacked again → `debate/round2/skeptic.md`,
+  with new blockers:
+  - **N1:** the v1 generator sets only mtime/atime, so every synthetic file looks copied, and
+    python-docx stamps DOCX files 2013-12-23;
+  - **N2:** the proposed ground truth was circular;
+  - **N3:** "the" file time mixed different events.
+  - It also listed 10 facilitator decisions.
+- Round 2 was interrupted once by an API rate limit; all five agents were resumed with context
+  intact, and none of the round's files had been written before the interruption.
+- **Facilitator synthesis → ADRs 0001–0014.** Rulings follow the skeptic's recommendations, except
+  **D9 (GPU)**: the debate cut the GPU, but the facilitator kept the user's requirement behind
+  DirectML parity gates and recorded a deviation that only the user can approve.
+- **Fresh reviewer** (saw no debate) → `review/fresh_review.md`: 3 blockers, 11 majors, 6 minors,
+  7 missing areas.
+  - **B1:** no benchmark ADR, and the undamaged-time model was circular.
+  - **B2:** the pre-registered primary measured fusion, not contribution A.
+  - **B3:** Smart App Control blocks unsigned apps on clean Windows 11 installs, with no "run
+    anyway".
+  - All addressed: new ADR-0015 (benchmark + study) and ADR-0016 (operations, privacy, licences),
+    plus Revision 1 sections in 13 ADRs. Per-finding map: `review/response.md`.
+
+### Decision 94 — The v2 architecture (summary; the ADRs are authoritative)
+1. UI+query process plus one indexer child as sole writer (Job Object); no watcher; launch scan +
+   F5; search never waits (ADR-0001).
+2. Keep PySide6-Essentials; cut the 3D view, Insights and the semantic tree from the app (ADR-0002).
+3. ONNX Runtime in the app and eval; **no torch or CUDA in the shipped app**; MiniLM int8 default;
+   GPU only for bulk indexing behind matched-precision DirectML gates plus an on-device probe
+   (ADR-0003).
+4. PyInstaller one-dir + per-user Inno Setup; **code signing in the MVP** (ADR-0004).
+5. SQLite as the single commit point; exact f32 vectors, document-level candidates, MaxP scoring;
+   LanceDB and NetworkX/JSON dropped (ADR-0005).
+6. Multi-source time evidence; **per-event** reconciled time (authored / arrived_here /
+   last_user_edit); non-circular protocol E1–E5 (ADR-0006).
+7. Exact session clustering inside time-gap blocks (cap 2,000); G fitted on dev (ADR-0007).
+8. Shared FTS5 (tunable document-level BM25) + exact dense first stage; ContextFS signals as
+   features of a dev-fitted linear scorer; open-vocabulary query understanding (ADR-0008).
+9. Evidence-grounded, counterfactually checked explanations (ADR-0009).
+10. One `contextfs.engine`; results and index-build parity tested (ADR-0010).
+11. `fsio`: tag-aware reparse handling, placeholders never opened, share-delete reads, resumable
+    scans (ADR-0011).
+12. Writer lock; copy-and-swap migrations; recovery that never blocks search (ADR-0012).
+13. Three-screen first run; dates panel; chips; Issues; Research mode (ADR-0013).
+14. A dated 12-week plan with the paper path first; cut order (ADR-0014).
+15. Benchmark D: persona × template splits, frozen donor-calibrated undamaged model, simulator plus
+    5% real-tool replay, **three pre-registered primaries** (P-A1, P-A2, P-S), power calculation,
+    real-user study (ADR-0015).
+16. Logging, index privacy, licences (the MS MARCO cross-encoder is eval-only), upgrades, language
+    scope (ADR-0016).
+
+### Measured this phase (dev machine; numbers from the role agents' local probes are their own)
+- M1 copy-timestamp table, above.
+- Exact numpy top-200 over 384-d f32 (performance R2; corroborated by architect, IR and skeptic):
+  10⁵ vectors p50 6.3–7.4 ms; 10⁶ vectors p50 84 ms, 1.46 GB; f16 about 10× slower.
+- FTS5 trigram `MATCH 'gradeint'` → 0 rows (skeptic, confirmed by IR): trigram does not handle
+  typos.
+- BLAS non-determinism: `X @ q` with default threads vs `OPENBLAS_NUM_THREADS=1` differs by up to
+  5.4e-7 (skeptic). Hence pinned threads and tolerance-based ties.
+- PySide6 import 2.18 s (performance R1).
+
+### Deviations from the brief — need the user
+1. **GPU:** kept as a requirement, but delivered only if the DirectML gates and probe pass in v2-P4;
+   otherwise the app ships CPU-only. **User approval needed** if that happens. The shipped app has
+   no CUDA build.
+2. **Model choice in Settings:** one embedder ships in the MVP; switching models is LATER.
+3. **Code signing** is now a requirement (Smart App Control). It needs a user decision: SignPath
+   Foundation (free, review timeline), a Certum open-source certificate (paid), or the institution's
+   certificate. Fallback: document SAC-off.
+4. **Watcher:** none (launch scan + F5). This keeps "no background service" unqualified.
+
+### Still open
+- The two user decisions above.
+- The first real GPU workload, which is the v2-P3 local-LLM query generation per ADR-0015 §6,
+  **must be flagged to the user before it runs**, with eyes on screen.
+- Clean-machine testing: Windows Sandbox and Hyper-V are unavailable on Home, so the plan is
+  VirtualBox with the Windows 11 evaluation ISO plus the old laptop. The downloads are the user's.
+- Release pins at least two weeks old (ORT 1.31.1 and symspellpy 6.10.1 were days old at debate
+  time).

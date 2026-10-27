@@ -81,3 +81,26 @@
 ## How we will know it was wrong
 The zero-damage test fails; E4 donors cannot reach a CI width that separates methods; or T shows
 that the in-file times we rely on are rewritten by common tools.
+
+## Revision 1 — after the fresh review (2026-10-27)
+Supersedes conflicting clauses. Source: `review/fresh_review.md` B1, B2, M2, M11, m4.
+- **The undamaged time model is frozen before the estimator** (B1): donor histograms, hashed, in the
+  order T → donor statistics → rules (ADR-0015 §3).
+- **Damage is a simulator plus real-tool replay** (M11): T is measured with real tools, the
+  generator applies T's effects, and a 5% sample of every damage type is replayed through the real
+  tools to report fidelity. This replaces "real tools wherever possible" in E2.
+- **Scan history** (M2):
+  - `update()` takes an injected clock;
+  - `first_seen`, `superseded_mtime` and move observations go to an **append-only `observations`
+    table** that is backed up with settings and **survives a rebuild**;
+  - the benchmark replays scan → damage → scan;
+  - history is excluded from the "incremental == clean" comparison.
+- **Primaries** (B2): pre-registered P-A1 (E5 per damage type) and P-A2 (nDCG@10 on time-cued
+  queries, `file_time` vs raw mtime vs oracle, with a parser + raw-mtime baseline). See ADR-0015 §7.
+- **Additions to T (m4):**
+  - **NTFS tunnelling**: a safe-save (write temp, delete, rename) restores the old creation time,
+    so `birth > mtime` can also come from editing, not only copying;
+  - FAT times converted with the *current* DST bias;
+  - exFAT's stored UTC offset;
+  - `Zone.Identifier` (Mark-of-the-Web ADS) as free `arrived_here` evidence for downloads, read
+    only on non-placeholder files.

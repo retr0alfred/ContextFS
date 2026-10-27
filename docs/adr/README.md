@@ -21,4 +21,12 @@ measurements). A fresh reviewer that saw none of the debate then critiqued the r
 | [0011](0011-filesystem-access.md) | `fsio`: `\\?\`, no junction descent, placeholders never opened, share-delete reads, resumable scans |
 | [0012](0012-index-safety.md) | Writer lock, migrations, quick_check recovery, WAL and disk guards |
 | [0013](0013-first-run-and-search-ux.md) | Three-screen first run; never-wait search; dates panel; chips; Issues; Research mode |
-| [0014](0014-scope-and-cut-order.md) | MVP / LATER / CUT, cut order, the 11 tests required before any paper number |
+| [0014](0014-scope-and-cut-order.md) | MVP / LATER / CUT, dated 12-week plan, cut order, tests required before any paper number |
+| [0015](0015-benchmark-and-study.md) | Procedural benchmark (D): splits, frozen undamaged-time model, damage simulator + real-tool replay, three pre-registered primaries, real-user study |
+| [0016](0016-operations-privacy-licences.md) | Logging, index privacy, licences, field upgrades, language scope |
+
+Most ADRs carry a **Revision 1** section added after the fresh review; it supersedes conflicting
+clauses above it. `review/response.md` maps every review finding to its resolution.
+
+**Open user decisions (Phase 2 stop):** code signing (ADR-0004 Rev. 1) and the GPU deviation
+(ADR-0003).

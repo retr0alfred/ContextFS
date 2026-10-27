@@ -61,3 +61,22 @@ Windows 11 **Home** (no Hyper-V, no Windows Sandbox). The student cannot get Azu
 ## How we will know it was wrong
 Freeze parity fails twice; the installer is flagged by Defender after WDSI; or it is > 0.6 GB
 installed.
+
+## Revision 1 — after the fresh review (2026-10-27): code signing moves into the MVP
+Supersedes §4. Source: `review/fresh_review.md` B3.
+- **Smart App Control blocks unsigned apps.** It is on by default on clean installs of
+  Windows 11 22H2 and later. When its cloud check cannot vouch for a binary, it blocks unsigned
+  executables with no "run anyway" option. A clean machine is exactly the brief's acceptance test,
+  so **an unsigned build can fail the requirement.**
+- **Decision:** every PE file in the bundle and the installer is Authenticode-signed before the
+  v2-P4 clean-machine test.
+- **Options, all needing the user** (cost and an identity tied to the certificate):
+  1. SignPath Foundation (free for OSS; application review, timeline uncertain);
+  2. a Certum open-source code-signing certificate (low annual cost; token or cloud signing; confirm
+     Authenticode support before buying);
+  3. the institution's certificate, if the department has one.
+  - **This is a user decision, raised at the Phase 2 stop.**
+- **Test:** a fresh VM install with Smart App Control **on** (it can only be turned on during a
+  clean install), plus SmartScreen, plus the old laptop.
+- **Fallback if no certificate in time:** document that SAC must be off (it is off on most upgraded
+  machines). Record this as a deviation the user approves.

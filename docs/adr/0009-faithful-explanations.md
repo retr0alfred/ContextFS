@@ -36,3 +36,15 @@ exam vocabulary) becomes impossible.
 
 ## How we will know it was wrong
 Claim verification < 100% on any dev query, or users in the study misread the signed bars.
+
+## Revision 1 — after the fresh review (2026-10-27)
+Source: `review/fresh_review.md` M9.
+- **Wording.** "Faithful" overclaimed. The guarantee is **evidence-grounded and counterfactually
+  checked**:
+  - each reason's contribution is the exact re-score difference (it is computed, so the
+    counterfactual is true);
+  - the cited `doc_ref` is the object the feature was computed from: the argmax chunk for dense
+    (MaxP), and `file_time.evidence_used` rows for time;
+  - claim verification checks that the cited object exists *and* was the feature's input.
+- **Span-neutralisation causal check:** blank the cited span, re-embed, and confirm the
+  contribution drops. LATER (v2-P6), reported if done.

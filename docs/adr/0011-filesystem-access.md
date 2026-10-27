@@ -59,3 +59,15 @@ error or metadata-only rows with a reason.
 ## How we will know it was wrong
 Any v2-P5 hardening case fails: hydration observed, a junction loop, a sharing violation, a silent
 skip, or a lost scan after a kill.
+
+## Revision 1 — after the fresh review (2026-10-27)
+Supersedes §2 and §5 where they conflict. Source: `review/fresh_review.md` M1, m2.
+- **Reparse points are decided by tag, not by the attribute (M1).**
+  - Skip `IO_REPARSE_TAG_MOUNT_POINT` (junctions), `IO_REPARSE_TAG_SYMLINK` and unknown tags.
+  - **Descend into `IO_REPARSE_TAG_CLOUD*` directories** (OneDrive Files-On-Demand), whose files
+    are still never opened while they are placeholders.
+  - The (volume, file-id) loop guard stays.
+  - Test: a fixture directory with a cloud tag, plus a ProcMon check on a real OneDrive with
+    unhydrated folders (v2-P5).
+- **Move inheritance (m2)** applies only to files that have a content hash. Metadata-only and
+  placeholder files never inherit. When several tombstones match, the lowest `file_id` wins.

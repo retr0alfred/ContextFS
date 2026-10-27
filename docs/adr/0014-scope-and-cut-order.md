@@ -70,3 +70,44 @@ Insights tab.
 9. **Regression anchor:** v1 configuration → `dense_flat` 0.503 on the smoke fixture (or explained).
 10. **Incremental == clean** on scripted edit sequences.
 11. **Cross-CPU top-10 overlap** with an AVX2 laptop.
+
+## Revision 1 — after the fresh review (2026-10-27): the plan, and a smaller MVP
+Supersedes "MVP" and "Cut order". Source: `review/fresh_review.md` M11, B2, m5.
+
+**The paper path is decoupled from the app and runs first.**
+
+| Weeks from v2-P3 start | Paper path | App path |
+|---|---|---|
+| 1–2 | T measured and frozen; donor histograms; generator fix + zero-damage test | — |
+| 2–4 | Generator personas, queries (LLM, user-approved GPU run), dev/test freeze, power calc | Engine refactor (ADR-0010), fsio walker (ADR-0011) |
+| 4–6 | Harness, baselines (BM25 tuned, dense MaxP, fusion, CE rerank), estimator v0 | Indexer child, storage, time capture |
+| 6–8 | Dev tuning, E1–E5 on dev, study tooling | GUI MVP, packaging spike, GPU spike, signing |
+| 8–10 | (v2-P5 hardening on the packaged build) | |
+| 10–12 | v2-P6 contribution A on dev → v2-P7 single test run | |
+
+**MVP cut order if behind** (first to go):
+1. vector compaction (keep appending; compact LATER)
+2. SymSpell
+3. relational time operators and Settings periods
+4. P1 expansion
+5. counterfactual UI (keep the metric)
+6. DirectML spike (ship CPU-only, with user approval)
+7. dirty-block incremental sessions (rebuild blocks)
+8. multi-root
+
+**Never cut:**
+- time-evidence capture and estimator v0 with E1–E5;
+- exact search;
+- the parity tests;
+- the split lock;
+- claim verification;
+- signing (or the approved SAC deviation).
+
+**Test 4 reworded (B2):** "no sealed truth value flows into `time_evidence`", enforced by a
+provenance taint test. Sealed truth files are opened only by the scorer, never by the engine.
+
+Additional tests:
+- the logical-index-hash parity test (ADR-0010 Rev. 1);
+- the on-device GPU probe (ADR-0003 Rev. 1);
+- simulator-fidelity replay (ADR-0015 §4);
+- the licence gate (ADR-0016).

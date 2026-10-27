@@ -47,3 +47,11 @@ product; the paper uses evaluation figures instead.
 ## How we will know it was wrong
 Cold start > 4 s on the 8 GB VM after the import-guard work (M-S1), or freezing PySide6 fails parity
 twice.
+
+## Revision 1 — after the fresh review (2026-10-27)
+Source: `review/fresh_review.md` m1. Targets corrected to what is achievable given the measured
+2.18 s PySide6 import:
+- window ≤ 3 s warm and ≤ 5 s cold;
+- word search ready ≤ 3.5 s;
+- meaning search ≤ 6 s warm.
+Phase 7 measures them; optimisation (v2-P8) may tighten them.

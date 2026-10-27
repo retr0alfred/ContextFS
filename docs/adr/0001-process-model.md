@@ -45,3 +45,17 @@ background service". Query-time work is light once inference moves to ONNX Runti
 ## How we will know it was wrong
 Keystroke-to-paint p95 > 100 ms or an event-loop stall > 250 ms during indexing (Phase 7 M-U1). Or
 users report that stale results after in-session edits matter.
+
+## Revision 1 — after the fresh review (2026-10-27)
+Supersedes the conflicting clauses above. Source: `review/fresh_review.md` M3, M7.
+- **Closing mid-scan is a clean stop, not a crash (M3).**
+  - On window close the app sends Cancel and waits up to 3 s for the child to commit its batch.
+  - Only then does the Job Object kill it.
+  - The index is marked dirty **only** on a real crash (child exit without a clean-stop record).
+- **Resource policy for 8 GB machines with no GPU (M7):**
+  - the indexer child runs with `PROCESS_MODE_BACKGROUND_BEGIN` and ORT threads = cores − 2;
+  - a Job Object memory limit (default 2 GB indexer + workers; 1.5 GB on 8 GB machines) with
+    graceful back-off;
+  - indexing pauses on battery below 30% and resumes on AC;
+  - chunks per document are capped (default 200);
+  - user folders (Desktop, Documents, Downloads, Pictures) are indexed before the rest of a drive.

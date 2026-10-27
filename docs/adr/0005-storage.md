@@ -64,3 +64,20 @@ f16 storage was about 10× slower (performance R2, skeptic R2).
 ## How we will know it was wrong
 Dense-search p95 > 250 ms at 10⁵ files (M-Q1); compaction leaks files; or document-level recall on
 dev is materially below chunk-level recall (P3 pool-recall report).
+
+## Revision 1 — after the fresh review (2026-10-27)
+Supersedes §3 and §6 where they conflict. Source: `review/fresh_review.md` M5, M8, M9, m3.
+- **Dense scoring is MaxP for everyone.**
+  - The document-level pooled vector is used only to **generate candidates** (bounded RAM).
+  - The dense **score**, for every system including the dense baseline, is the maximum
+    chunk-to-query similarity over that document's chunks, computed for candidates in the pool.
+  - The cited evidence chunk is the argmax chunk, so the feature and its citation are the same
+    object (M9).
+- **The index location rule is fixed (M8).**
+  - The index directory is **always self-excluded**. This is a hard, non-removable rule, separate
+    from the editable exclusions.
+  - The location is refused only if it lies inside a scanned **non-excluded** subtree, a network
+    share, or an OneDrive-synced folder (ADR-0016).
+- **Compaction (m3):** a pending-delete list covers **all** readers (app, CLI, eval). A segment file
+  is deleted only when no live reader's manifest generation references it; otherwise the next idle
+  pass retries.
