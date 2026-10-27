@@ -50,11 +50,20 @@ NOW_TOLERANCE = timedelta(minutes=5)
 
 FORMATS = ["txt", "docx", "pdf", "jpg", "zip"]
 PENDING_USER = [
-    ("explorer_drag_copy_gui", "Explorer drag-and-drop copy (GUI) — the Shell COM row is the scripted proxy"),
-    ("onedrive_roundtrip", "Upload to OneDrive, delete local, re-download (Files-On-Demand hydrate)"),
+    (
+        "explorer_drag_copy_gui",
+        "Explorer drag-and-drop copy (GUI) — the Shell COM row is the scripted proxy",
+    ),
+    (
+        "onedrive_roundtrip",
+        "Upload to OneDrive, delete local, re-download (Files-On-Demand hydrate)",
+    ),
     ("usb_fat32_roundtrip", "Copy to a FAT32 USB stick and back"),
     ("usb_exfat_roundtrip", "Copy to an exFAT USB stick and back"),
-    ("browser_download", "Download the file from a web page/mail attachment in a browser (Mark-of-the-Web)"),
+    (
+        "browser_download",
+        "Download the file from a web page/mail attachment in a browser (Mark-of-the-Web)",
+    ),
     ("word_save_as", "Open in Microsoft Word and Save As a new name (rewrites core.xml)"),
     ("sevenzip_roundtrip", "7-Zip archive and extract"),
     ("whatsapp_telegram_desktop", "Receive the file through a messenger desktop client"),
@@ -81,7 +90,9 @@ def make_fixtures(src: Path) -> dict[str, Path]:
     doc.add_paragraph("transfer-table fixture")
     cp = doc.core_properties
     cp.created = datetime.fromisoformat(INFILE_CREATED.replace("Z", "+00:00")).replace(tzinfo=None)
-    cp.modified = datetime.fromisoformat(INFILE_MODIFIED.replace("Z", "+00:00")).replace(tzinfo=None)
+    cp.modified = datetime.fromisoformat(INFILE_MODIFIED.replace("Z", "+00:00")).replace(
+        tzinfo=None
+    )
     doc.save(p)
     files["docx"] = p
 
@@ -123,7 +134,9 @@ def make_fixtures(src: Path) -> dict[str, Path]:
 def _ps(command: str) -> None:
     subprocess.run(
         ["powershell", "-NoProfile", "-NonInteractive", "-Command", command],
-        check=True, capture_output=True, text=True,
+        check=True,
+        capture_output=True,
+        text=True,
     )
 
 
@@ -137,18 +150,32 @@ def tool_copy_item(src: Path, dst_dir: Path) -> Path:
 
 
 def tool_cmd_copy(src: Path, dst_dir: Path) -> Path:
-    subprocess.run(["cmd", "/c", "copy", "/Y", str(src), str(dst_dir)], check=True, capture_output=True)
+    subprocess.run(
+        ["cmd", "/c", "copy", "/Y", str(src), str(dst_dir)], check=True, capture_output=True
+    )
     return dst_dir / src.name
 
 
 def tool_xcopy(src: Path, dst_dir: Path) -> Path:
-    subprocess.run(["xcopy", str(src), str(dst_dir) + "\\", "/Y", "/Q"], check=True, capture_output=True)
+    subprocess.run(
+        ["xcopy", str(src), str(dst_dir) + "\\", "/Y", "/Q"], check=True, capture_output=True
+    )
     return dst_dir / src.name
 
 
 def _robocopy(src: Path, dst_dir: Path, *flags: str) -> Path:
     proc = subprocess.run(
-        ["robocopy", str(src.parent), str(dst_dir), src.name, "/NJH", "/NJS", "/NFL", "/NDL", *flags],
+        [
+            "robocopy",
+            str(src.parent),
+            str(dst_dir),
+            src.name,
+            "/NJH",
+            "/NJS",
+            "/NFL",
+            "/NDL",
+            *flags,
+        ],
         capture_output=True,
     )
     if proc.returncode >= 8:
@@ -225,11 +252,14 @@ def tool_tar_zip_roundtrip(src: Path, dst_dir: Path) -> Path:
     archive = dst_dir / (src.stem + "_tar.zip")
     subprocess.run(
         ["tar.exe", "-a", "-cf", str(archive), "-C", str(src.parent), src.name],
-        check=True, capture_output=True,
+        check=True,
+        capture_output=True,
     )
     out = dst_dir / "tarextract"
     out.mkdir(exist_ok=True)
-    subprocess.run(["tar.exe", "-xf", str(archive), "-C", str(out)], check=True, capture_output=True)
+    subprocess.run(
+        ["tar.exe", "-xf", str(archive), "-C", str(out)], check=True, capture_output=True
+    )
     return out / src.name
 
 
@@ -237,7 +267,9 @@ def tool_git_clone(src: Path, dst_dir: Path) -> Path:
     repo = dst_dir / "repo"
     repo.mkdir()
     shutil.copy2(src, repo / src.name)
-    set_file_times(repo / src.name, created=SRC_CREATED, modified=SRC_MODIFIED, accessed=SRC_ACCESSED)
+    set_file_times(
+        repo / src.name, created=SRC_CREATED, modified=SRC_MODIFIED, accessed=SRC_ACCESSED
+    )
     git = ["git", "-c", "safe.directory=*", "-c", "user.name=t", "-c", "user.email=t@t"]
     subprocess.run([*git, "init", "-q"], cwd=repo, check=True, capture_output=True)
     subprocess.run([*git, "add", "."], cwd=repo, check=True, capture_output=True)
@@ -319,7 +351,10 @@ def _classify(
         return "kept"
     if source_now is not None and abs(observed - source_now) <= timedelta(seconds=2):
         return "source_current"  # copied the source's value as it was at copy time
-    if observed >= run_start - timedelta(seconds=2) and observed <= datetime.now(timezone.utc) + NOW_TOLERANCE:
+    if (
+        observed >= run_start - timedelta(seconds=2)
+        and observed <= datetime.now(timezone.utc) + NOW_TOLERANCE
+    ):
         return "now"
     return f"other({observed.isoformat()})"
 
@@ -364,19 +399,25 @@ def measure(work: Path) -> dict:
             fs = get_file_times(dst)
             s = src_fs[fmt]
             infile_after = read_infile_times(dst)
-            rows.append({
-                "tool": tool_name,
-                "format": fmt,
-                "birth": _classify(fs.created, s.created, run_start),
-                "mtime": _classify(fs.modified, s.modified, run_start),
-                "atime": _classify(fs.accessed, s.accessed, run_start, src_before.accessed),
-                "birth_gt_mtime": fs.created > fs.modified,
-                "infile": {
-                    key: ("kept" if infile_after.get(key) == value else f"changed({infile_after.get(key)})")
-                    for key, value in src_infile[fmt].items()
-                },
-                "motw": _has_motw(dst),
-            })
+            rows.append(
+                {
+                    "tool": tool_name,
+                    "format": fmt,
+                    "birth": _classify(fs.created, s.created, run_start),
+                    "mtime": _classify(fs.modified, s.modified, run_start),
+                    "atime": _classify(fs.accessed, s.accessed, run_start, src_before.accessed),
+                    "birth_gt_mtime": fs.created > fs.modified,
+                    "infile": {
+                        key: (
+                            "kept"
+                            if infile_after.get(key) == value
+                            else f"changed({infile_after.get(key)})"
+                        )
+                        for key, value in src_infile[fmt].items()
+                    },
+                    "motw": _has_motw(dst),
+                }
+            )
     return {
         "schema": "contextfs.transfer_table/1",
         "measured_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
@@ -431,7 +472,13 @@ def to_markdown(table: dict) -> str:
             f"| {tool} | {agg('birth')} | {agg('mtime')} | {agg('atime')} | {agg('birth_gt_mtime')} | "
             f"{'all kept' if not infile else '; '.join(infile)} | {agg('motw')} |"
         )
-    lines += ["", "Formats per tool: " + ", ".join(fmts) + ".", "", "## Pending (needs the user)", ""]
+    lines += [
+        "",
+        "Formats per tool: " + ", ".join(fmts) + ".",
+        "",
+        "## Pending (needs the user)",
+        "",
+    ]
     lines += [f"- `{p['tool']}`: {p['procedure']}" for p in table["pending_user"]]
     lines += ["", "## Not covered", ""] + [f"- {n}" for n in table["not_covered"]]
     return "\n".join(lines) + "\n"

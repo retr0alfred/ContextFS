@@ -111,3 +111,6 @@ repomixOfContextFS.md
 # Private paper-strategy material (log.md Decision 93): audit with draft reviews, prior-art notes.
 docs/AUDIT_AND_ROADMAP.md
 docs/research/
+
+# --- Generated benchmark personas (released as generator + seeds, not files: ADR-0015 §10) ---
+data/bench/

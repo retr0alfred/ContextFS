@@ -80,7 +80,13 @@ def set_file_times(
     kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
     kernel32.CreateFileW.restype = wt.HANDLE
     kernel32.CreateFileW.argtypes = [
-        wt.LPCWSTR, wt.DWORD, wt.DWORD, wt.LPVOID, wt.DWORD, wt.DWORD, wt.HANDLE,
+        wt.LPCWSTR,
+        wt.DWORD,
+        wt.DWORD,
+        wt.LPVOID,
+        wt.DWORD,
+        wt.DWORD,
+        wt.HANDLE,
     ]
     kernel32.SetFileTime.argtypes = [wt.HANDLE, wt.LPVOID, wt.LPVOID, wt.LPVOID]
     kernel32.CloseHandle.argtypes = [wt.HANDLE]
@@ -90,8 +96,13 @@ def set_file_times(
     OPEN_EXISTING = 3
     FILE_FLAG_BACKUP_SEMANTICS = 0x02000000  # allows directories too
     handle = kernel32.CreateFileW(
-        str(Path(path).resolve()), FILE_WRITE_ATTRIBUTES, share, None, OPEN_EXISTING,
-        FILE_FLAG_BACKUP_SEMANTICS, None,
+        str(Path(path).resolve()),
+        FILE_WRITE_ATTRIBUTES,
+        share,
+        None,
+        OPEN_EXISTING,
+        FILE_FLAG_BACKUP_SEMANTICS,
+        None,
     )
     if handle in (None, wt.HANDLE(-1).value):
         raise ctypes.WinError(ctypes.get_last_error())
@@ -111,9 +122,7 @@ def set_file_times(
 # ---------------------------------------------------------------------------
 
 _OOXML_EXT = {".docx", ".pptx", ".xlsx", ".docm", ".pptm", ".xlsm"}
-_CORE_RE = re.compile(
-    r"<dcterms:(created|modified)[^>]*>([^<]+)</dcterms:\1>", re.IGNORECASE
-)
+_CORE_RE = re.compile(r"<dcterms:(created|modified)[^>]*>([^<]+)</dcterms:\1>", re.IGNORECASE)
 _PDF_DATE_RE = re.compile(
     r"D:(\d{4})(\d{2})?(\d{2})?(\d{2})?(\d{2})?(\d{2})?([Zz+\-])?(\d{2})?'?(\d{2})?'?"
 )
