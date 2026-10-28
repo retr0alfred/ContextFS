@@ -1,0 +1,397 @@
+{
+  "C01": {
+    "checks": {
+      "exit 0": true,
+      "user files unchanged (sha256, size, mtime, attributes) and nothing added": true,
+      "integrity ok": true,
+      "every file indexed (14)": true,
+      "Tamil name found by content": true,
+      "Devanagari+emoji name found": true,
+      "Arabic name under 'Tom & Jerry (final) v2' found": true,
+      "path of 444 chars found": true,
+      "docx/pdf extracted": true,
+      "zip bomb not unpacked": true,
+      "126 MB file not read": true,
+      "malformed files survive as name-only rows": true,
+      "peak child memory < 1.5 GB": true
+    },
+    "metrics": {
+      "seconds": 3.6,
+      "peak_mb": 715,
+      "report": {
+        "seen": 14,
+        "new": 14,
+        "changed": 0,
+        "unchanged": 0,
+        "deleted": 0,
+        "offline_roots": [],
+        "metadata_only": {
+          "too_large": 2
+        },
+        "errors": 0,
+        "chunks_embedded": 14,
+        "seconds": 2.13,
+        "cancelled": false,
+        "healed_folders": 0,
+        "removed_roots": [],
+        "low_disk": false,
+        "struck": null,
+        "quarantined": 0,
+        "parse_errors": 0,
+        "repaired_vectors": 0,
+        "nested_roots": []
+      }
+    },
+    "source": "ADR-0011 §1-§4, ADR-0016: read-only, formats, names, long paths, malformed and oversized files",
+    "seconds": 11.3,
+    "exe": "6ad76c07234c4d70",
+    "ok": true,
+    "at": "2026-10-28T23:40:17"
+  },
+  "C02": {
+    "checks": {
+      "finishes within 120 s": true,
+      "exactly the 20 real files": true
+    },
+    "metrics": {
+      "seconds": 4.7
+    },
+    "source": "ADR-0011 §2 + Rev. 1: junction loops are never descended",
+    "seconds": 7.6,
+    "exe": "6ad76c07234c4d70",
+    "ok": true,
+    "at": "2026-10-28T23:40:25"
+  },
+  "C03": {
+    "checks": {
+      "exit 0": true,
+      "indexed as placeholder (not 'locked': it was never opened)": true,
+      "its content is not in the index": true,
+      "only file-system times recorded": true
+    },
+    "source": "ADR-0011 §3: offline/placeholder files are never opened",
+    "seconds": 2.8,
+    "exe": "6ad76c07234c4d70",
+    "ok": true,
+    "at": "2026-10-28T23:40:28"
+  },
+  "C04": {
+    "checks": {
+      "first scan: 'locked', no crash": true,
+      "next scan reads it": true,
+      "then found by content": true
+    },
+    "source": "ADR-0011 §4: a locked file becomes an error row and is retried next scan",
+    "seconds": 4.5,
+    "exe": "6ad76c07234c4d70",
+    "ok": true,
+    "at": "2026-10-28T23:40:32"
+  },
+  "C05": {
+    "checks": {
+      "deny applied": true,
+      "both scans exit 0": true,
+      "files under the unreadable folder kept": true,
+      "the folder error is recorded": true
+    },
+    "source": "ADR-0011 §2: an unreadable folder is an error, and never tombstones its files",
+    "seconds": 4.4,
+    "exe": "6ad76c07234c4d70",
+    "ok": true,
+    "at": "2026-10-28T23:40:37"
+  },
+  "C06": {
+    "checks": {
+      "zero writer failures (no sharing violations)": true,
+      "every indexer run exits 0": true
+    },
+    "metrics": {
+      "writer_failures": [],
+      "indexer_runs": 5
+    },
+    "source": "ADR-0011 §4 test: Word-style save loop (temp write + ReplaceFileW) x1000 during indexing",
+    "seconds": 90.1,
+    "exe": "6ad76c07234c4d70",
+    "ok": true,
+    "at": "2026-10-28T23:42:07"
+  },
+  "C07": {
+    "checks": {
+      "kills landed mid-scan": true,
+      "resume completes": true,
+      "integrity ok after 5 kills": true,
+      "incremental == clean (files, chunks, per-event times, sessions, vectors)": true
+    },
+    "metrics": {
+      "diffs": [],
+      "strikes": [
+        [
+          "area39/sub24/note_000999_chapter.txt",
+          1
+        ],
+        [
+          "area39/sub15/note_000639_regression.txt",
+          1
+        ],
+        [
+          "docs/0051_paper_10.pdf",
+          1
+        ]
+      ],
+      "quarantined_by_kills": [],
+      "final_report": {
+        "seen": 1560,
+        "new": 1560,
+        "changed": 0,
+        "unchanged": 0,
+        "deleted": 0,
+        "offline_roots": [],
+        "metadata_only": {},
+        "errors": 0,
+        "chunks_embedded": 1560,
+        "seconds": 274.63,
+        "cancelled": false,
+        "healed_folders": 0,
+        "removed_roots": [],
+        "low_disk": false,
+        "struck": null,
+        "quarantined": 0,
+        "parse_errors": 0,
+        "repaired_vectors": 0,
+        "nested_roots": []
+      }
+    },
+    "source": "ADR-0011 'no lost scan after a kill', ADR-0012, ADR-0014 test 10: kill x5, then incremental == clean",
+    "seconds": 744.9,
+    "exe": "6ad76c07234c4d70",
+    "ok": true,
+    "at": "2026-10-28T23:54:32"
+  },
+  "C08": {
+    "checks": {
+      "second writer exits 4 with 'locked'": true,
+      "first writer completes": true
+    },
+    "source": "ADR-0012 §1: a second writer is refused; the first is unaffected",
+    "seconds": 234.3,
+    "exe": "6ad76c07234c4d70",
+    "ok": true,
+    "at": "2026-10-28T23:58:26"
+  },
+  "C09": {
+    "checks": {
+      "the child was running": true,
+      "child dies with the window": true,
+      "the index is writable afterwards (lock released) and resumes": true
+    },
+    "metrics": {
+      "child_pids": [
+        10656
+      ],
+      "resume_report": {
+        "seen": 3040,
+        "new": 3040,
+        "changed": 0,
+        "unchanged": 0,
+        "deleted": 0,
+        "offline_roots": [],
+        "metadata_only": {},
+        "errors": 0,
+        "chunks_embedded": 3040,
+        "seconds": 520.86,
+        "cancelled": false,
+        "healed_folders": 0,
+        "removed_roots": [],
+        "low_disk": false,
+        "struck": "area39/sub23/note_001959_project.txt",
+        "quarantined": 0,
+        "parse_errors": 0,
+        "repaired_vectors": 0,
+        "nested_roots": []
+      }
+    },
+    "source": "ADR-0001 §2: the indexer child cannot outlive the window (Job Object)",
+    "seconds": 848.0,
+    "exe": "6ad76c07234c4d70",
+    "ok": true,
+    "at": "2026-10-29T00:12:34"
+  },
+  "C10": {
+    "checks": {
+      "GUI finished, last child exit 0": true,
+      "two automatic restarts": true,
+      "the file is quarantined": true,
+      "every other file indexed": true
+    },
+    "metrics": {
+      "selfdrive": {
+        "seconds": 54.0,
+        "timed_out": false,
+        "heartbeats": 2556,
+        "stall_max_ms": 887.1,
+        "stalls_over_250ms": 1,
+        "gap_p99_ms": 32.4,
+        "searches": 35,
+        "search_p50_ms": 21.2,
+        "search_p95_ms": 39.7,
+        "search_max_ms": 1369.2,
+        "result_counts": [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          25,
+          25,
+          25,
+          25,
+          25,
+          25,
+          25,
+          25,
+          25,
+          25,
+          25,
+          25,
+          25,
+          25,
+          25,
+          25,
+          25,
+          25,
+          25,
+          25,
+          25,
+          25
+        ],
+        "child_seen": true,
+        "restarts": 2,
+        "last_child_exit": 0,
+        "statuses": [
+          "Updating · 80 new or changed · 80 checked — search works meanwhile",
+          "Updating · 90 new or changed · 90 checked — search works meanwhile",
+          "Updating · 100 new or changed · 100 checked — search works meanwhile",
+          "Updating · 110 new or changed · 110 checked — search works meanwhile",
+          "Updating · 120 new or changed · 120 checked — search works meanwhile",
+          "Updating · 130 new or changed · 130 checked — search works meanwhile",
+          "Updating · 140 new or changed · 140 checked — search works meanwhile",
+          "Updating · 150 new or changed · 150 checked — search works meanwhile",
+          "Updating · 160 new or changed · 160 checked — search works meanwhile",
+          "Updating · 180 new or changed · 180 checked — search works meanwhile",
+          "Updating · 190 new or changed · 190 checked — search works meanwhile",
+          "Index up to date: 201 new, 0 changed, 0 removed, 0 unchanged · embedded on CPU (GPU off in Settings)"
+        ]
+      }
+    },
+    "source": "ADR-0001 §2: a file that hangs a parser costs restarts, then is quarantined (GUI-driven)",
+    "seconds": 76.2,
+    "exe": "6ad76c07234c4d70",
+    "ok": true,
+    "at": "2026-10-29T00:13:50"
+  },
+  "C11": {
+    "checks": {
+      "crash, crash, then success": true,
+      "quarantined": true,
+      "integrity ok": true
+    },
+    "metrics": {
+      "exit_codes": [
+        3,
+        3,
+        0
+      ]
+    },
+    "source": "ADR-0001 §2: a native parser crash (access violation) is quarantined after two strikes",
+    "seconds": 31.2,
+    "exe": "6ad76c07234c4d70",
+    "ok": true,
+    "at": "2026-10-29T00:14:21"
+  },
+  "C12": {
+    "checks": {
+      "header: exit 0": true,
+      "header: recovered message": true,
+      "header: damaged copy kept": true,
+      "header: search works after": true,
+      "page: exit 0": true,
+      "page: recovered message": true,
+      "page: damaged copy kept": true,
+      "page: search works after": true
+    },
+    "metrics": {
+      "header": "console --find exit 2: ",
+      "page": "console --find exit 2: "
+    },
+    "source": "ADR-0012 §3: a damaged database is detected, set aside and rebuilt; search recovers",
+    "seconds": 326.0,
+    "exe": "6ad76c07234c4d70",
+    "ok": true,
+    "at": "2026-10-29T00:19:47"
+  },
+  "C13": {
+    "checks": {
+      "search on the damaged index does not crash": true,
+      "update repairs": true,
+      "found again": true,
+      "integrity ok": true
+    },
+    "source": "ADR-0012 §3: truncated vector files are repaired; search never crashes",
+    "seconds": 108.9,
+    "exe": "6ad76c07234c4d70",
+    "ok": true,
+    "at": "2026-10-29T00:21:36"
+  },
+  "C14": {
+    "checks": {
+      "exit 5 with disk_low": true,
+      "index untouched": true
+    },
+    "source": "ADR-0012 §4: low disk refuses to start and leaves the index untouched",
+    "seconds": 28.4,
+    "exe": "6ad76c07234c4d70",
+    "ok": true,
+    "at": "2026-10-29T00:22:05"
+  },
+  "C17": {
+    "checks": {
+      "selftest exit 0": true,
+      "ALL PASS": true
+    },
+    "metrics": {
+      "tail": [
+        "  [PASS] end-to-end time - 0.6s",
+        "  [PASS] no code loaded from a dev environment or another Python",
+        "  loaded: 896 Python modules, 99 DLLs",
+        "  note: DLL injected by other software (not ours): C:\\ProgramData\\A-Volute\\A-Volute.Nahimic\\Modules\\Scheduled\\x64\\AudioDevProps2.dll",
+        "  note: DLL injected by other software (not ours): C:\\ProgramData\\Microsoft\\Windows Defender\\Platform\\4.18.26100.4-0\\MpOAV.dll",
+        "RESULT: ALL PASS"
+      ]
+    },
+    "source": "Decision 95: the frozen self test passes",
+    "seconds": 1.5,
+    "exe": "6ad76c07234c4d70",
+    "ok": true,
+    "at": "2026-10-29T00:22:06"
+  },
+  "C18": {
+    "checks": {
+      "found while listed": true,
+      "gone after removal": true,
+      "reported": true
+    },
+    "source": "Phase 33 real-data finding: a folder removed from Settings leaves search (packaged child)",
+    "seconds": 18.9,
+    "exe": "6ad76c07234c4d70",
+    "ok": true,
+    "at": "2026-10-29T00:22:25"
+  }
+}

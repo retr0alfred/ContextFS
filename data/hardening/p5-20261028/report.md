@@ -1,6 +1,6 @@
 # Hardening report `p5-20261028`
 
-Packaged build `ContextFS.exe` sha256[:16] = `bdb6d456bfda4c19`
+Packaged build `ContextFS.exe` sha256[:16] = `6ad76c07234c4d70`
 
 | Case | Source | Result | Seconds |
 |---|---|---|---|
@@ -21,5 +21,5 @@ Packaged build `ContextFS.exe` sha256[:16] = `bdb6d456bfda4c19`
 | C18 | Phase 33 real-data finding: a folder removed from Settings leaves search (packaged child) | PASS | 17.3 |
 | C19 | Phase 33 real-data finding: closing mid-scan never leaves files without dates | PASS | 291.2 |
 | C20 | QA H1 (Phase 33): a renamed or deleted folder leaves no ghost results | PASS | 11.4 |
-| C21 | QA H2+H3 (Phase 33): 1601- and pre-1970-dated files never stop a scan or crash the window | FAIL | 134.5 |
+| C21 | QA H2+H3 (Phase 33): 1601- and pre-1970-dated files never stop a scan or crash the window | PASS | 26.8 |
 | C22 | QA L1 (Phase 33): support commands answer in JSON, even for a missing index | PASS | 0.8 |
