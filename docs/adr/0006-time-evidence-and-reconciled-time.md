@@ -104,3 +104,20 @@ Supersedes conflicting clauses. Source: `review/fresh_review.md` B1, B2, M2, M11
   - exFAT's stored UTC offset;
   - `Zone.Identifier` (Mark-of-the-Web ADS) as free `arrived_here` evidence for downloads, read
     only on non-placeholder files.
+
+## Status update — 2026-10-29: the v2-P6 estimator and the arrival event (log.md Phase 34, Decisions 106–107)
+- **`arrived_here` means "came into your files"** (download, import or creation). It does *not*
+  mean the copy date of a migration. The truth stays as generated (damage never changes it); the
+  app's label is "Came into your files".
+- **T v1.1 addendum** (`data/transfer_table/T_v1_1_motw.*`): Mark-of-the-Web survival was measured,
+  and content-only copies and git clone drop it. The damage simulator was corrected, and the
+  correction re-applied to dev and test before any test run.
+- **The probabilistic estimator of §3 is `recon_v1`** (`docs/engine/RECON_V1.md`):
+  - evidence rules: in-file times, MotW, EXIF, siblings, and bulk-copy events detected from the
+    root's birth times;
+  - an event gets a date only on positive evidence;
+  - per-method, **widen-only** split-conformal calibration fitted on dev only (`recon_params.py`,
+    sha256 46c06469…);
+  - the app's default time source since Decision 107.
+- **E5 on dev:** see log.md Phase 34. The rules were developed on dev (in-sample); only the
+  calibration is held out (leave-one-persona/profile/archetype-out).

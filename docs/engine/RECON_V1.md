@@ -89,3 +89,33 @@ Status: design, 2026-10-29. Fits only on the **dev** split; the test split stays
 - No claim beyond the simulator: the clue→event relations are partly simulator properties (for
   example, camera files' mtime equals EXIF capture exactly). The paper states this. External
   validity rests on the real-user study (ADR-0015 §9), not on this benchmark.
+
+## As built (2026-10-29; log.md Phase 34). Differences from the draft above, after two independent reviews
+- **No origin labels.**
+  - The draft's `external` rule (in-file Δ ≤ 10 min) read a generator constant, and was dropped as a
+    rule.
+  - A reset file with no download mark or EXIF gets "came into your files" = its creation (variant
+    A). This was selected on dev by LOPO macro interval score: A 230.8, B ("between creation and the
+    copy") 314.6, C (A with a separate method) 310.4. The criterion was not committed before the
+    runs, so this is a dev model selection, not a pre-registered one.
+- **Soft existence.**
+  - An edit is dated only on positive evidence: an mtime later than the download (downloads), later
+    than both capture and import (photos), or any mtime of the user's own files.
+  - Never-re-saved documents moved by a content copy get a weak (`unknown`) edit, not none.
+  - The photo rule was changed after the import-time-mtime perturbation (605 → 0 false edits); that
+    perturbation is therefore no longer an independent test.
+- **Precedence:** a copy signature (b > m + 2 s) beats bulk-event membership.
+- **Bulk-copy events:**
+  - gap clustering (30 min) with size ≥ 30 and density ≥ 100× the root's birth rate (dev-fitted);
+  - stored per root, and recomputed (whole root re-estimated) only at the end of a completed scan.
+- **Calibration** is per method and widen-only (α = 0.2). Pooling within a method still widens some
+  undamaged files (undamaged arrival median width 21 d): a stated cost.
+- **Points** come from evidence anchors, never from fitted lags.
+- **Ranking:** expected soft overlap over the interval (equal to the old feature for points);
+  explanations give a range for wide intervals.
+- **Limitations to state:**
+  - authored ≈ 1.00 because in-file "created" equals truth by construction;
+  - documents whose in-file "modified" does not track edits lose last-edit recovery after a content
+    copy (0.92 → 0.22 in the perturbation suite);
+  - `camera_copied`'s fitted widening (+21 d) mirrors the generator's 1–20 d import lag;
+  - one migration date in dev and test (a dev stress set covers other geometries).
