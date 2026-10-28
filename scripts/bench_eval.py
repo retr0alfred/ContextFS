@@ -406,6 +406,12 @@ def main() -> int:
     print(f"{'cue':<10}" + "".join(f"{s[:10]:>11}" for s in systems))
     for cue, row in summary["by_cue"].items():
         print(f"{cue:<10}" + "".join(f"{row[s]:>11.3f}" for s in systems))
+    ve = summary["v1_explanations"]
+    print(
+        f"\nv1 explanations: claim-verified@10 {ve['claim_verified_at10']}; top-1 changes when "
+        f"its lead signal is removed: {ve['cf_top1_dropped_share']} "
+        f"(by lead signal {ve['cf_by_lead_signal']})"
+    )
     print(f"\npaired vs {args.reference} (nDCG@10; + means {args.reference} better)")
     for s, r in summary["paired_vs_reference"].items():
         print(

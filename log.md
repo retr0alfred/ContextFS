@@ -3483,3 +3483,80 @@ inspected item will be in the frozen test split. Recorded for transparency.
   recorded yet.
 - **To resume:** `python scripts/bench_eval.py data/bench/*-A-* --tag dev-v1-llm --ce` (it reuses
   the 7 indexes). Then: end-of-phase log, STATUS, stop.
+
+#### Phase 31 — entry 4 (2026-10-28): first full dev evaluation, end of Phase 3
+
+**Command:** `python scripts/bench_eval.py data/bench/*-A-* --tag dev-v1-llm --ce` (20 dev personas,
+4,884 files, **758 LLM-written queries**, 46.5 min). Output in `data/bench_results/dev-v1-llm/`.
+**These are DEV numbers, used to steer development. They are not paper numbers.** The test split
+is frozen and untouched.
+
+```
+system                nDCG@10        MRR   Hit@1   R@10
+path_mtime   0.307 [0.281,0.333]   0.155   0.086   0.314
+bm25         0.460 [0.440,0.481]   0.280   0.145   0.592
+dense_maxp   0.371 [0.349,0.393]   0.249   0.133   0.511
+rrf60        0.477 [0.459,0.496]   0.275   0.136   0.629
+zfuse        0.455 [0.435,0.476]   0.286   0.153   0.617
+ce_rerank    0.576 [0.556,0.595]   0.317   0.161   0.697   <- strongest baseline (graded)
+v1_full      0.454 [0.431,0.478]   0.342   0.219   0.606   <- best MRR / Hit@1
+ablations of v1 (nDCG@10): sem+fmt 0.416 | +graph 0.459 | +graph+time 0.454 | +graph+act 0.459 | full w/o format 0.367
+paired vs v1_full (Holm): ce_rerank -0.122 p_holm=0.0006 (W/L/T 264/449/45); bm25 -0.007 p=1.0; rrf60 -0.023 p_holm=0.12;
+  v1_full_nofmt +0.087 p_holm=0.0006; v1_sem_graph_time -0.0004 (753/758 ties); v1_sem_graph_act -0.005 p_holm=0.62
+v1 explanations: claim-verified@10 = 0.182; top-1 changes when its lead signal is removed: 0.178 (graph-led 0.09, semantic-led 0.22)
+temporal cue (n=119):  nDCG  path_mtime 0.465, ce 0.587, v1 0.267  |  MRR  all systems ≤ 0.152, Hit@1 ≤ 0.042
+```
+
+**What it says** (dev; to be confirmed only by the single test run in v2-P7):
+1. **v1 ContextFS does not beat the strongest baseline on graded nDCG@10.** The cross-encoder
+   rerank of BM25+dense wins by 0.12 (p < 0.001). The claim "ContextFS beats BM25+dense+rerank" is
+   **currently refuted** on dev.
+2. **On finding the exact target, v1 is the best system** (MRR 0.342, Hit@1 0.219). The gains come
+   from semantic, format, mixed and vague cues: it ranks the one right file first more often, while
+   the cross-encoder fills the top 10 with related files. The pre-registered primary is nDCG@10, so
+   both must be reported. Not chosen after the fact.
+3. **v1's own context layers contribute almost nothing here.**
+   - Timeline: 753 of 758 queries are unchanged by it, because its date index holds dates mentioned
+     *inside* files, while users' time cues refer to *when they worked on or received* the file.
+   - Activity: −0.005, not significant.
+   - Graph: +0.04 over semantic.
+   - The format hint is the single largest v1 component (+0.087), which confirms Decision 90's
+     warning that it had been credited to the context layers.
+4. **Time cues defeat every system.**
+   - Exact-target MRR is ≤ 0.15 and Hit@1 ≤ 4% for all systems.
+   - The best graded nDCG on time cues comes from the cross-encoder (0.587) and the filename+recency
+     heuristic (0.465), not from v1's timeline (0.267).
+   - This is the measured headroom for **direction A**: answer "when" cues from a reconciled,
+     per-event file time, which no system currently uses.
+5. **v1 explanations are unfaithful, as the audit predicted.**
+   - Only 18% of top-10 results cite topic terms that actually occur in the file.
+   - Removing the top result's "lead" signal changes the top result only 18% of the time.
+   - This is the baseline for ADR-0009's evidence-grounded explanations.
+
+**What would make the contribution real** (to be pursued in v2-P4/P6, never tuned on test):
+- **(a)** Make reconciled per-event file time a ranking feature for time cues (direction A), and
+  show it closes the temporal gap.
+- **(b)** Put the context features on top of the strongest first stage (BM25+dense+rerank) rather
+  than competing with it (ADR-0008).
+- **(c)** Report nDCG@10 and target-finding metrics side by side, both pre-registered, and claim
+  only what both support.
+
+#### Phase 3 deliverables vs the brief
+| Brief item | State |
+|---|---|
+| 40-file corpus as smoke fixture only | ✔ `tests/fixtures/smoke/` (anchor 0.503 unchanged) |
+| Procedural multi-persona benchmark (personas, timelines, mixed formats, noise, simulation ground truth, 10²–10⁴ scale, seeds) | ✔ `contextfs.benchgen` + audit; 44 personas (dev 4,884 / test ~5.6k files). Not yet run at 10⁴ files per persona |
+| Queries across cue types, paraphrase/typos, different LLM family from the retriever, leakage written down | ✔ LLM (Qwen3-8B) from memory views; leakage report on dev; residual risk logged |
+| Dev/test split by persona, test frozen | ✔ `split_v1.json` sha256 `ed76950b…` |
+| Real-data study protocol + tooling | ◐ protocol and consent done; tool scheduled for v2-P4/P5 (needs the app) |
+| Baselines on the same index and pools: path+mtime, BM25, dense ×2, fusion, +CE rerank, (optional LLM rerank) | ◐ all except the granite dense row (needs the v2-P4 ONNX export) and the optional LLM reranker (P7) |
+| MRR, nDCG@10, Recall@k, Hit@1, bootstrap CIs, paired tests vs strongest, per-kind, ablations, faithfulness metric | ✔ (win/loss *plots* go to the v2-P9 figure set; per-query win/loss counts are reported now) |
+| Experiments that can support or refute the claim | ✔ designed and pre-registered (ADR-0015 §7); on dev the claim is currently **refuted** for v1, see above |
+
+**Open (carried forward):**
+- granite dense row (ONNX, P4);
+- the study tool (P4/P5);
+- user-only transfer-table rows;
+- donor statistics (Decision 96, optional);
+- test runs, capped at 3 (P7);
+- a 10⁴-file persona for the scale experiments (P7).
