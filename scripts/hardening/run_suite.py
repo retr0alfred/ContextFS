@@ -2,6 +2,11 @@ r"""Hardening suite for the packaged app (v2-P5, log.md Phase 33). Runs against 
 
     .venv\Scripts\python.exe scripts\hardening\run_suite.py [--only C01,C07] [--scale 30000] [--tag NAME]
 
+Disposable data (corpora, indexes, GUI homes) goes to ``--work`` (default ``.tools/exp/harden``).
+On this machine the project's D: is a bus-powered USB hard disk that resets under sustained
+small-file writes (log.md Phase 33), so the suite is run with ``--work C:\ContextFS-scratch\harden``
+(the user's dedicated, deletable scratch folder on the internal SSD) and ``--pause`` between cases.
+
 Every case drives the *frozen* executables as a black box: indexing through the windowed
 ``ContextFS.exe --indexer`` (the real child), search and inspection through
 ``ContextFS-console.exe --find/--status``, and the GUI through ``CONTEXTFS_SELFDRIVE``. The suite
@@ -76,7 +81,8 @@ def fresh(name: str) -> Path:
     """
     d = WORK / name
     if d.exists():
-        subprocess.run(["icacls", str(d), "/reset", "/T", "/C", "/Q"], capture_output=True)  # undo deny ACEs
+        if name == "c05":  # the only case that sets deny ACEs; a recursive reset elsewhere is pure load
+            subprocess.run(["icacls", str(d), "/reset", "/T", "/C", "/Q"], capture_output=True)
         TRASH.mkdir(parents=True, exist_ok=True)
         d.rename(TRASH / f"{name}-{time.time_ns()}")
     d.mkdir(parents=True)
@@ -299,7 +305,26 @@ def bench_docs(limit: int) -> list[Path]:
     return out[:limit]
 
 
-def gen_corpus(root: Path, n: int, docs: int = 0, seed: int = 1) -> Path:
+def gen_corpus(root: Path, n: int, docs: int = 0, seed: int = 1, shared: bool = False) -> Path:
+    """A synthetic corpus, generated once per (n, docs, seed) into ``_corpora`` and reused.
+
+    ``shared=True`` returns the cached corpus itself (for cases that never modify it; the indexer
+    is read-only on it, which C01 verifies); otherwise the case gets its own copy at ``root``.
+    """
+    cache = WORK / "_corpora" / f"{n}-{docs}-{seed}"
+    done = WORK / "_corpora" / f"{n}-{docs}-{seed}.complete"  # beside, not inside: never indexed
+    if not done.exists():
+        if cache.exists():
+            shutil.rmtree(lp(cache), ignore_errors=True)
+        _generate(cache, n, docs, seed)
+        write(done, "")
+    if shared:
+        return cache
+    shutil.copytree(lp(cache), lp(root))
+    return root
+
+
+def _generate(root: Path, n: int, docs: int, seed: int) -> Path:
     rng = random.Random(seed)
     for i in range(n):
         folder = root / f"area{i % 40:02d}" / f"sub{(i // 40) % 25:02d}"
@@ -518,7 +543,7 @@ def c06(args) -> dict:
 @case("C07", "ADR-0011 'no lost scan after a kill', ADR-0012, ADR-0014 test 10: kill x5, then incremental == clean")
 def c07(args) -> dict:
     d = fresh("c07")
-    corpus = gen_corpus(d / "corpus", 1500, docs=60)
+    corpus = gen_corpus(d / "corpus", 1500, docs=60, shared=True)
     rng = random.Random(7)
     kills = []
     for _ in range(5):
@@ -544,7 +569,7 @@ def c07(args) -> dict:
 @case("C08", "ADR-0012 §1: a second writer is refused; the first is unaffected")
 def c08(args) -> dict:
     d = fresh("c08")
-    corpus = gen_corpus(d / "corpus", 800)
+    corpus = gen_corpus(d / "corpus", 800, shared=True)
     a = Child(d / "index", [corpus])
     while not any(m.get("type") == "started" for m in a.msgs) and a.proc.poll() is None:
         time.sleep(0.1)
@@ -557,7 +582,7 @@ def c08(args) -> dict:
 @case("C09", "ADR-0001 §2: the indexer child cannot outlive the window (Job Object)")
 def c09(args) -> dict:
     d = fresh("c09")
-    corpus = gen_corpus(d / "corpus", 3000, docs=40)
+    corpus = gen_corpus(d / "corpus", 3000, docs=40, shared=True)
     home = d / "home"
     home.mkdir()
     (home / "settings.json").write_text(json.dumps({"roots": [str(corpus)], "excluded_names": [],
@@ -726,7 +751,7 @@ def c15(args) -> dict:
 @case("C16", "ADR-0001: no event-loop stall > 250 ms while indexing and searching (packaged GUI)")
 def c16(args) -> dict:
     d = fresh("c16")
-    corpus = gen_corpus(d / "corpus", 3000, docs=150, seed=16)
+    corpus = gen_corpus(d / "corpus", 3000, docs=150, seed=16, shared=True)
     rep = selfdrive(d / "home", [corpus], d / "index",
                     ["budget invoice", "the pdf about clustering", "lecture notes from march", "hotel ticket",
                      "thesis chapter results"], max_seconds=1200)
@@ -761,7 +786,7 @@ def c18(args) -> dict:
 @case("C19", "Phase 33 real-data finding: closing mid-scan never leaves files without dates")
 def c19(args) -> dict:
     d = fresh("c19")
-    corpus = gen_corpus(d / "corpus", 2500, docs=50)
+    corpus = gen_corpus(d / "corpus", 2500, docs=50, shared=True)
     cancels = 0
     for delay in (4, 6, 8):
         c = Child(d / "index", [corpus])
@@ -839,9 +864,13 @@ def c22(args) -> dict:
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--only", default="")
+    parser.add_argument("--work", type=Path, default=WORK, help="scratch folder for corpora and indexes")
+    parser.add_argument("--pause", type=float, default=5.0, help="seconds to rest between cases")
     parser.add_argument("--scale", type=int, default=30000)
     parser.add_argument("--tag", default=f"p5-{datetime.now():%Y%m%d}")
     args = parser.parse_args()
+    global WORK, TRASH
+    WORK, TRASH = args.work, args.work / "_trash"
     if not GUI_EXE.exists():
         print("build first: python scripts/build_app.py")
         return 2
@@ -867,6 +896,7 @@ def main() -> int:
         for name, ok in r["checks"].items():
             print(f"   [{'PASS' if ok else 'FAIL'}] {name}")
         report_path.write_text(json.dumps(results, indent=2, default=str, ensure_ascii=False), encoding="utf-8")
+        time.sleep(args.pause)  # let the disks settle between cases
     lines = [f"# Hardening report `{args.tag}`", "", f"Packaged build `ContextFS.exe` sha256[:16] = `{exe_hash}`", "",
              "| Case | Source | Result | Seconds |", "|---|---|---|---|"]
     for cid, r in sorted(results.items()):
