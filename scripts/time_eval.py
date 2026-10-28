@@ -63,11 +63,12 @@ def index_of(persona: Path, index_root: Path | None) -> Path:
 
 
 def recompute(index: Path) -> None:
-    from contextfs.engine.indexer import recompute_times
+    from contextfs.engine.indexer import recompute_times, refresh_bulk_events
     from contextfs.engine.schema import connect, migrate
 
     conn = connect(index / "contextfs.db")
     migrate(conn)
+    refresh_bulk_events(conn)
     folders = {(r[0], r[1].rsplit("/", 1)[0] if "/" in r[1] else "")
                for r in conn.execute("SELECT root_id, rel_path FROM files WHERE status='present'")}
     recompute_times(conn, folders)

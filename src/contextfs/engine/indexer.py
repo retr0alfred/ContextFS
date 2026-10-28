@@ -25,7 +25,7 @@ from pathlib import Path
 import numpy as np
 
 from contextfs.engine import fsio, guard, timeev
-from contextfs.engine.estimate import ESTIMATORS, FileEvidence, folder_context
+from contextfs.engine.estimate import ESTIMATORS, FileEvidence, detect_bulk_events, folder_context
 from contextfs.engine.schema import EVENTS
 from contextfs.engine.vectors import VectorFiles
 
@@ -328,6 +328,8 @@ def _run_update(engine, roots, progress, cancel, clock, prune_other_roots, rep, 
 
     # Sessions are global and slower (5 s for 5k files), so they wait for a completed scan; the
     # stale flag carries the need across cancelled scans.
+    if not rep.cancelled and refresh_bulk_events(conn):
+        _set_meta(conn, "sessions_stale", "1")  # dates changed for a whole root
     if not rep.cancelled and _get_meta(conn, "sessions_stale", "1") == "1":
         from contextfs.engine.sessions import rebuild_sessions
 
@@ -698,59 +700,117 @@ def _chunks(seq: list, size: int = 900):
         yield seq[i : i + size]
 
 
+def root_bulk_events(conn, root_id: int) -> list[tuple[int, int]]:
+    """The root's bulk-copy events: a pure function of its present files' birth times."""
+    births = [r[0] for r in conn.execute(
+        "SELECT t.utc_s FROM time_evidence t JOIN files f ON f.file_id=t.file_id "
+        "WHERE f.root_id=? AND f.status IN ('present','offline') AND t.source='ntfs' AND t.kind='created' "
+        "AND t.utc_s IS NOT NULL",
+        (root_id,),
+    )]
+    return detect_bulk_events(births)
+
+
+def _folder_of(rel_path: str) -> str:
+    return rel_path.rsplit("/", 1)[0] if "/" in rel_path else ""
+
+
+def estimate_folder(conn, root_id: int, folder: str, bulk_events, estimators=None):
+    """(file_ids, file_time rows) for one folder's direct children; writes nothing.
+
+    Shared by ``recompute_times`` and the fitting harness, so both run exactly the same estimation.
+    """
+    # Direct children only, through the (root_id, rel_path) index: a range on the "folder/"
+    # prefix ('0' is the character after '/'), not a LIKE that fetched the whole subtree
+    # (the root folder fetched every file in the index, every batch; Phase 33).
+    if folder:
+        rows = conn.execute(
+            "SELECT file_id, rel_path FROM files WHERE root_id=? AND rel_path >= ? AND rel_path < ? "
+            "AND status IN ('present','offline')",
+            (root_id, folder + "/", folder + "0"),
+        ).fetchall()
+        skip = len(folder) + 1
+        files = [f for f in rows if "/" not in f["rel_path"][skip:]]
+    else:
+        files = conn.execute(
+            "SELECT file_id, rel_path FROM files WHERE root_id=? AND instr(rel_path, '/')=0 "
+            "AND status IN ('present','offline')",
+            (root_id,),
+        ).fetchall()
+    if not files:
+        return [], []
+    ids = [f["file_id"] for f in files]
+    ev_rows: dict[int, dict[str, dict]] = {i: {} for i in ids}
+    first_seen: dict[int, int] = {}
+    # In chunks: one folder can hold more files than SQLite allows parameters in a query
+    # (32,766; a camera or Downloads folder), which failed every update (Phase 33).
+    for part in _chunks(ids):
+        marks = ",".join("?" * len(part))
+        for r in conn.execute(f"SELECT * FROM time_evidence WHERE file_id IN ({marks})", part):
+            ev_rows[r["file_id"]][f"{r['source']}:{r['kind']}"] = dict(r)
+        for r in conn.execute(
+            f"SELECT file_id, MIN(at_utc) AS at FROM observations WHERE kind='first_seen' AND file_id IN ({marks})"
+            " GROUP BY file_id",
+            part,
+        ):
+            first_seen[r["file_id"]] = r["at"]
+    births = {i: ev_rows[i]["ntfs:created"]["utc_s"] for i in ids if "ntfs:created" in ev_rows[i]}
+    sibling_created = sorted(
+        r["utc_s"]
+        for i in ids
+        for k in ("exif:original", "ooxml:created", "pdf:created")
+        if (r := ev_rows[i].get(k)) and r.get("utc_s")
+    )
+    ctx = folder_context(births, bulk_events=bulk_events, sibling_created=sibling_created)
+    out = []
+    for i in ids:
+        ev = FileEvidence(i, ev_rows[i], first_seen.get(i))
+        for est in estimators or ESTIMATORS.values():
+            for event, t in est.estimate(ev, ctx).items():
+                assert event in EVENTS
+                out.append((i, est.name, event, *t.to_row()))
+    return ids, out
+
+
 def recompute_times(conn, folders: set[tuple[int, str]]) -> None:
-    """Re-estimate per-event times for every file in the touched folders, for every estimator."""
+    """Re-estimate per-event times for every file in the touched folders, for every estimator.
+
+    Uses each root's bulk-copy events as currently stored (``meta``); ``refresh_bulk_events`` runs
+    at the end of a completed scan and re-estimates a whole root once if its events changed, so a
+    first index does not recompute everything at every batch while the events are still growing.
+    """
+    bulk = {}
+    for root_id in {r for r, _ in folders}:
+        bulk[root_id] = [tuple(e) for e in json.loads(_get_meta(conn, f"bulk_events:{root_id}", "[]"))]
     for root_id, folder in folders:
-        # Direct children only, through the (root_id, rel_path) index: a range on the "folder/"
-        # prefix ('0' is the character after '/'), not a LIKE that fetched the whole subtree
-        # (the root folder fetched every file in the index, every batch; Phase 33).
-        if folder:
-            rows = conn.execute(
-                "SELECT file_id, rel_path FROM files WHERE root_id=? AND rel_path >= ? AND rel_path < ? "
-                "AND status IN ('present','offline')",
-                (root_id, folder + "/", folder + "0"),
-            ).fetchall()
-            skip = len(folder) + 1
-            files = [f for f in rows if "/" not in f["rel_path"][skip:]]
-        else:
-            files = conn.execute(
-                "SELECT file_id, rel_path FROM files WHERE root_id=? AND instr(rel_path, '/')=0 "
-                "AND status IN ('present','offline')",
-                (root_id,),
-            ).fetchall()
-        if not files:
+        ids, rows = estimate_folder(conn, root_id, folder, bulk[root_id])
+        if not ids:
             continue
-        ids = [f["file_id"] for f in files]
-        ev_rows: dict[int, dict[str, dict]] = {i: {} for i in ids}
-        first_seen: dict[int, int] = {}
-        # In chunks: one folder can hold more files than SQLite allows parameters in a query
-        # (32,766; a camera or Downloads folder), which failed every update (Phase 33).
-        for part in _chunks(ids):
-            marks = ",".join("?" * len(part))
-            for r in conn.execute(f"SELECT * FROM time_evidence WHERE file_id IN ({marks})", part):
-                ev_rows[r["file_id"]][f"{r['source']}:{r['kind']}"] = dict(r)
-            for r in conn.execute(
-                f"SELECT file_id, MIN(at_utc) AS at FROM observations WHERE kind='first_seen' AND file_id IN ({marks})"
-                " GROUP BY file_id",
-                part,
-            ):
-                first_seen[r["file_id"]] = r["at"]
-        births = {
-            i: ev_rows[i]["ntfs:created"]["utc_s"] for i in ids if "ntfs:created" in ev_rows[i]
-        }
-        ctx = folder_context(births)
         for part in _chunks(ids):
             conn.execute(f"DELETE FROM file_time WHERE file_id IN ({','.join('?' * len(part))})", part)
-        rows = []
-        for i in ids:
-            ev = FileEvidence(i, ev_rows[i], first_seen.get(i))
-            for est in ESTIMATORS.values():
-                for event, t in est.estimate(ev, ctx).items():
-                    assert event in EVENTS
-                    rows.append((i, est.name, event, *t.to_row()))
         conn.executemany(
             "INSERT INTO file_time(file_id, estimator, event, lo_utc, hi_utc, point_utc, confidence, method,"
             " evidence_json) VALUES (?,?,?,?,?,?,?,?,?)",
             rows,
         )
     conn.commit()
+
+
+def refresh_bulk_events(conn) -> bool:
+    """Recompute every root's bulk-copy events; re-estimate a root whose events changed.
+
+    Returns True if anything was re-estimated. Keeps incremental == clean: a root's dates depend
+    only on its final set of files, however the scans that built it were split or cancelled.
+    """
+    changed = False
+    for (root_id,) in conn.execute("SELECT root_id FROM roots").fetchall():
+        events = root_bulk_events(conn, root_id)
+        key = f"bulk_events:{root_id}"
+        if json.dumps(events) != _get_meta(conn, key, "[]"):
+            _set_meta(conn, key, json.dumps(events))
+            folders = {(root_id, _folder_of(r[0])) for r in conn.execute(
+                "SELECT rel_path FROM files WHERE root_id=? AND status IN ('present','offline')", (root_id,))}
+            recompute_times(conn, folders)
+            changed = True
+    conn.commit()
+    return changed
