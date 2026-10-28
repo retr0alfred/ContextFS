@@ -16,6 +16,11 @@ laptop on date M". It applies one T behaviour to every file that existed before 
 
 In-file times survive every behaviour, as T measured. The truth is never changed by damage. Only
 the file system changes, and the manifest records which behaviour hit which file.
+
+**Mark-of-the-Web (T v1.1, log.md Decision 106):** `content_copy` and `git_clone` remove the
+``Zone.Identifier`` stream, as the measured tools (shutil.copy/copyfile, zip/tar extraction, git
+clone) do. `copyfile` and `robocopy` keep it (their dominant tools keep it; Expand-Archive and tar,
+which drop it, are a minority of `copyfile`: a stated limitation).
 """
 
 from __future__ import annotations
@@ -29,7 +34,21 @@ from contextfs.benchgen.materialise import MANIFEST_NAME, fs_times_for
 from contextfs.benchgen.model import FilePlan
 from contextfs.datagen.filetimes import set_file_times
 
-__all__ = ["PROFILES", "apply_damage"]
+__all__ = ["PROFILES", "apply_damage", "drop_motw", "DROPS_MOTW"]
+
+#: Behaviours whose real tools remove the Mark-of-the-Web stream (T v1.1, measured).
+DROPS_MOTW = {"content_copy", "git_clone"}
+
+
+def drop_motw(path: Path) -> bool:
+    """Remove ``path``'s Zone.Identifier stream, as a content-only copy does. True if one existed."""
+    import os
+
+    try:
+        os.remove(str(path) + ":Zone.Identifier")
+        return True
+    except FileNotFoundError:
+        return False
 
 #: profile name → {behaviour: share of pre-migration files}
 PROFILES: dict[str, dict[str, float]] = {
@@ -77,6 +96,7 @@ def apply_damage(
             # The copy resets both times to `at`; an edit made after the migration then moves
             # mtime forward again, so a later planned edit survives.
             set_file_times(path, created=at, modified=max(at, modified), accessed=max(at, modified))
+            drop_motw(path)
         plan.damage = behaviour
         counts[behaviour] = counts.get(behaviour, 0) + 1
 
