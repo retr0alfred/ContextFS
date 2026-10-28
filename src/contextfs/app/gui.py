@@ -173,6 +173,13 @@ class SearchJob(QRunnable):
             self.signals.done.emit((resp, dates), self.seq)
         except FileNotFoundError:
             self.signals.failed.emit("The index is being built for the first time. Try again in a moment.", self.seq)
+        except sqlite3.OperationalError:
+            # busy, or a stopped indexer's journal is waiting for recovery: not damage
+            if SearchJob.engine is not None:
+                SearchJob.engine.close()
+                SearchJob.engine = None
+            self.signals.failed.emit("The index is being updated or recovered; search works again in a "
+                                     "moment.", self.seq)
         except sqlite3.DatabaseError:
             if SearchJob.engine is not None:
                 SearchJob.engine.close()
@@ -199,6 +206,7 @@ class MainWindow(QMainWindow):
         self.pool = QThreadPool()
         self.pool.setMaxThreadCount(1)
         self.seq, self.reopen, self.proc = 0, False, None
+        self._live_jobs: dict[int, SearchJob] = {}  # in-flight searches, owned by this thread
         self.setWindowTitle("ContextFS — find files by what you remember")
         self.resize(1200, 760)
 
@@ -385,9 +393,22 @@ class MainWindow(QMainWindow):
         self.seq += 1
         job = SearchJob(self.index_dir, text, overrides, self.seq, self.reopen)
         self.reopen = False
-        job.signals.done.connect(self.show_results)
-        job.signals.failed.connect(lambda msg, seq: self.status.showMessage(msg))
+        # The job (and its signal object) must outlive the queued delivery of its result. Left to
+        # Qt's auto-delete, it could be destroyed on the worker thread while this thread was still
+        # delivering the signal: a use-after-free that crashed the window (Phase 33 suite C10).
+        job.setAutoDelete(False)
+        self._live_jobs[self.seq] = job
+        job.signals.done.connect(self._job_done)
+        job.signals.failed.connect(self._job_failed)
         self.pool.start(job)
+
+    def _job_done(self, payload, seq: int) -> None:
+        self._live_jobs.pop(seq, None)  # released here, on the GUI thread
+        self.show_results(payload, seq)
+
+    def _job_failed(self, msg: str, seq: int) -> None:
+        self._live_jobs.pop(seq, None)
+        self.status.showMessage(msg)
 
     def show_results(self, payload, seq: int) -> None:
         """Render rows (stale responses are ignored)."""

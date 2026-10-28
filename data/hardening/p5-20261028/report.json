@@ -243,5 +243,47 @@
     "exe": "dc39b8c63a222971",
     "ok": true,
     "at": "2026-10-28T23:06:35"
+  },
+  "C06": {
+    "checks": {
+      "zero writer failures (no sharing violations)": true,
+      "every indexer run exits 0": true
+    },
+    "metrics": {
+      "writer_failures": [],
+      "indexer_runs": 5
+    },
+    "source": "ADR-0011 §4 test: Word-style save loop (temp write + ReplaceFileW) x1000 during indexing",
+    "seconds": 87.4,
+    "exe": "dc39b8c63a222971",
+    "ok": true,
+    "at": "2026-10-28T23:08:26"
+  },
+  "C10": {
+    "checks": {
+      "case ran": false
+    },
+    "metrics": {
+      "exception": "OperationalError: disk I/O error"
+    },
+    "source": "ADR-0001 §2: a file that hangs a parser costs restarts, then is quarantined (GUI-driven)",
+    "seconds": 45.9,
+    "exe": "dc39b8c63a222971",
+    "ok": false,
+    "at": "2026-10-28T23:09:12"
+  },
+  "C19": {
+    "checks": {
+      "three cancelled scans": true,
+      "no indexed file lacks dates": true
+    },
+    "metrics": {
+      "files_after_cancels": 136
+    },
+    "source": "Phase 33 real-data finding: closing mid-scan never leaves files without dates",
+    "seconds": 291.2,
+    "exe": "dc39b8c63a222971",
+    "ok": true,
+    "at": "2026-10-28T23:14:03"
   }
 }
