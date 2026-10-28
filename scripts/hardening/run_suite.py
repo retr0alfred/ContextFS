@@ -777,6 +777,62 @@ def c19(args) -> dict:
             "metrics": {"files_after_cancels": files}}
 
 
+@case("C20", "QA H1 (Phase 33): a renamed or deleted folder leaves no ghost results")
+def c20(args) -> dict:
+    d = fresh("c20")
+    corpus = d / "corpus"
+    for i in range(10):
+        write(corpus / "projA" / f"a{i}.txt", f"quasar telescope proposal part {i}")
+    write(corpus / "keep" / "k.txt", "unrelated keeper")
+    run_child(d / "index", [corpus])
+    (corpus / "projA").rename(corpus / "projB")
+    code1, c1 = run_child(d / "index", [corpus])
+    after_rename = [r["rel_path"] for r in find(d / "index", "quasar telescope proposal")[0]["results"]]
+    shutil.rmtree(lp(corpus / "projB"))
+    code2, c2 = run_child(d / "index", [corpus])
+    after_delete = [r["rel_path"] for r in find(d / "index", "quasar telescope proposal")[0]["results"]]
+    return {"checks": {"rename: old paths gone, new paths found once": code1 == 0 and c1.report().get("deleted") == 10
+                       and not any(p.startswith("projA/") for p in after_rename)
+                       and sum(p.startswith("projB/") for p in after_rename) == 10,
+                       "delete: the folder's text is no longer searchable": code2 == 0
+                       and not any(p.startswith(("projA/", "projB/")) for p in after_delete)}}
+
+
+@case("C21", "QA H2+H3 (Phase 33): 1601- and pre-1970-dated files never stop a scan or crash the window")
+def c21(args) -> dict:
+    d = fresh("c21")
+    corpus = gen_corpus(d / "corpus", 40)
+    old = write(corpus / "old" / "ancient_parchment.txt", "ancient parchment scroll")
+    sixties = write(corpus / "old" / "sixties_letter.txt", "ancient parchment letter from the sixties")
+    zero = -11644473600 * 10**9 + 10**9
+    os.utime(lp(old), ns=(zero, zero))
+    t1965 = -157766400 * 10**9
+    os.utime(lp(sixties), ns=(t1965, t1965))
+    code1, c1 = run_child(d / "index", [corpus])
+    code2, c2 = run_child(d / "index", [corpus])
+    rep = selfdrive(d / "home", [corpus], d / "index", ["ancient parchment"], max_seconds=120)
+    return {"checks": {"scan completes with every file": code1 == 0 and c1.report().get("new") == 42,
+                       "next scan sees them unchanged": code2 == 0 and c2.report().get("unchanged") == 42,
+                       "the window shows them without crashing": not rep.get("error") and not rep.get("timed_out")
+                       and any(n >= 2 for n in rep.get("result_counts", []))},
+            "metrics": {"selfdrive": rep}}
+
+
+@case("C22", "QA L1 (Phase 33): support commands answer in JSON, even for a missing index")
+def c22(args) -> dict:
+    d = fresh("c22")
+    outs = {}
+    for args_ in (("--status", d / "nope"), ("--find", d / "nope", "x"), ("--status",)):
+        r = subprocess.run([str(CON_EXE), *map(str, args_)], capture_output=True, text=True, encoding="utf-8",
+                           timeout=120, cwd=str(WORK))
+        try:
+            outs[" ".join(map(str, args_[:1]))] = ("error" in json.loads(r.stdout.strip().splitlines()[-1]), r.returncode)
+        except (ValueError, IndexError):
+            outs[" ".join(map(str, args_[:1]))] = (False, r.returncode)
+    return {"checks": {"JSON error, exit 2, no traceback": all(ok and code == 2 for ok, code in outs.values())},
+            "metrics": {"outputs": outs}}
+
+
 # --------------------------------------------------------------------------------------------
 
 

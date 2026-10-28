@@ -87,8 +87,11 @@ def attach(win, cfg_path: str) -> None:
             st["statuses"].append(msg)
         if win.proc is not None:
             st["child_seen"], st["idle_ticks"] = True, 0
-        else:
+        elif getattr(win, "last_child_exit", None) is not None:
+            st["child_seen"] = True  # a fast update can finish before the first tick
             st["idle_ticks"] += 1
+        else:
+            st["idle_ticks"] += 1 if st["child_seen"] else 0
         queries = cfg.get("queries", [])
         if queries:
             win.box.setText(queries[st["qi"] % len(queries)])
