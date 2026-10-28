@@ -88,6 +88,8 @@ def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("persona_dirs", type=Path, nargs="+")
     parser.add_argument("--tag", required=True)
+    parser.add_argument("--index-root", type=Path, default=None,
+                        help="build/read indexes at <root>/<persona> instead of <persona>/index_v2")
     parser.add_argument("--fit", action="store_true")
     parser.add_argument("--weights", type=Path, default=None)
     parser.add_argument("--out", type=Path, default=PROJECT_ROOT / "data" / "bench_results")
@@ -105,7 +107,7 @@ def main() -> int:
     started = time.perf_counter()
     records = []  # (query, source, pool, online_ranked)
     for d in args.persona_dirs:
-        idx = d / "index_v2"
+        idx = (args.index_root / d.name) if args.index_root else d / "index_v2"
         if not (idx / "contextfs.db").exists():
             with Engine.open(idx, mode="write") as eng:
                 rep = eng.update([d / "corpus"])
