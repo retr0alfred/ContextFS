@@ -18,6 +18,8 @@ Packaged build `ContextFS.exe` sha256[:16] = `b8ae539c5fee0b1b`
 | C12 | ADR-0012 §3: a damaged database is detected, set aside and rebuilt; search recovers | PASS | 68.8 |
 | C13 | ADR-0012 §3: truncated vector files are repaired; search never crashes | PASS | 21.4 |
 | C14 | ADR-0012 §4: low disk refuses to start and leaves the index untouched | PASS | 6.0 |
+| C15 | ADR-0013/0003 scale: 10^4-scale index time, memory, search latency, no-op launch update | PASS | 481.5 |
+| C16 | ADR-0001: no event-loop stall > 250 ms while indexing and searching (packaged GUI) | PASS | 184.9 |
 | C17 | Decision 95: the frozen self test passes | PASS | 1.6 |
 | C18 | Phase 33 real-data finding: a folder removed from Settings leaves search (packaged child) | PASS | 4.8 |
 | C19 | Phase 33 real-data finding: closing mid-scan never leaves files without dates | PASS | 26.1 |

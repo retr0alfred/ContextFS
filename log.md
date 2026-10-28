@@ -3791,3 +3791,288 @@ defeat every system.*
   before SignPath and before any release.
 - The acceptance demo on this laptop, and the light clean-account check (checklist above).
 - Smart App Control is in **Evaluation** on this laptop, and the build is unsigned.
+
+---
+
+## Phase 33 — v2 programme, Phase 5: hardening (2026-10-28 → 2026-10-29)
+
+**Scope:** make the packaged app safe on real folders, prove it on the *packaged* `.exe` against the
+ADRs' own "how we will know it was wrong" bars (ADR-0001, 0011, 0012, 0013, 0016), and have an
+independent agent attack it. User's acceptance demo (Part A) came first; Part B (clean account) is
+deferred by the user, not skipped.
+
+### 1. The user's demo (Part A) and what it turned out to show
+- **Setup:** the user's real ~20 GB folder `D:\Dataset` (5,273 files after completion).
+  - Indexing worked at that scale, including closing and reopening mid-index.
+  - Content search ("normalization") found the right PDF instantly.
+  - No SmartScreen prompt appeared (consistent with the build never carrying Mark-of-the-Web).
+- **GPU verified from the user's real index, read-only:**
+  - all 44,658 vectors carry the fingerprint `minilm-l6-v2/model_fp32.onnx/dml1/t4`, i.e. DirectML
+    device 1, the RTX 5060;
+  - nothing was embedded on the iGPU or the CPU.
+- **"assessment from november 2020" found nothing useful. This is NOT Direction A evidence; it was a
+  bug (Decision 101).**
+  - Every scan of `D:\Dataset` had ended *cancelled* (the user closed the app mid-index).
+  - Per-event dates were computed only by completed scans, so 4,988 of 4,988 files had no dates:
+    the query ran with no time signal at all.
+  - Measured on a D: copy of the user's index after self-healing the dates, query
+    "assessment from november 2020":
+
+    | file | before | after |
+    |---|---|---|
+    | `20BCE2422-English assessment.docx` | rank 5 | rank 1 |
+    | `Tech English Assessment.pdf` | rank 24 | rank 6 |
+
+  - After also finishing the interrupted scan (285 more files), the .docx and .pdf versions ranked
+    #2 and #3, each explained "last edited 16 Nov 2020 (sure), matches 'november 2020'".
+  - **Logged as a real-data example of the time signal *working* once dates exist,** plus the bug
+    that hid it. The user's request to log it as motivating evidence for the time-cue weakness is
+    corrected here: on this data, it is not.
+- **Real-data observations for Direction A (P6), not chased now:**
+  1. The fading time band is ~±115 days for a six-year-old cue, so a file last edited 19 Jan 2021
+     ranked #1 for "november 2020". Band width / cue-to-interval mapping is a ranking problem
+     *even with correct dates*. This matches dev: the oracle times reach only MRR 0.273 / Hit@1
+     0.135 on temporal cues (Phase 32).
+  2. The dataset had been copied:
+     - NTFS created = 2026-10-28 (the copy) while modified times were preserved;
+     - `rules_v0` treated "arrived on this PC" inconsistently between two files of the same copy:
+       a point at the mtime for one, an interval up to the copy date for the other.
+
+### Decision 101 — Real-data fixes from the demo
+- **Dates at every batch commit:**
+  - `recompute_times` runs for the folders of each committed batch, so a cancel or kill never leaves
+    committed files undated;
+  - indexes missing dates self-heal at the start of every update (`healed_folders`);
+  - sessions (slower: 5 s for 5k files) wait for a completed scan via a `sessions_stale` flag.
+  - Measured on the D: copy of the user's index: 520 folders healed, 0 undated files.
+- **Removed roots:**
+  - a folder removed from Settings stayed searchable;
+  - updates driven by the complete Settings list (`prune_other_roots`) now mark other roots
+    `removed`: their data is kept, search skips them, and re-adding is instant;
+  - root paths compare case- and separator-insensitively.
+- **Faithful time reasons:**
+  - "matches '<cue>'" only when the date lies inside the cue;
+  - otherwise "N days before/after '<cue>'".
+  - On the copy: "last edited 19 Jan 2021 (sure), 50 days after 'november 2020'".
+
+### Decision 102 — The indexer's safety model (ADR-0001 §2, ADR-0011, ADR-0012, ADR-0016)
+- **Crash and hang containment** (`engine/guard.py`):
+  - the file being read or parsed is recorded first (`inprogress.marker`, rewritten in place);
+  - a run that dies there gives that file a *strike*; two strikes on the same unchanged file
+    *quarantine* it (indexed by name and file-system times only, never opened until it changes);
+  - a watchdog ends the child (exit 3) on a file stuck longer than 180 s, and the GUI restarts it,
+    so a bad file costs restarts, not the scan;
+  - a *user's* close that has to kill the child after the 3 s clean-stop wait is recorded as the
+    user's stop, never a strike (QA H4).
+- **Per-file isolation:**
+  - each file is indexed inside a SAVEPOINT *within* the batch transaction, so batches stay atomic
+    with their vectors;
+  - an exception degrades that file to name-only (`parse_error`, retried next scan);
+  - if even that fails, the file is skipped, never the scan.
+- **Inputs that must not hurt:**
+  - zip-based documents that unpack to more than 512 MB are not parsed;
+  - files over 100 MB are not read (unchanged);
+  - nanosecond file times are clamped to SQLite's 64-bit range (a 1601 file aborted every scan,
+    QA H2);
+  - one safe UTC→local helper (pre-1970 dates crashed the window, QA H3).
+- **Index safety:**
+  - `PRAGMA quick_check` on *every* writable open (deviation from ADR-0012's dirty-shutdown-only
+    rule: a damaged page behind a clean last scan would go unnoticed; it costs ~1 s for a 286 MB
+    index, in the child, while search continues);
+  - real damage → the database and vectors are moved to `damaged-<time>/` (latest kept) and rebuilt;
+  - locked/busy/I/O errors are *not* damage and are re-raised (QA M1);
+  - an index from a newer ContextFS is refused, never rebuilt;
+  - vector manifest rows past the end of a truncated file, and chunks without vectors, are
+    invalidated and their files re-embedded;
+  - migrations are now really atomic (explicit `BEGIN IMMEDIATE`; Python's sqlite3 had not opened a
+    transaction for DDL);
+  - schema v2 adds `strikes`;
+  - disk floor: refuse to start below max(2 GB, 2× the index) free, stop like a cancel below 1 GB.
+- **Process** (`app/winjob.py`):
+  - the child runs in a Job Object: killed with the window, memory limit 2 GB (1.5 GB on ≤ 8 GB
+    machines), below-normal priority (deviation: ADR-0001 Rev. 1 asked for
+    PROCESS_MODE_BACKGROUND, which also drops I/O priority to very low);
+  - cancel is a file, and the GUI never auto-restarts after the user's Cancel;
+  - the restart budget resets on progress.
+- **Privacy / operations:**
+  - network use is blocked in every mode (Python audit hook; native code is not covered, which is
+    stated);
+  - "Delete my index…" in Settings; F5 refresh;
+  - indexer log capped at 25 MB;
+  - `--find/--status` answer in JSON, including errors.
+- **Retry policy:**
+  - read failures that can clear (locked, denied, io, missing, changed, parse_error) are retried
+    every scan even when size and mtime are unchanged (suite C04);
+  - a file that fails the same way again is only touched, never re-embedded (QA M3: vectors grew
+    every scan).
+- **Folders:**
+  - a folder that vanished (renamed/deleted) tombstones its files: the walker records each listed
+    folder's subfolders (QA H1);
+  - unreadable folders still keep their files (C05);
+  - a root nested inside another root is skipped (QA M6);
+  - "D:" means the drive root (QA L2).
+- **Large folders:**
+  - one folder with more files than SQLite's 32,766 query parameters failed every update
+    (`too many SQL variables`);
+  - the queries are now chunked (900);
+  - the folder's direct children are found by an indexed `rel_path` range instead of a `LIKE` that
+    fetched the whole subtree (the root folder fetched every file in the index, every batch).
+- **Sessions:**
+  - with many tied timestamps, sessions followed storage order, so a resumed index and a clean one
+    grouped files differently (suite C07);
+  - ties are now broken by `rel_path`.
+- **GUI crash fixed:**
+  - search jobs were auto-deleted on the worker thread while the GUI thread was still delivering
+    their queued result, a use-after-free that segfaulted the window (suite C10);
+  - jobs are now released on the GUI thread.
+
+### Decision 103 — Independent QA (a fresh agent that wrote none of this)
+- Report: `docs/hardening/QA_REPORT_p5.md`.
+  - 4 High, 6 Medium, 8 Low, no Critical.
+  - The read-only guarantee held on every corpus it hashed.
+
+| Finding | Disposition |
+|---|---|
+| H1 ghost results after folder rename/delete | fixed + unit test + suite C20 |
+| H2 1601-dated file aborts every scan | fixed + unit test + suite C21 |
+| H3 pre-1970 date crashes the GUI | fixed + unit test + suite C21 (packaged GUI) |
+| H4 two closes quarantine a slow file | fixed + unit test |
+| M1 locked DB treated as damaged | fixed + unit test |
+| M2 transient failure → permanent parse_error | fixed (retried) |
+| M3 locked file re-embedded every scan | fixed + unit test |
+| M4 unknown date claims "matches" | fixed + unit test ("date unknown (1990–2026), so 'X' is not ruled out") |
+| M5 no copy-and-swap migration / observations not carried into a rebuild | **deferred, logged deviation** (migrations so far are additive and atomic; a corrupt DB cannot be read reliably) |
+| M6 nested roots index twice | fixed + unit test |
+| L1 support commands print tracebacks | fixed + suite C22 |
+| L2 "D:" indexes the current folder | fixed |
+| L3 auto-restart ignores Cancel | fixed |
+| L4 lock-refused child deletes the cancel file | fixed |
+| L5 watchdog reads two fields without a lock | accepted (theoretical; a false strike needs two and is forgiven once) |
+| L6 restart budget stalls two problem files | fixed (resets on progress) |
+| L7 test-only fault hooks in the shipped build | accepted (inert unless an environment variable is set; anyone who can set it already controls the process) |
+| L8 trailing-dot paths, recreated-file first-seen, docstring overclaim, 2× rule | docstring fixed; the rest logged |
+| — move inheritance by NTFS id/hash (ADR-0011 §5) not implemented | **deferred to P6**: it is temporal provenance, i.e. Direction A |
+
+### Decision 104 — The project drive, and how the suite works around it (user decision)
+- **D: is a 1 TB bus-powered HDD in a JMicron JMS580 UASP USB enclosure.**
+  - Under sustained small-file writes it stops responding: UASPStor event 129 "Reset to device"
+    every 16 s.
+  - Only a power cycle (re-plugging) recovers it.
+  - Meanwhile the laptop's Explorer and Task Manager hang, and programs running from D: fail
+    ("The semaphore timeout period has expired", "not a valid application").
+- **Two incidents, both during my test load:**
+  - **19:55–21:40:** 222 resets, during a full pytest run whose temp I had just moved onto D:
+    (to keep it off C:).
+  - **00:22–00:42:** resets after ~42 min of continuous suite I/O, at C19's set-up (a recursive
+    `icacls /reset` over ~2,550 old test files, then writing 2,500 new ones). This one logged:
+    - 152 "Delayed Write Failed" (Ntfs 50), including `$Mft`, `$BitMap`, and folder entries under
+      `.git\objects`, `src`, `tests`, `docs`;
+    - 45 "corruption may occur" (Ntfs 140).
+- **Recovery checks:**
+  - user ran `chkdsk D: /scan`: "found no problems";
+  - `git fsck --full`: clean;
+  - working tree re-hashed (`update-index --really-refresh`): byte-identical to `origin/v2`;
+  - frozen self test: ALL PASS;
+  - the uncommitted final-run report survived intact.
+- **User decision (2026-10-29):** no Y-cable or new enclosure available, so work around the
+  hardware.
+  - The project stays on D:.
+  - **Only the test harness's disposable data goes to `C:\ContextFS-scratch`** (one deletable folder):
+    - suite corpora and indexes via `--work`;
+    - pytest `--basetemp`;
+    - scratch scripts.
+  - The suite generates each corpus once and reuses it.
+  - The recursive permission reset now runs only for C05.
+  - The suite rests `--pause` seconds between cases and runs in batches.
+  - Commit and push after every step.
+  - No storage warning was logged from 00:41:44 through all later runs.
+- **Product note:** the app's default index lives in `%LOCALAPPDATA%` (C:); on user folders it is
+  read-mostly, and the user's 20 GB dataset indexed without trouble.
+  - Per-file temp copies are written to the *index* drive.
+  - The ~150 ms per small file on this HDD is mostly that churn: a P8 optimisation item.
+
+### Measured
+1. **Hardening suite on the final packaged build.**
+   - Command: `python scripts/hardening/run_suite.py --tag p5-final3 --work C:\ContextFS-scratch\harden --pause 8|30 --scale 10000`.
+   - `dist/ContextFS/ContextFS.exe` sha256[:16] `b8ae539c5fee0b1b`, the same exe for every case.
+   - Report: `data/hardening/p5-final3/report.{json,md}`.
+   - **22 / 22 cases pass**:
+
+   | Case | Bar (source) | Result |
+   |---|---|---|
+   | C01 | read-only on user files (sha256, size, mtime, attributes unchanged; nothing added); Tamil, Devanagari+emoji, Arabic and `&` names; 444-char path; docx/pdf; zip bomb not unpacked; 126 MB file not read; malformed files survive; peak memory < 1.5 GB (ADR-0011, 0016) | PASS (peak 715 MB) |
+   | C02 | junction loops never descended (ADR-0011) | PASS |
+   | C03 | an OFFLINE placeholder is never opened: held with no sharing, still indexed as `placeholder`, not `locked` (ADR-0011 §3) | PASS |
+   | C04 | a locked file is an error and is read on the next scan (ADR-0011 §4) | PASS |
+   | C05 | an unreadable folder is an error and never tombstones its files (ADR-0011 §2) | PASS |
+   | C06 | 1,000 Word-style saves (temp write + ReplaceFileW) during indexing: zero writer failures (ADR-0011 §4) | PASS |
+   | C07 | 5 kills mid-scan, then resume: integrity ok, and incremental == clean (files, chunks, per-event times, sessions, vectors) (ADR-0011/0012, ADR-0014 test 10) | PASS |
+   | C08 | a second writer gets exit 4 "locked"; the first completes (ADR-0012 §1) | PASS |
+   | C09 | killing the window kills its indexer (Job Object); the lock is released and the next run resumes (ADR-0001 §2) | PASS |
+   | C10 | a parser that hangs: 2 automatic restarts, then quarantine; every other file indexed (packaged GUI) (ADR-0001 §2) | PASS |
+   | C11 | a native segfault in a parser: crash, crash, quarantined (ADR-0001 §2) | PASS |
+   | C12 | a damaged database (header, and a mid-file page) is set aside and rebuilt; search recovers (ADR-0012 §3) | PASS |
+   | C13 | truncated vector files plus a torn row: search never crashes; the update repairs and re-embeds (ADR-0012 §3) | PASS |
+   | C14 | low disk: exit 5, index untouched (ADR-0012 §4) | PASS |
+   | C15 | 10,301 files: index completes; no-op launch update; search p95 < 300 ms; peak < 2 GB; no network endpoints | PASS |
+   | C16 | packaged GUI, 3,150 files indexing while searching every 1.5 s: no event-loop stall > 250 ms; search p95 < 500 ms (ADR-0001) | PASS |
+   | C17 | frozen self test (Decision 95) | PASS |
+   | C18 | a folder removed from Settings leaves search (real-data finding) | PASS |
+   | C19 | three cancelled scans leave no indexed file without dates (real-data finding) | PASS |
+   | C20 | renamed/deleted folder: no ghost results (QA H1) | PASS |
+   | C21 | 1601- and 1965-dated files: scan completes, next scan unchanged, packaged GUI shows them without crashing (QA H2/H3) | PASS |
+   | C22 | `--status`/`--find` on a missing index: JSON error, exit 2 (QA L1) | PASS |
+
+2. **Scale and responsiveness (C15/C16, this laptop; not paper numbers).**
+   - C15, 10,301 files (10,000 synthetic + 300 dev-persona documents + 1 marker), GPU (RTX 5060 via DirectML):
+     - indexed in 452 s (22.8 files/s);
+     - no-op launch update **1.6 s**;
+     - search p50 60 ms, p95 **66 ms**;
+     - index 63 MB;
+     - peak indexer memory **1,515 MB**;
+     - 0 network endpoints in every 10 s sample.
+   - The same corpus on the CPU: 477 s, peak **1,084 MB**. DirectML adds ~430 MB and saves 5% here (short files).
+   - C16, packaged GUI: max event-loop stall **91 ms** (p99 21 ms); 120 searches during indexing, p50 33 ms, p95 54 ms, max 403 ms.
+   - **Open risk (P8):**
+     - peak memory grows with the corpus: 715 MB for 14 files, 1,084 MB for 10k on the CPU;
+     - with the GPU, 10k files sit at the 1.5 GB limit that ADR-0001 sets for ≤ 8 GB machines;
+     - a Job-limit kill counts as a crash strike;
+     - to measure at 10⁵ and fix (lower peak, or treat a limit exit as no strike) before any 8 GB release.
+3. **Tests:**
+   - all 23 test files, run per file with `--basetemp C:\ContextFS-scratch\pytest`;
+   - **545 passed, 0 failed, 1 skipped** (the opt-in real-GPU test);
+   - new: `tests/test_engine_guard.py`, 22 tests (strikes/quarantine, isolation, zip bomb, disk floors, damaged DB, vector repair, atomic migration, newer schema, watchdog, retry of locked files, QA H1–H4, M1, M3, M4, M6, the large-folder parameter limit, order-independent sessions);
+   - each regression test for a bug fixed this phase was checked to **fail without its fix** (large folder, sessions, M1).
+4. **Repository integrity after the drive incident:**
+   - `chkdsk D: /scan`: no problems (user);
+   - `git fsck --full`: clean;
+   - working tree re-hashed equal to `origin/v2`;
+   - frozen self test ALL PASS.
+5. **Earlier runs, kept for the record (not the evidence above):**
+   - `p5-20261028`: development runs that found the bugs listed in Decisions 101–103;
+   - `p5-final`: 16/16 on exe `6ad76c07`, interrupted by the drive at C19;
+   - `p5-final2`: 18/19 on exe `07999680`, where C07 found the session-order bug.
+
+### Not done / deviations (carried forward)
+- **Part B, clean-account check:** deferred by the user.
+- **Manual ProcMon check on a real OneDrive with unhydrated folders (ADR-0011 Rev. 1):** needs the
+  user's OneDrive; C03 covers OFFLINE placeholders on a fixture.
+- **ADR-0001:**
+  - recycled extraction workers replaced by watchdog + strike + restart;
+  - battery pause not implemented;
+  - user folders first not implemented.
+- **ADR-0012 Rev. 1:**
+  - copy-and-swap migration and observations carry-over (QA M5);
+  - SQLITE_FULL mid-run is handled as an error, not a banner-and-pause (the 1 GB floor stops
+    earlier).
+- **ADR-0011 §5** move inheritance: P6 (Direction A).
+- **Real disk-full and old-schema (pre-v2) upgrades:** not exercised on hardware. The floor is
+  simulated by environment variables; the v1→v2 migration path is unit-tested.
+- **Cross-CPU top-10 overlap** (ADR-0014 test 11): P7.
+- **Performance:** the per-file temp-copy churn on HDD indexes is a P8 item.
+
+### Open (needs the user)
+- LICENSE (still open from Phase 32).
+- Part B clean-account check.
+- Smart App Control is in Evaluation; the build is unsigned.
+- Optional: delete `C:\ContextFS-scratch` at any time (disposable).
