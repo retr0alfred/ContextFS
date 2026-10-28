@@ -80,7 +80,13 @@ class PersonaSystems:
     """All systems over one persona's index."""
 
     def __init__(
-        self, persona_dir: Path, index: Path, embedder, bm25_k1: float, bm25_b: float
+        self,
+        persona_dir: Path,
+        index: Path,
+        embedder,
+        bm25_k1: float,
+        bm25_b: float,
+        cross_encoder=None,
     ) -> None:
         """Open the persona's index and build every system over it."""
         from contextfs.config import load_config
@@ -101,6 +107,8 @@ class PersonaSystems:
         self.mtime = {row["path"]: row["mtime"] for row in files}
         id_to_path = self.store.path_by_file_id()
         texts = {id_to_path[d["file_id"]]: d["text"] or "" for d in self.store.all_documents()}
+        self.texts = texts
+        self.cross_encoder = cross_encoder
 
         def name_tokens(p: str) -> list[str]:
             return tokenize(p.replace("_", " ").replace("-", " ").replace("/", " "))
@@ -130,6 +138,35 @@ class PersonaSystems:
             self.store, self.vectors, embedder, graph, cfg_full, timeline_index=timeline
         )
         self.v1_flat = SemanticBaseline(self.store, self.vectors, embedder)
+        # Per-layer ablations of v1, plus the format hint as its own axis (Decision 90).
+        no_format = cfg_full.model_copy(
+            update={
+                "retrieval": cfg_full.retrieval.model_copy(
+                    update={"format_boost": 1.0, "format_penalty": 1.0}
+                )
+            }
+        )
+
+        def hybrid(signals, cfg=cfg_full):
+            return HybridRetriever(
+                self.store,
+                self.vectors,
+                embedder,
+                graph,
+                cfg,
+                signals=signals,
+                timeline_index=timeline,
+            )
+
+        self._hybrid = hybrid
+        self.ablations = {
+            "v1_sem_fmt": hybrid(("semantic",)),
+            "v1_sem_graph": hybrid(("semantic", "graph")),
+            "v1_sem_graph_time": hybrid(("semantic", "graph", "timeline")),
+            "v1_sem_graph_act": hybrid(("semantic", "graph", "activity")),
+            "v1_full_nofmt": hybrid(("semantic", "graph", "activity", "timeline"), no_format),
+        }
+        self._cf_cache: dict[tuple[str, ...], object] = {}
 
     @staticmethod
     def _rank(scores: dict[str, float]) -> list[str]:
@@ -158,7 +195,54 @@ class PersonaSystems:
             "rrf10": rrf([bm_rank, de_rank], 10)[:TOP],
             "zfuse": zscore_fuse([bm, dense], [0.5, 0.5])[:TOP],
             "v1_full": self.v1_full.search(query, TOP).paths,
+            **{name: r.search(query, TOP).paths for name, r in self.ablations.items()},
+            **({"ce_rerank": self._ce_rerank(query, bm, dense)} if self.cross_encoder else {}),
         }
+
+    def _ce_rerank(self, query: str, bm: dict, dense: dict, depth: int = 50) -> list[str]:
+        """Cross-encoder rerank of the BM25+dense z-fusion top-``depth`` (eval-only baseline)."""
+        pool = zscore_fuse([bm, dense], [0.5, 0.5])[:depth]
+        if not pool:
+            return []
+        pairs = [(query, (p.replace("_", " ") + ". " + self.texts.get(p, ""))[:2000]) for p in pool]
+        scores = self.cross_encoder.predict(pairs, batch_size=32, show_progress_bar=False)
+        reranked = [
+            p for p, _ in sorted(zip(pool, scores, strict=True), key=lambda x: (-x[1], x[0]))
+        ]
+        rest = [p for p in zscore_fuse([bm, dense], [0.5, 0.5])[:TOP] if p not in set(reranked)]
+        return (reranked + rest)[:TOP]
+
+    def faithfulness(self, query: str) -> dict:
+        """Explanation checks on v1_full (ADR-0009 metrics, measured on the old system).
+
+        - claim_verified@10: share of top-10 results whose cited topic terms all occur in the file.
+        - cf_drop: for the top-1 result, its rank after removing its largest-contributing signal
+          (101 = fell out of the top 100). A faithful "mostly because of X" should drop.
+        """
+        response = self.v1_full.search(query, TOP)
+        results = response.results[:10]
+        verified = []
+        for r in results:
+            terms = [t.lower() for t in r.explanation.matched_topic]
+            text = (self.texts.get(r.path, "") + " " + r.path).lower()
+            verified.append(all(t in text for t in terms) if terms else True)
+        out = {"claim_verified10": sum(verified) / len(verified) if verified else None}
+        if results:
+            top = results[0]
+            contrib = top.explanation.contributions or {}
+            if contrib:
+                lead = max(contrib, key=contrib.get)
+                remaining = tuple(
+                    s
+                    for s in ("semantic", "graph", "activity", "timeline")
+                    if s in contrib and s != lead
+                ) or ("semantic",)
+                if remaining not in self._cf_cache:
+                    self._cf_cache[remaining] = self._hybrid(remaining)
+                ranked = self._cf_cache[remaining].search(query, TOP).paths
+                out["cf_lead_signal"] = lead
+                out["cf_rank_after"] = ranked.index(top.path) + 1 if top.path in ranked else TOP + 1
+        return out
 
     def close(self) -> None:
         """Release the index."""
@@ -212,6 +296,8 @@ def main() -> int:
     parser.add_argument("--k1", type=float, default=1.2)
     parser.add_argument("--b", type=float, default=0.75)
     parser.add_argument("--reference", default="v1_full")
+    parser.add_argument("--ce", action="store_true", help="add the cross-encoder rerank baseline")
+    parser.add_argument("--queries", choices=["template", "llm"], default="llm")
     parser.add_argument("--out", type=Path, default=PROJECT_ROOT / "data" / "bench_results")
     args = parser.parse_args()
 
@@ -233,13 +319,20 @@ def main() -> int:
         backend=cfg.embeddings.backend,
         num_threads=cfg.embeddings.num_threads,
     )
+    cross_encoder = None
+    if args.ce:
+        from sentence_transformers import CrossEncoder
+
+        # Eval-only baseline: trained on MS MARCO (non-commercial terms), never shipped (ADR-0016).
+        cross_encoder = CrossEncoder("cross-encoder/ms-marco-MiniLM-L6-v2", device="cpu")
     per_query: list[dict] = []
     systems: list[str] = []
     started = time.perf_counter()
     for d in args.persona_dirs:
         index = ensure_index(d, args.reindex)
-        ps = PersonaSystems(d, index, embedder, args.k1, args.b)
-        for line in (d / "truth" / "queries.jsonl").read_text(encoding="utf-8").splitlines():
+        ps = PersonaSystems(d, index, embedder, args.k1, args.b, cross_encoder)
+        qfile = "queries_llm.jsonl" if args.queries == "llm" else "queries.jsonl"
+        for line in (d / "truth" / qfile).read_text(encoding="utf-8").splitlines():
             q = json.loads(line)
             ranked = ps.run_all(q["text"])
             systems = list(ranked)
@@ -261,6 +354,7 @@ def main() -> int:
                     "text": q["text"],
                     "target": q["target"],
                     "metrics": metrics,
+                    "faithfulness": ps.faithfulness(q["text"]),
                     "top3": {s: r[:3] for s, r in ranked.items()},
                 }
             )
@@ -274,6 +368,23 @@ def main() -> int:
         "reference": args.reference,
         "ran_at": datetime.now().isoformat(timespec="seconds"),
         "seconds": round(time.perf_counter() - started, 1),
+    }
+    faith = [q["faithfulness"] for q in per_query]
+    cv = [f["claim_verified10"] for f in faith if f.get("claim_verified10") is not None]
+    cf = [f for f in faith if "cf_rank_after" in f]
+    by_lead: dict[str, list[int]] = {}
+    for f in cf:
+        by_lead.setdefault(f["cf_lead_signal"], []).append(f["cf_rank_after"])
+    summary["v1_explanations"] = {
+        "claim_verified_at10": round(statistics.mean(cv), 4) if cv else None,
+        "cf_top1_dropped_share": (
+            round(sum(f["cf_rank_after"] > 1 for f in cf) / len(cf), 4) if cf else None
+        ),
+        "cf_median_rank_after": statistics.median(f["cf_rank_after"] for f in cf) if cf else None,
+        "cf_by_lead_signal": {
+            k: {"n": len(v), "dropped": round(sum(r > 1 for r in v) / len(v), 4)}
+            for k, v in sorted(by_lead.items())
+        },
     }
     run_dir = args.out / f"{args.tag}"
     run_dir.mkdir(parents=True, exist_ok=True)

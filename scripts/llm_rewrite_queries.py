@@ -61,6 +61,13 @@ def build_prompt(view: dict, cue: str) -> str:
     return "Memory hints:\n" + "\n".join(hints) + f"\n\nStyle: {CUE_STYLE[cue]}"
 
 
+def _api_key() -> str:
+    """The local server's key (git-ignored file read by llama-server --api-key-file)."""
+    return (
+        (PROJECT_ROOT / ".tools" / "llamacpp" / "api_key.txt").read_text(encoding="utf-8").strip()
+    )
+
+
 def ask(url: str, prompt: str, seed: int) -> str:
     body = {
         "messages": [{"role": "system", "content": SYSTEM}, {"role": "user", "content": prompt}],
@@ -73,7 +80,7 @@ def ask(url: str, prompt: str, seed: int) -> str:
     req = urllib.request.Request(
         url.rstrip("/") + "/v1/chat/completions",
         data=json.dumps(body).encode(),
-        headers={"Content-Type": "application/json"},
+        headers={"Content-Type": "application/json", "Authorization": f"Bearer {_api_key()}"},
     )
     with urllib.request.urlopen(
         req, timeout=120

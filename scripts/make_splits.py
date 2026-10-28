@@ -1,6 +1,6 @@
 """Generate the dev and test splits, and freeze the test split (ADR-0015 §2).
 
-Split v1: 20 dev personas (seeds 1–20, template family A) and 20 test personas (seeds 1001–1020,
+Split v1: 20 dev personas (seeds 1–20, template family A) and 24 test personas (seeds 1001–1024,
 family B). Archetypes and damage profiles rotate deterministically, so both splits have the same
 mix:
 
@@ -36,7 +36,7 @@ DAMAGE = ["none", "mixed", "copyfile_all", "content_copy_all"]
 #: Professionals and researchers have fewer, longer activities; scale them up so every persona
 #: yields enough distinct query targets (see log.md Phase 31, entry 2).
 SCALE = {"student": 1.0, "professional": 2.5, "researcher": 2.5}
-SPEC = {"dev": (range(1, 21), "A"), "test": (range(1001, 1021), "B")}
+SPEC = {"dev": (range(1, 21), "A"), "test": (range(1001, 1025), "B")}
 
 
 def personas(split: str) -> list[tuple[str, int, str, str]]:
