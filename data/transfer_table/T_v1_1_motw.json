@@ -1,0 +1,413 @@
+{
+ "machine": "Windows-11-10.0.26200-SP0, NTFS (C:)",
+ "measured_at": "2026-10-28T21:17:08+00:00",
+ "rows": [
+  {
+   "format": "txt",
+   "motw_survives": true,
+   "tool": "copy_item_ps"
+  },
+  {
+   "format": "docx",
+   "motw_survives": true,
+   "tool": "copy_item_ps"
+  },
+  {
+   "format": "pdf",
+   "motw_survives": true,
+   "tool": "copy_item_ps"
+  },
+  {
+   "format": "jpg",
+   "motw_survives": true,
+   "tool": "copy_item_ps"
+  },
+  {
+   "format": "zip",
+   "motw_survives": true,
+   "tool": "copy_item_ps"
+  },
+  {
+   "format": "txt",
+   "motw_survives": true,
+   "tool": "cmd_copy"
+  },
+  {
+   "format": "docx",
+   "motw_survives": true,
+   "tool": "cmd_copy"
+  },
+  {
+   "format": "pdf",
+   "motw_survives": true,
+   "tool": "cmd_copy"
+  },
+  {
+   "format": "jpg",
+   "motw_survives": true,
+   "tool": "cmd_copy"
+  },
+  {
+   "format": "zip",
+   "motw_survives": true,
+   "tool": "cmd_copy"
+  },
+  {
+   "format": "txt",
+   "motw_survives": true,
+   "tool": "xcopy"
+  },
+  {
+   "format": "docx",
+   "motw_survives": true,
+   "tool": "xcopy"
+  },
+  {
+   "format": "pdf",
+   "motw_survives": true,
+   "tool": "xcopy"
+  },
+  {
+   "format": "jpg",
+   "motw_survives": true,
+   "tool": "xcopy"
+  },
+  {
+   "format": "zip",
+   "motw_survives": true,
+   "tool": "xcopy"
+  },
+  {
+   "format": "txt",
+   "motw_survives": true,
+   "tool": "robocopy_default_DAT"
+  },
+  {
+   "format": "docx",
+   "motw_survives": true,
+   "tool": "robocopy_default_DAT"
+  },
+  {
+   "format": "pdf",
+   "motw_survives": true,
+   "tool": "robocopy_default_DAT"
+  },
+  {
+   "format": "jpg",
+   "motw_survives": true,
+   "tool": "robocopy_default_DAT"
+  },
+  {
+   "format": "zip",
+   "motw_survives": true,
+   "tool": "robocopy_default_DAT"
+  },
+  {
+   "format": "txt",
+   "motw_survives": true,
+   "tool": "robocopy_COPY_D"
+  },
+  {
+   "format": "docx",
+   "motw_survives": true,
+   "tool": "robocopy_COPY_D"
+  },
+  {
+   "format": "pdf",
+   "motw_survives": true,
+   "tool": "robocopy_COPY_D"
+  },
+  {
+   "format": "jpg",
+   "motw_survives": true,
+   "tool": "robocopy_COPY_D"
+  },
+  {
+   "format": "zip",
+   "motw_survives": true,
+   "tool": "robocopy_COPY_D"
+  },
+  {
+   "format": "txt",
+   "motw_survives": true,
+   "tool": "shell_copyhere_explorer_engine"
+  },
+  {
+   "format": "docx",
+   "motw_survives": true,
+   "tool": "shell_copyhere_explorer_engine"
+  },
+  {
+   "format": "pdf",
+   "motw_survives": true,
+   "tool": "shell_copyhere_explorer_engine"
+  },
+  {
+   "format": "jpg",
+   "motw_survives": true,
+   "tool": "shell_copyhere_explorer_engine"
+  },
+  {
+   "format": "zip",
+   "motw_survives": true,
+   "tool": "shell_copyhere_explorer_engine"
+  },
+  {
+   "format": "txt",
+   "motw_survives": true,
+   "tool": "shell_movehere_same_volume"
+  },
+  {
+   "format": "docx",
+   "motw_survives": true,
+   "tool": "shell_movehere_same_volume"
+  },
+  {
+   "format": "pdf",
+   "motw_survives": true,
+   "tool": "shell_movehere_same_volume"
+  },
+  {
+   "format": "jpg",
+   "motw_survives": true,
+   "tool": "shell_movehere_same_volume"
+  },
+  {
+   "format": "zip",
+   "motw_survives": true,
+   "tool": "shell_movehere_same_volume"
+  },
+  {
+   "format": "txt",
+   "motw_survives": false,
+   "tool": "shutil_copy"
+  },
+  {
+   "format": "docx",
+   "motw_survives": false,
+   "tool": "shutil_copy"
+  },
+  {
+   "format": "pdf",
+   "motw_survives": false,
+   "tool": "shutil_copy"
+  },
+  {
+   "format": "jpg",
+   "motw_survives": false,
+   "tool": "shutil_copy"
+  },
+  {
+   "format": "zip",
+   "motw_survives": false,
+   "tool": "shutil_copy"
+  },
+  {
+   "format": "txt",
+   "motw_survives": true,
+   "tool": "shutil_copy2"
+  },
+  {
+   "format": "docx",
+   "motw_survives": true,
+   "tool": "shutil_copy2"
+  },
+  {
+   "format": "pdf",
+   "motw_survives": true,
+   "tool": "shutil_copy2"
+  },
+  {
+   "format": "jpg",
+   "motw_survives": true,
+   "tool": "shutil_copy2"
+  },
+  {
+   "format": "zip",
+   "motw_survives": true,
+   "tool": "shutil_copy2"
+  },
+  {
+   "format": "txt",
+   "motw_survives": false,
+   "tool": "shutil_copyfile"
+  },
+  {
+   "format": "docx",
+   "motw_survives": false,
+   "tool": "shutil_copyfile"
+  },
+  {
+   "format": "pdf",
+   "motw_survives": false,
+   "tool": "shutil_copyfile"
+  },
+  {
+   "format": "jpg",
+   "motw_survives": false,
+   "tool": "shutil_copyfile"
+  },
+  {
+   "format": "zip",
+   "motw_survives": false,
+   "tool": "shutil_copyfile"
+  },
+  {
+   "format": "txt",
+   "motw_survives": false,
+   "tool": "compress_expand_archive_ps"
+  },
+  {
+   "format": "docx",
+   "motw_survives": false,
+   "tool": "compress_expand_archive_ps"
+  },
+  {
+   "format": "pdf",
+   "motw_survives": false,
+   "tool": "compress_expand_archive_ps"
+  },
+  {
+   "format": "jpg",
+   "motw_survives": false,
+   "tool": "compress_expand_archive_ps"
+  },
+  {
+   "format": "zip",
+   "motw_survives": false,
+   "tool": "compress_expand_archive_ps"
+  },
+  {
+   "format": "txt",
+   "motw_survives": false,
+   "tool": "python_zipfile_extractall"
+  },
+  {
+   "format": "docx",
+   "motw_survives": false,
+   "tool": "python_zipfile_extractall"
+  },
+  {
+   "format": "pdf",
+   "motw_survives": false,
+   "tool": "python_zipfile_extractall"
+  },
+  {
+   "format": "jpg",
+   "motw_survives": false,
+   "tool": "python_zipfile_extractall"
+  },
+  {
+   "format": "zip",
+   "motw_survives": false,
+   "tool": "python_zipfile_extractall"
+  },
+  {
+   "format": "txt",
+   "motw_survives": false,
+   "tool": "tar_zip_roundtrip"
+  },
+  {
+   "format": "docx",
+   "motw_survives": false,
+   "tool": "tar_zip_roundtrip"
+  },
+  {
+   "format": "pdf",
+   "motw_survives": false,
+   "tool": "tar_zip_roundtrip"
+  },
+  {
+   "format": "jpg",
+   "motw_survives": false,
+   "tool": "tar_zip_roundtrip"
+  },
+  {
+   "format": "zip",
+   "motw_survives": false,
+   "tool": "tar_zip_roundtrip"
+  },
+  {
+   "format": "txt",
+   "motw_survives": false,
+   "tool": "git_clone"
+  },
+  {
+   "format": "docx",
+   "motw_survives": false,
+   "tool": "git_clone"
+  },
+  {
+   "format": "pdf",
+   "motw_survives": false,
+   "tool": "git_clone"
+  },
+  {
+   "format": "jpg",
+   "motw_survives": false,
+   "tool": "git_clone"
+  },
+  {
+   "format": "zip",
+   "motw_survives": false,
+   "tool": "git_clone"
+  },
+  {
+   "format": "txt",
+   "motw_survives": false,
+   "tool": "safe_save_ntfs_tunnel"
+  },
+  {
+   "format": "docx",
+   "motw_survives": false,
+   "tool": "safe_save_ntfs_tunnel"
+  },
+  {
+   "format": "pdf",
+   "motw_survives": false,
+   "tool": "safe_save_ntfs_tunnel"
+  },
+  {
+   "format": "jpg",
+   "motw_survives": false,
+   "tool": "safe_save_ntfs_tunnel"
+  },
+  {
+   "format": "zip",
+   "motw_survives": false,
+   "tool": "safe_save_ntfs_tunnel"
+  },
+  {
+   "format": "txt",
+   "motw_survives": true,
+   "tool": "in_place_edit"
+  },
+  {
+   "format": "docx",
+   "motw_survives": true,
+   "tool": "in_place_edit"
+  },
+  {
+   "format": "pdf",
+   "motw_survives": true,
+   "tool": "in_place_edit"
+  },
+  {
+   "format": "jpg",
+   "motw_survives": true,
+   "tool": "in_place_edit"
+  },
+  {
+   "format": "zip",
+   "motw_survives": true,
+   "tool": "in_place_edit"
+  },
+  {
+   "format": "docx",
+   "motw_survives": false,
+   "tool": "python_docx_resave"
+  }
+ ],
+ "schema": "T v1.1 addendum: Mark-of-the-Web survival per tool and format",
+ "source_mark": "Zone.Identifier ZoneId=3 on every fixture"
+}

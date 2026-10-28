@@ -1,0 +1,467 @@
+{
+  "tag": "dev-time-baseline",
+  "personas": [
+    "professional-s1-A-x2.5-mixed",
+    "professional-s10-A-x2.5-copyfile_all",
+    "professional-s13-A-x2.5-mixed",
+    "professional-s16-A-x2.5-none",
+    "professional-s19-A-x2.5-content_copy_all",
+    "professional-s4-A-x2.5-none",
+    "professional-s7-A-x2.5-content_copy_all",
+    "researcher-s11-A-x2.5-content_copy_all",
+    "researcher-s14-A-x2.5-copyfile_all",
+    "researcher-s17-A-x2.5-mixed",
+    "researcher-s2-A-x2.5-copyfile_all",
+    "researcher-s20-A-x2.5-none",
+    "researcher-s5-A-x2.5-mixed",
+    "researcher-s8-A-x2.5-none",
+    "student-s12-A-x1-none",
+    "student-s15-A-x1-content_copy_all",
+    "student-s18-A-x1-copyfile_all",
+    "student-s3-A-x1-content_copy_all",
+    "student-s6-A-x1-copyfile_all",
+    "student-s9-A-x1-mixed"
+  ],
+  "rows": {
+    "raw_mtime|ALL|arrived_here": {
+      "n": 4884,
+      "answered": 1.0,
+      "coverage": 0.3522,
+      "width_d": 0.0,
+      "mae_d": 6.393,
+      "within1d": 0.4107,
+      "by_conf": {
+        "sure": 0.352
+      },
+      "spurious": 0
+    },
+    "raw_mtime|ALL|authored": {
+      "n": 4884,
+      "answered": 1.0,
+      "coverage": 0.2643,
+      "width_d": 0.0,
+      "mae_d": 111.604,
+      "within1d": 0.3471,
+      "by_conf": {
+        "sure": 0.264
+      },
+      "spurious": 0
+    },
+    "raw_mtime|ALL|last_user_edit": {
+      "n": 976,
+      "answered": 1.0,
+      "coverage": 0.7244,
+      "width_d": 0.0,
+      "mae_d": 0.0,
+      "within1d": 0.7244,
+      "by_conf": {
+        "sure": 0.724
+      },
+      "spurious": 3908
+    },
+    "raw_mtime|content_copy|arrived_here": {
+      "n": 1159,
+      "answered": 1.0,
+      "coverage": 0.0,
+      "width_d": 0.0,
+      "mae_d": 257.94,
+      "within1d": 0.0009,
+      "by_conf": {
+        "sure": 0.0
+      },
+      "spurious": 0
+    },
+    "raw_mtime|content_copy|authored": {
+      "n": 1159,
+      "answered": 1.0,
+      "coverage": 0.0,
+      "width_d": 0.0,
+      "mae_d": 471.221,
+      "within1d": 0.0,
+      "by_conf": {
+        "sure": 0.0
+      },
+      "spurious": 0
+    },
+    "raw_mtime|content_copy|last_user_edit": {
+      "n": 262,
+      "answered": 1.0,
+      "coverage": 0.042,
+      "width_d": 0.0,
+      "mae_d": 209.091,
+      "within1d": 0.042,
+      "by_conf": {
+        "sure": 0.042
+      },
+      "spurious": 897
+    },
+    "raw_mtime|copyfile|arrived_here": {
+      "n": 1610,
+      "answered": 1.0,
+      "coverage": 0.4901,
+      "width_d": 0.0,
+      "mae_d": 0.014,
+      "within1d": 0.5615,
+      "by_conf": {
+        "sure": 0.49
+      },
+      "spurious": 0
+    },
+    "raw_mtime|copyfile|authored": {
+      "n": 1610,
+      "answered": 1.0,
+      "coverage": 0.323,
+      "width_d": 0.0,
+      "mae_d": 6.974,
+      "within1d": 0.4286,
+      "by_conf": {
+        "sure": 0.323
+      },
+      "spurious": 0
+    },
+    "raw_mtime|copyfile|last_user_edit": {
+      "n": 301,
+      "answered": 1.0,
+      "coverage": 1.0,
+      "width_d": 0.0,
+      "mae_d": 0.0,
+      "within1d": 1.0,
+      "by_conf": {
+        "sure": 1.0
+      },
+      "spurious": 1309
+    },
+    "raw_mtime|git_clone|arrived_here": {
+      "n": 19,
+      "answered": 1.0,
+      "coverage": 0.0,
+      "width_d": 0.0,
+      "mae_d": 194.213,
+      "within1d": 0.0,
+      "by_conf": {
+        "sure": 0.0
+      },
+      "spurious": 0
+    },
+    "raw_mtime|git_clone|authored": {
+      "n": 19,
+      "answered": 1.0,
+      "coverage": 0.0,
+      "width_d": 0.0,
+      "mae_d": 194.213,
+      "within1d": 0.0,
+      "by_conf": {
+        "sure": 0.0
+      },
+      "spurious": 0
+    },
+    "raw_mtime|git_clone|last_user_edit": {
+      "n": 19,
+      "answered": 1.0,
+      "coverage": 0.0526,
+      "width_d": 0.0,
+      "mae_d": 164.244,
+      "within1d": 0.0526,
+      "by_conf": {
+        "sure": 0.053
+      },
+      "spurious": 0
+    },
+    "raw_mtime|none|arrived_here": {
+      "n": 1806,
+      "answered": 1.0,
+      "coverage": 0.4491,
+      "width_d": 0.0,
+      "mae_d": 0.154,
+      "within1d": 0.5255,
+      "by_conf": {
+        "sure": 0.449
+      },
+      "spurious": 0
+    },
+    "raw_mtime|none|authored": {
+      "n": 1806,
+      "answered": 1.0,
+      "coverage": 0.3682,
+      "width_d": 0.0,
+      "mae_d": 2.173,
+      "within1d": 0.4734,
+      "by_conf": {
+        "sure": 0.368
+      },
+      "spurious": 0
+    },
+    "raw_mtime|none|last_user_edit": {
+      "n": 330,
+      "answered": 1.0,
+      "coverage": 1.0,
+      "width_d": 0.0,
+      "mae_d": 0.0,
+      "within1d": 1.0,
+      "by_conf": {
+        "sure": 1.0
+      },
+      "spurious": 1476
+    },
+    "raw_mtime|robocopy|arrived_here": {
+      "n": 290,
+      "answered": 1.0,
+      "coverage": 0.4138,
+      "width_d": 0.0,
+      "mae_d": 0.258,
+      "within1d": 0.5241,
+      "by_conf": {
+        "sure": 0.414
+      },
+      "spurious": 0
+    },
+    "raw_mtime|robocopy|authored": {
+      "n": 290,
+      "answered": 1.0,
+      "coverage": 0.3655,
+      "width_d": 0.0,
+      "mae_d": 0.527,
+      "within1d": 0.5172,
+      "by_conf": {
+        "sure": 0.366
+      },
+      "spurious": 0
+    },
+    "raw_mtime|robocopy|last_user_edit": {
+      "n": 64,
+      "answered": 1.0,
+      "coverage": 1.0,
+      "width_d": 0.0,
+      "mae_d": 0.0,
+      "within1d": 1.0,
+      "by_conf": {
+        "sure": 1.0
+      },
+      "spurious": 226
+    },
+    "rules_v0|ALL|arrived_here": {
+      "n": 4884,
+      "answered": 1.0,
+      "coverage": 0.7506,
+      "width_d": 0.0,
+      "mae_d": 3.813,
+      "within1d": 0.474,
+      "by_conf": {
+        "sure": 0.541,
+        "probably": 0.959,
+        "unknown": 1.0
+      },
+      "spurious": 0
+    },
+    "rules_v0|ALL|authored": {
+      "n": 4884,
+      "answered": 1.0,
+      "coverage": 0.9269,
+      "width_d": 0.0,
+      "mae_d": 0.0,
+      "within1d": 0.9265,
+      "by_conf": {
+        "probably": 0.927,
+        "unknown": 1.0
+      },
+      "spurious": 0
+    },
+    "rules_v0|ALL|last_user_edit": {
+      "n": 976,
+      "answered": 1.0,
+      "coverage": 0.7244,
+      "width_d": 0.0,
+      "mae_d": 0.0,
+      "within1d": 0.7244,
+      "by_conf": {
+        "sure": 0.724
+      },
+      "spurious": 2412
+    },
+    "rules_v0|content_copy|arrived_here": {
+      "n": 1159,
+      "answered": 1.0,
+      "coverage": 0.0604,
+      "width_d": 0.0,
+      "mae_d": 257.94,
+      "within1d": 0.0009,
+      "by_conf": {
+        "sure": 0.0,
+        "unknown": 1.0
+      },
+      "spurious": 0
+    },
+    "rules_v0|content_copy|authored": {
+      "n": 1159,
+      "answered": 1.0,
+      "coverage": 0.918,
+      "width_d": 0.0,
+      "mae_d": 0.0,
+      "within1d": 0.9085,
+      "by_conf": {
+        "probably": 0.917,
+        "unknown": 1.0
+      },
+      "spurious": 0
+    },
+    "rules_v0|content_copy|last_user_edit": {
+      "n": 262,
+      "answered": 1.0,
+      "coverage": 0.042,
+      "width_d": 0.0,
+      "mae_d": 209.091,
+      "within1d": 0.042,
+      "by_conf": {
+        "sure": 0.042
+      },
+      "spurious": 332
+    },
+    "rules_v0|copyfile|arrived_here": {
+      "n": 1610,
+      "answered": 1.0,
+      "coverage": 0.9317,
+      "width_d": 14.703,
+      "mae_d": 0.0,
+      "within1d": 0.6143,
+      "by_conf": {
+        "sure": 0.0,
+        "probably": 0.94
+      },
+      "spurious": 0
+    },
+    "rules_v0|copyfile|authored": {
+      "n": 1610,
+      "answered": 1.0,
+      "coverage": 0.8876,
+      "width_d": 0.0,
+      "mae_d": 0.0,
+      "within1d": 0.8932,
+      "by_conf": {
+        "probably": 0.888
+      },
+      "spurious": 0
+    },
+    "rules_v0|copyfile|last_user_edit": {
+      "n": 301,
+      "answered": 1.0,
+      "coverage": 1.0,
+      "width_d": 0.0,
+      "mae_d": 0.0,
+      "within1d": 1.0,
+      "by_conf": {
+        "sure": 1.0
+      },
+      "spurious": 1309
+    },
+    "rules_v0|git_clone|arrived_here": {
+      "n": 19,
+      "answered": 1.0,
+      "coverage": 0.0,
+      "width_d": 0.0,
+      "mae_d": 194.213,
+      "within1d": 0.0,
+      "by_conf": {
+        "sure": 0.0
+      },
+      "spurious": 0
+    },
+    "rules_v0|git_clone|authored": {
+      "n": 19,
+      "answered": 1.0,
+      "coverage": 0.0,
+      "width_d": 0.0,
+      "mae_d": 194.213,
+      "within1d": 0.0,
+      "by_conf": {
+        "probably": 0.0
+      },
+      "spurious": 0
+    },
+    "rules_v0|git_clone|last_user_edit": {
+      "n": 19,
+      "answered": 1.0,
+      "coverage": 0.0526,
+      "width_d": 0.0,
+      "mae_d": 164.244,
+      "within1d": 0.0526,
+      "by_conf": {
+        "sure": 0.053
+      },
+      "spurious": 0
+    },
+    "rules_v0|none|arrived_here": {
+      "n": 1806,
+      "answered": 1.0,
+      "coverage": 1.0,
+      "width_d": 0.0,
+      "mae_d": 0.0,
+      "within1d": 0.6318,
+      "by_conf": {
+        "sure": 1.0,
+        "probably": 1.0
+      },
+      "spurious": 0
+    },
+    "rules_v0|none|authored": {
+      "n": 1806,
+      "answered": 1.0,
+      "coverage": 0.9668,
+      "width_d": 0.0,
+      "mae_d": 0.0,
+      "within1d": 0.9668,
+      "by_conf": {
+        "probably": 0.967
+      },
+      "spurious": 0
+    },
+    "rules_v0|none|last_user_edit": {
+      "n": 330,
+      "answered": 1.0,
+      "coverage": 1.0,
+      "width_d": 0.0,
+      "mae_d": 0.0,
+      "within1d": 1.0,
+      "by_conf": {
+        "sure": 1.0
+      },
+      "spurious": 665
+    },
+    "rules_v0|robocopy|arrived_here": {
+      "n": 290,
+      "answered": 1.0,
+      "coverage": 1.0,
+      "width_d": 0.0,
+      "mae_d": 0.0,
+      "within1d": 0.6345,
+      "by_conf": {
+        "sure": 1.0,
+        "probably": 1.0
+      },
+      "spurious": 0
+    },
+    "rules_v0|robocopy|authored": {
+      "n": 290,
+      "answered": 1.0,
+      "coverage": 0.9931,
+      "width_d": 0.0,
+      "mae_d": 0.0,
+      "within1d": 0.9931,
+      "by_conf": {
+        "probably": 0.993
+      },
+      "spurious": 0
+    },
+    "rules_v0|robocopy|last_user_edit": {
+      "n": 64,
+      "answered": 1.0,
+      "coverage": 1.0,
+      "width_d": 0.0,
+      "mae_d": 0.0,
+      "within1d": 1.0,
+      "by_conf": {
+        "sure": 1.0
+      },
+      "spurious": 106
+    }
+  }
+}
