@@ -41,6 +41,25 @@ def _row(
     }
 
 
+def local_datetime(utc_s: float) -> datetime:
+    """``utc_s`` as a local datetime; never raises.
+
+    ``datetime.fromtimestamp(...).astimezone()`` raises on Windows for times before 1970 and
+    overflows for extreme ones (QA H3: a pre-1970 file crashed the window). Out of range, the UTC
+    time is returned; beyond datetime's range, the nearest representable time.
+    """
+    from datetime import timedelta
+
+    try:
+        dt = datetime(1970, 1, 1, tzinfo=timezone.utc) + timedelta(seconds=float(utc_s))
+    except (OverflowError, ValueError):
+        return datetime.min.replace(tzinfo=timezone.utc) if utc_s < 0 else datetime.max.replace(tzinfo=timezone.utc)
+    try:
+        return dt.astimezone()
+    except (OverflowError, OSError, ValueError):
+        return dt
+
+
 def _parse_infile(value: str) -> tuple[int, str, int]:
     """(utc_s, tz_state, wall_s) from an ISO string; floating if it has no offset."""
     dt = datetime.fromisoformat(value.replace("Z", "+00:00"))

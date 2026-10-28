@@ -14,6 +14,7 @@
 
 from __future__ import annotations
 
+import contextlib
 import json
 import os
 import shutil
@@ -28,6 +29,8 @@ __all__ = [
     "check_free_space",
     "low_disk_while_running",
     "QUARANTINE_STRIKES",
+    "note_user_stop",
+    "consume_user_stop",
 ]
 
 QUARANTINE_STRIKES = 2
@@ -93,6 +96,28 @@ class InProgress:
             os.close(self.fd)
             self.fd = None
         self.path.unlink(missing_ok=True)
+
+
+USER_STOP = "stopped_by_user"
+
+
+def note_user_stop(index_dir: Path) -> None:
+    """Record that the app is killing the indexer because the *user* closed it.
+
+    Called after the clean-stop wait ran out. The next update must not count that as a strike
+    (QA H4; ADR-0001 Rev. 1).
+    """
+    with contextlib.suppress(OSError):
+        (Path(index_dir) / USER_STOP).write_text("user", encoding="utf-8")
+
+
+def consume_user_stop(index_dir: Path) -> bool:
+    """True (once) if the previous run was stopped by the user."""
+    p = Path(index_dir) / USER_STOP
+    if p.exists():
+        p.unlink(missing_ok=True)
+        return True
+    return False
 
 
 class Watchdog:

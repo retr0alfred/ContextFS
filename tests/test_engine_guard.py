@@ -215,3 +215,116 @@ def test_the_watchdog_reports_a_stuck_file(tmp_path):
     dog.stop()
     marker.close()
     assert hits and hits[0]["rel_path"] == "slow.pdf"
+
+
+# -- Independent QA findings (log.md Phase 33) ----------------------------------------------------
+
+
+def test_qa_h1_a_renamed_or_deleted_folder_leaves_no_ghost_results(tmp_path):
+    corpus = _corpus(tmp_path / "c")
+    with Engine.open(tmp_path / "idx", mode="write") as eng:
+        eng.update([corpus])
+        (corpus / "a").rename(corpus / "renamed")
+        rep = eng.update([corpus])
+        paths = eng.search("biryani saffron").paths
+        assert rep.deleted == 2 and "a/recipe.txt" not in paths and "renamed/recipe.txt" in paths
+        import shutil
+
+        shutil.rmtree(corpus / "renamed")
+        eng.update([corpus])
+        assert not [p for p in eng.search("biryani saffron").paths if "recipe" in p]
+
+
+def test_qa_h2_a_1601_dated_file_does_not_stop_the_scan(tmp_path):
+    import os
+
+    corpus = _corpus(tmp_path / "c")
+    old = corpus / "a" / "ancient.txt"
+    old.write_text("ancient parchment", encoding="utf-8")
+    zero = -11644473600 * 10**9 + 10**9  # one second after the Windows file-time epoch
+    os.utime(old, ns=(zero, zero))
+    with Engine.open(tmp_path / "idx", mode="write") as eng:
+        rep = eng.update([corpus])
+        assert rep.new == 4 and rep.errors == 0
+        assert eng.update([corpus]).unchanged == 4  # the clamped time compares equal next scan
+        assert eng.search("ancient parchment").paths[0] == "a/ancient.txt"
+
+
+def test_qa_h3_dates_before_1970_format_safely():
+    from contextfs.engine.timeev import local_datetime
+
+    for utc in (-1, -86400 * 365 * 50, -11644473600, -(10**13), 10**13):
+        assert local_datetime(utc).year >= 1  # never raises
+
+
+def test_qa_h4_a_users_stop_is_not_a_strike(tmp_path):
+    corpus = _corpus(tmp_path / "c")
+    idx = tmp_path / "idx"
+    st = (corpus / "a" / "recipe.txt").stat()
+    record = {"root_id": 1, "rel_path": "a/recipe.txt", "size": st.st_size, "mtime_ns": st.st_mtime_ns}
+    with Engine.open(idx, mode="write") as eng:
+        eng.update([corpus])
+    for _ in range(3):  # three closes in the same file
+        (idx / guard.InProgress.NAME).write_text(json.dumps(record), encoding="utf-8")
+        guard.note_user_stop(idx)
+        with Engine.open(idx, mode="write") as eng:
+            assert eng.update([corpus]).struck is None
+    with Engine.open(idx) as eng:
+        assert eng.conn.execute("SELECT COUNT(*) FROM strikes").fetchone()[0] == 0
+
+
+def test_qa_m1_a_locked_database_is_not_treated_as_damaged(tmp_path, monkeypatch):
+    import contextfs.engine.schema as schema
+
+    idx = tmp_path / "idx"
+    with Engine.open(idx, mode="write") as eng:
+        eng.update([_corpus(tmp_path / "c")])
+
+    def busy(*args, **kwargs):
+        raise sqlite3.OperationalError("database is locked")
+
+    monkeypatch.setattr(schema, "connect", busy)
+    with pytest.raises(sqlite3.OperationalError):
+        Engine.open(idx, mode="write")
+    monkeypatch.undo()
+    assert not list(idx.glob("damaged-*"))
+    with Engine.open(idx) as eng:
+        assert eng.status()["files"] == 3  # the healthy index is untouched
+
+
+@pytest.mark.skipif(sys.platform != "win32", reason="Windows share modes")
+def test_qa_m3_a_file_that_stays_locked_is_not_re_embedded(tmp_path):
+    import ctypes
+    from ctypes import wintypes
+
+    corpus = _corpus(tmp_path / "c")
+    k32 = ctypes.WinDLL("kernel32", use_last_error=True)
+    k32.CreateFileW.restype = wintypes.HANDLE
+    handle = k32.CreateFileW(str(corpus / "a" / "notes.md"), 0x80000000, 0, None, 3, 0x80, None)
+    try:
+        with Engine.open(tmp_path / "idx", mode="write") as eng:
+            eng.update([corpus])
+            size = (tmp_path / "idx" / "vectors" / "chunk.f32").stat().st_size
+            for _ in range(3):
+                rep = eng.update([corpus])
+                assert rep.changed == 0 and rep.unchanged == 3
+            assert (tmp_path / "idx" / "vectors" / "chunk.f32").stat().st_size == size
+    finally:
+        k32.CloseHandle(wintypes.HANDLE(handle))
+
+
+def test_qa_m4_an_unknown_date_never_claims_a_match():
+    from contextfs.engine.rank import _reason
+
+    ref = {"event": "authored", "confidence": "unknown", "lo_utc": 631152000, "hi_utc": 1793000000,
+           "point_utc": 1793000000, "cue": "last year", "cue_lo": 1735689600, "cue_hi": 1767225599}
+    text = _reason("time", None, ref, None)
+    assert "unknown" in text and "matches" not in text and "not ruled out" in text
+
+
+def test_qa_m6_a_root_inside_another_root_is_not_indexed_twice(tmp_path):
+    corpus = _corpus(tmp_path / "c")
+    with Engine.open(tmp_path / "idx", mode="write") as eng:
+        rep = eng.update([corpus, corpus / "a"])
+        assert rep.nested_roots == [str(corpus / "a")] and rep.new == 3
+        assert eng.search("biryani saffron").paths.count("a/recipe.txt") == 1

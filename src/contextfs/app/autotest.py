@@ -73,7 +73,7 @@ def attach(win, cfg_path: str) -> None:
             "search_max_ms": round(max(st["search_ms"]), 1) if st["search_ms"] else None,
             "result_counts": st["counts"],
             "child_seen": st["child_seen"],
-            "restarts": win.restarts,
+            "restarts": win.restarts_total,
             "last_child_exit": win.last_child_exit[0] if getattr(win, "last_child_exit", None) else None,
             "statuses": st["statuses"][-12:],
         }

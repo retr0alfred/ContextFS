@@ -107,6 +107,12 @@ class Engine:
                 raise sqlite3.DatabaseError(f"quick_check: {verdict}")
             self.conn = conn
             return ""
+        except sqlite3.OperationalError:
+            # locked, busy, disk I/O, disk full: a state, not damage. Rebuilding here would throw a
+            # healthy index away (QA M1); report it and let the next update try again.
+            if conn is not None:
+                conn.close()
+            raise
         except sqlite3.DatabaseError as exc:
             if conn is not None:
                 conn.close()

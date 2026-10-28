@@ -15,6 +15,7 @@ Safety rules:
 from __future__ import annotations
 
 import json
+import os
 import time
 from collections.abc import Callable
 from dataclasses import dataclass, field
@@ -38,7 +39,7 @@ ZIP_FORMATS = {".docx", ".pptx", ".xlsx", ".odt", ".ods", ".odp", ".epub", ".zip
 ZIP_EXPANDED_CAP = 512 * 2**20
 #: Read failures that may clear by themselves (a file open in another app, a transient error):
 #: retried on every scan even if size and mtime are unchanged (ADR-0011 §4; Phase 33 suite C04).
-RETRY_ACCESS = {"locked", "denied", "io", "missing", "changed"}
+RETRY_ACCESS = {"locked", "denied", "io", "missing", "changed", "parse_error"}
 FORCED_DETAIL = {
     "quarantined": "made the indexer crash or hang twice; not opened again until it changes",
     "parse_error": "reading or parsing failed; indexed by name and dates only (see errors)",
@@ -67,6 +68,7 @@ class UpdateReport:
     quarantined: int = 0  # files indexed by name only after crashing/hanging the indexer twice
     parse_errors: int = 0  # files whose reading or parsing raised; indexed by name only
     repaired_vectors: int = 0  # files re-queued because their vectors were missing on disk
+    nested_roots: list[str] = field(default_factory=list)  # inside another root: skipped
 
     def as_dict(self) -> dict:
         """JSON-serialisable form."""
@@ -97,6 +99,8 @@ def run_update(
     rep = UpdateReport()
     marker = guard.InProgress(engine.index_dir)
     crashed = marker.previous()
+    if guard.consume_user_stop(engine.index_dir):
+        crashed = None  # the user closed the app mid-file: a clean stop, not a crash
     marker.open()
     dog = guard.Watchdog(marker, file_timeout, on_hang).start() if file_timeout and on_hang else None
     try:
@@ -138,6 +142,7 @@ def _run_update(engine, roots, progress, cancel, clock, prune_other_roots, rep, 
     # or a kill never leaves committed files without dates (log.md Phase 33, real-data demo).
     touched_folders: set[tuple[int, str]] = set()
     batch_started, batch_n = time.perf_counter(), 0
+    roots, rep.nested_roots = _usable_roots(roots)
     if prune_other_roots:  # roots no longer in the user's list leave search (data kept)
         wanted = {_root_key(r) for r in roots}
         for row in conn.execute("SELECT root_id, path FROM roots WHERE state!='removed'").fetchall():
@@ -271,7 +276,25 @@ def _run_update(engine, roots, progress, cancel, clock, prune_other_roots, rep, 
                     "INSERT INTO errors(scan_at, path, kind, detail) VALUES (?,?,?,?)",
                     (str(now), entry.rel_path, "parse_error", f"{type(exc).__name__}: {exc}"[:300]),
                 )
-                file_id = _index_file(*args, force_access="parse_error")
+                if _same_failure(prev, entry, "parse_error"):
+                    _touch(conn, prev["file_id"], now)  # failed the same way: nothing new to store
+                    rep.unchanged += 1
+                    file_id = prev["file_id"]
+                else:
+                    conn.execute("SAVEPOINT fallback")
+                    try:
+                        file_id = _index_file(*args, force_access="parse_error")
+                        conn.execute("RELEASE fallback")
+                    except Exception as exc2:  # noqa: BLE001 - even name-only failed: skip the file
+                        conn.execute("ROLLBACK TO fallback")
+                        conn.execute("RELEASE fallback")
+                        conn.execute(
+                            "INSERT INTO errors(scan_at, path, kind, detail) VALUES (?,?,?,?)",
+                            (str(now), entry.rel_path, "skipped", f"{type(exc2).__name__}: {exc2}"[:300]),
+                        )
+                        conn.execute("RELEASE one_file")
+                        marker.clear()
+                        continue
             conn.execute("RELEASE one_file")
             marker.clear()
             folder = entry.rel_path.rsplit("/", 1)[0] if "/" in entry.rel_path else ""
@@ -295,7 +318,9 @@ def _run_update(engine, roots, progress, cancel, clock, prune_other_roots, rep, 
         if not rep.cancelled:
             for rel, prev in known.items():
                 parent = rel.rsplit("/", 1)[0] if "/" in rel else ""
-                if rel not in seen and prev["status"] == "present" and parent in stats.listed_dirs:
+                if rel not in seen and prev["status"] == "present" and (
+                    parent in stats.listed_dirs or _folder_vanished(parent, stats)
+                ):
                     _tombstone(conn, prev["file_id"])
                     touched_folders.add((root_id, parent))
                     rep.deleted += 1
@@ -362,6 +387,12 @@ def _index_file(
         access = "unsupported"
     if access != "ok":
         rep.metadata_only[access] = rep.metadata_only.get(access, 0) + 1
+    if access in RETRY_ACCESS and _same_failure(prev, entry, access):
+        # retried and failed the same way: touch the row, do not re-embed (QA M3: vectors grew
+        # on every scan for a file that stayed locked)
+        _touch(conn, prev["file_id"], now, detail)
+        rep.unchanged += 1
+        return prev["file_id"]
 
     values = (
         entry.root_id,
@@ -523,6 +554,55 @@ def _tombstone(conn, file_id: int) -> None:
     conn.execute("UPDATE vectors SET valid=0 WHERE file_id=?", (file_id,))
     conn.execute("DELETE FROM docs_fts WHERE rowid=?", (file_id,))
     conn.execute("DELETE FROM names_tri WHERE rowid=?", (file_id,))
+
+
+def _same_failure(prev, entry, access: str) -> bool:
+    return (
+        prev is not None
+        and prev["status"] == "present"
+        and prev["access"] == access
+        and (prev["size"], prev["mtime_ns"]) == (entry.size, entry.mtime_ns)
+    )
+
+
+def _touch(conn, file_id: int, now: int, detail: str | None = None) -> None:
+    if detail is None:
+        conn.execute("UPDATE files SET last_seen=? WHERE file_id=?", (str(now), file_id))
+    else:
+        conn.execute("UPDATE files SET last_seen=?, detail=? WHERE file_id=?", (str(now), detail, file_id))
+
+
+def _folder_vanished(folder: str, stats) -> bool:
+    """True if ``folder`` no longer exists.
+
+    Its nearest listed ancestor no longer contains the next folder on its path (QA H1: renamed or
+    deleted folders left their files searchable forever).
+
+    An ancestor that still lists that folder means it exists but could not be read (denied, a
+    transient error): its files are kept, as before (ADR-0011 §2).
+    """
+    parts = folder.split("/") if folder else []
+    for i in range(len(parts) - 1, -1, -1):
+        ancestor = "/".join(parts[:i])
+        if ancestor in stats.listed_dirs:
+            return parts[i] not in stats.child_dirs.get(ancestor, set())
+    return False
+
+
+def _usable_roots(roots: list[Path]) -> tuple[list[Path], list[str]]:
+    """Normalise roots and drop any inside another root (QA M6: nested roots indexed files twice).
+
+    ``D:`` alone means the drive's root, not the process's current folder there (QA L2).
+    """
+    import re
+
+    fixed = [Path(str(r) + "\\") if re.fullmatch(r"[A-Za-z]:", str(r)) else Path(r) for r in roots]
+    keys = [_root_key(r) for r in fixed]
+    keep, nested = [], []
+    for r, k in zip(fixed, keys, strict=True):
+        inside = any(o != k and (k + os.sep).startswith(o.rstrip(os.sep) + os.sep) for o in keys)
+        (nested if inside else keep).append(r)
+    return keep, [str(r) for r in nested]
 
 
 def _strike(conn, rec: dict, now: int) -> None:

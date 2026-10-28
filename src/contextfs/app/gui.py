@@ -18,7 +18,6 @@ import os
 import sqlite3
 import subprocess
 import sys
-from datetime import datetime, timezone
 from html import escape
 from pathlib import Path
 
@@ -57,7 +56,9 @@ EVENT_LABEL = {"authored": "Written", "arrived_here": "Arrived on this PC", "las
 def _fmt(utc: int | None, resolution_day: bool = False) -> str:
     if utc is None:
         return "—"
-    dt = datetime.fromtimestamp(utc, timezone.utc).astimezone()
+    from contextfs.engine.timeev import local_datetime
+
+    dt = local_datetime(utc)  # never raises (pre-1970 dates crashed the window: QA H3)
     return dt.strftime("%d %b %Y") if resolution_day else dt.strftime("%d %b %Y, %H:%M")
 
 
@@ -266,7 +267,7 @@ class MainWindow(QMainWindow):
         from contextfs.app.winjob import ChildJob
 
         self.job = ChildJob()  # the child dies with this window, and has a memory limit (ADR-0001)
-        self.restarts, self.closing = 0, False
+        self.restarts, self.restarts_total, self.closing, self.user_cancelled = 0, 0, False, False
         QShortcut(QKeySequence("F5"), self, activated=self.start_update)  # Refresh (ADR-0001 §4)
         QTimer.singleShot(200, self.start_update)
         if os.environ.get("CONTEXTFS_SELFDRIVE"):  # hardening suite only; inert otherwise
@@ -287,6 +288,7 @@ class MainWindow(QMainWindow):
         """Launch-time incremental update in a child process."""
         if self.proc is not None:
             return
+        self.user_cancelled = False
         if not self.settings.roots and not (self.index_dir / "contextfs.db").exists():
             return  # nothing chosen and nothing indexed; with an index, an empty list prunes it
         self.proc = QProcess(self)
@@ -319,6 +321,7 @@ class MainWindow(QMainWindow):
             except ValueError:
                 continue
             if msg.get("type") == "progress":
+                self.restarts = 0  # progress since the last restart: a new problem file gets its own budget
                 self.status.showMessage(f"Updating · {msg['processed']} new or changed · "
                                         f"{msg['seen']} checked — search works meanwhile")
             elif msg.get("type") == "done":
@@ -351,8 +354,9 @@ class MainWindow(QMainWindow):
         # A hang (exit 3) or a crash: the file in progress got a strike; restarting retries it once
         # and then quarantines it, so a bad file costs a restart, never the whole scan.
         crashed = status == QProcess.ExitStatus.CrashExit or code not in (0, EXIT_LOCKED, EXIT_DISK)
-        if crashed and not self.closing and self.restarts < 3:
+        if crashed and not self.closing and not self.user_cancelled and self.restarts < 3:
             self.restarts += 1
+            self.restarts_total += 1
             self.status.showMessage(f"The indexer stopped on a problem file; restarting ({self.restarts}/3)…")
             QTimer.singleShot(1000, self.start_update)
             return
@@ -370,15 +374,27 @@ class MainWindow(QMainWindow):
     def cancel_update(self) -> None:
         """Ask the child to commit its batch and stop (a cancel-request file, not stdin)."""
         if self.proc is not None:
+            self.user_cancelled = True  # no automatic restart after the user's Cancel (QA L3)
             self._request_cancel()
+
+    def _kill_child_for_user(self, wait_ms: int) -> None:
+        """Clean stop first; if the child does not stop in time, kill it.
+
+        The kill is recorded as the user's stop, so the file the child was in gets no strike (QA H4).
+        """
+        from contextfs.engine.guard import note_user_stop
+
+        self._request_cancel()
+        if not self.proc.waitForFinished(wait_ms):
+            note_user_stop(self.index_dir)
+            self.proc.kill()
+            self.proc.waitForFinished(3000)
 
     def closeEvent(self, event) -> None:  # noqa: N802 - Qt API
         """Clean stop on close: cancel, wait up to 3 s, then kill (ADR-0001 Rev. 1)."""
         self.closing = True
         if self.proc is not None:
-            self._request_cancel()
-            if not self.proc.waitForFinished(3000):
-                self.proc.kill()
+            self._kill_child_for_user(3000)
         super().closeEvent(event)
 
     # -- search ---------------------------------------------------------------------------------
@@ -541,10 +557,7 @@ class MainWindow(QMainWindow):
             return False
         self.closing = True  # no automatic restart while deleting
         if self.proc is not None:
-            self._request_cancel()
-            if not self.proc.waitForFinished(5000):
-                self.proc.kill()
-                self.proc.waitForFinished(3000)
+            self._kill_child_for_user(5000)
         self.pool.waitForDone(5000)
         if SearchJob.engine is not None:
             SearchJob.engine.close()

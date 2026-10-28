@@ -362,11 +362,14 @@ def _reason(feature: str, frame, time_ref, session_id) -> str:
             "arrived_here": "arrived on this PC",
             "last_user_edit": "last edited",
         }
-        when = (
-            datetime.fromtimestamp(time_ref["point_utc"], timezone.utc)
-            .astimezone()
-            .strftime("%d %b %Y")
-        )
+        from contextfs.engine.timeev import local_datetime
+
+        if time_ref["confidence"] == "unknown":
+            # no date was established: say so, and only that the cue is not ruled out (QA M4:
+            # "written 28 Oct 2026 (unknown), matches 'last year'" claimed a match it did not have)
+            span = f"{local_datetime(time_ref['lo_utc']):%Y}–{local_datetime(time_ref['hi_utc']):%Y}"
+            return f"{label[time_ref['event']]} date unknown ({span}), so '{time_ref['cue']}' is not ruled out"
+        when = local_datetime(time_ref["point_utc"]).strftime("%d %b %Y")
         head = f"{label[time_ref['event']]} {when} ({time_ref['confidence']})"
         # "matches" only when the date really falls inside the cue; a date that scored through the
         # fading band says how far outside it is (log.md Phase 33: Jan 2021 "matched" Nov 2020).

@@ -157,6 +157,9 @@ class WalkStats:
     placeholders: int = 0
     errors: list[WalkError] = field(default_factory=list)
     listed_dirs: set[str] = field(default_factory=set)  # dirs listed successfully (may tombstone)
+    #: For each listed dir, the subfolders it still contains (descended, unreadable or reparse
+    #: points alike; folders excluded by name are left out). A folder missing here has gone.
+    child_dirs: dict[str, set[str]] = field(default_factory=dict)
 
 
 def walk(
@@ -198,7 +201,9 @@ def walk(
             stats.errors.append(WalkError(plain_path(d), "io", str(exc)))
             continue
         stats.dirs += 1
-        stats.listed_dirs.add(_rel(root_lp, d))
+        here = _rel(root_lp, d)
+        stats.listed_dirs.add(here)
+        kids = stats.child_dirs.setdefault(here, set())
         for e in sorted(entries, key=lambda x: x.name):
             try:
                 est = e.stat(follow_symlinks=False)
@@ -210,6 +215,7 @@ def walk(
             if is_dir:
                 if e.name.lower() in excluded_names or os.path.normcase(e.path) in blocked:
                     continue
+                kids.add(e.name)
                 if attrs & FILE_ATTRIBUTE_REPARSE_POINT:
                     tag = getattr(est, "st_reparse_tag", 0)
                     if not _is_cloud_tag(tag):
@@ -232,13 +238,23 @@ def walk(
                 rel_path=_rel(root_lp, e.path),
                 path=e.path,
                 size=est.st_size,
-                mtime_ns=est.st_mtime_ns,
-                birth_ns=int(getattr(est, "st_birthtime_ns", est.st_ctime_ns)),
-                atime_ns=est.st_atime_ns,
+                mtime_ns=_clamp_ns(est.st_mtime_ns),
+                birth_ns=_clamp_ns(int(getattr(est, "st_birthtime_ns", est.st_ctime_ns))),
+                atime_ns=_clamp_ns(est.st_atime_ns),
                 attributes=attrs,
                 file_id=est.st_ino,
                 volume=est.st_dev,
             )
+
+
+#: Nanosecond times must fit SQLite's 64-bit integers: a zero Windows file time (1601-01-01) is
+#: -1.16e19 ns and aborted every scan (QA H2, Phase 33). Clamping here keeps the stored value and
+#: the next walk's value identical, so such a file still counts as unchanged.
+_NS_MIN, _NS_MAX = -(2**63) + 1, 2**63 - 1
+
+
+def _clamp_ns(ns: int) -> int:
+    return min(max(int(ns), _NS_MIN), _NS_MAX)
 
 
 def _rel(root_lp: str, path: str) -> str:

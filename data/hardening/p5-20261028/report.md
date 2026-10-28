@@ -1,6 +1,6 @@
 # Hardening report `p5-20261028`
 
-Packaged build `ContextFS.exe` sha256[:16] = `dc39b8c63a222971`
+Packaged build `ContextFS.exe` sha256[:16] = `17533d2bb21c4def`
 
 | Case | Source | Result | Seconds |
 |---|---|---|---|
@@ -12,7 +12,7 @@ Packaged build `ContextFS.exe` sha256[:16] = `dc39b8c63a222971`
 | C06 | ADR-0011 §4 test: Word-style save loop (temp write + ReplaceFileW) x1000 during indexing | PASS | 87.4 |
 | C08 | ADR-0012 §1: a second writer is refused; the first is unaffected | PASS | 219.6 |
 | C09 | ADR-0001 §2: the indexer child cannot outlive the window (Job Object) | PASS | 771.3 |
-| C10 | ADR-0001 §2: a file that hangs a parser costs restarts, then is quarantined (GUI-driven) | FAIL | 45.9 |
+| C10 | ADR-0001 §2: a file that hangs a parser costs restarts, then is quarantined (GUI-driven) | FAIL | 78.1 |
 | C11 | ADR-0001 §2: a native parser crash (access violation) is quarantined after two strikes | PASS | 36.7 |
 | C12 | ADR-0012 §3: a damaged database is detected, set aside and rebuilt; search recovers | PASS | 292.6 |
 | C13 | ADR-0012 §3: truncated vector files are repaired; search never crashes | PASS | 103.4 |

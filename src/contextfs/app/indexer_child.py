@@ -112,8 +112,10 @@ def main(argv: list[str]) -> int:
             last[0] = done
             emit({"type": "progress", "seen": rep.seen, "processed": done, "unchanged": rep.unchanged})
 
+    owned = False
     try:
         with Engine.open(index_dir, mode="write", device=device) as eng:
+            owned = True
             if eng.recovered:
                 emit({"type": "recovered", "message": eng.recovered})
             emit({"type": "started", "roots": roots})
@@ -132,4 +134,5 @@ def main(argv: list[str]) -> int:
         emit({"type": "error", "kind": type(exc).__name__, "message": str(exc)[:500]})
         return 1
     finally:
-        cancel_path.unlink(missing_ok=True)
+        if owned:  # a run refused by the writer lock must not eat the running writer's cancel
+            cancel_path.unlink(missing_ok=True)

@@ -7,8 +7,10 @@
 - ``ContextFS-console.exe --find <index> [--as-of ISO] (--queries FILE | <query>)`` and
   ``--status <index>``: JSON for support and for the hardening suite, through the packaged build
 
-Every mode runs with network use blocked (a Python audit hook): the app is local-first, and this
-makes that a property of the process rather than a promise (log.md Phase 33).
+Every mode runs with Python-level network use blocked (an audit hook on socket connect, bind and
+DNS lookups). It covers all of ContextFS's own code and the Python libraries it bundles; native
+code that opened sockets itself would not be caught. None does: no Qt network module is bundled,
+and the hardening suite checks that the indexer owns no network endpoints (log.md Phase 33).
 """
 
 from __future__ import annotations
@@ -84,10 +86,12 @@ def main() -> int:
         from contextfs.app.selftest import run_selftest
 
         return run_selftest(gpu="--gpu" in args)
-    if args[:1] == ["--find"]:
-        return _find(args[1:])
-    if args[:1] == ["--status"]:
-        return _status(args[1:])
+    if args[:1] in (["--find"], ["--status"]):
+        try:
+            return (_find if args[0] == "--find" else _status)(args[1:])
+        except Exception as exc:  # noqa: BLE001 - support commands answer in JSON, never a traceback
+            sys.stdout.write(json.dumps({"error": type(exc).__name__, "message": str(exc)[:300]}) + "\n")
+            return 2
     from contextfs.app.gui import run
 
     return run()
