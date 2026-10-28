@@ -1,0 +1,169 @@
+{
+  "C22": {
+    "checks": {
+      "JSON error, exit 2, no traceback": true
+    },
+    "metrics": {
+      "outputs": {
+        "--status": [
+          true,
+          2
+        ],
+        "--find": [
+          true,
+          2
+        ]
+      }
+    },
+    "source": "QA L1 (Phase 33): support commands answer in JSON, even for a missing index",
+    "seconds": 4.0,
+    "exe": "079996801794ae0d",
+    "ok": true,
+    "at": "2026-10-29T01:29:10"
+  },
+  "C01": {
+    "checks": {
+      "exit 0": true,
+      "user files unchanged (sha256, size, mtime, attributes) and nothing added": true,
+      "integrity ok": true,
+      "every file indexed (14)": true,
+      "Tamil name found by content": true,
+      "Devanagari+emoji name found": true,
+      "Arabic name under 'Tom & Jerry (final) v2' found": true,
+      "path of 416 chars found": true,
+      "docx/pdf extracted": true,
+      "zip bomb not unpacked": true,
+      "126 MB file not read": true,
+      "malformed files survive as name-only rows": true,
+      "peak child memory < 1.5 GB": true
+    },
+    "metrics": {
+      "seconds": 3.4,
+      "peak_mb": 715,
+      "report": {
+        "seen": 14,
+        "new": 14,
+        "changed": 0,
+        "unchanged": 0,
+        "deleted": 0,
+        "offline_roots": [],
+        "metadata_only": {
+          "too_large": 2
+        },
+        "errors": 0,
+        "chunks_embedded": 14,
+        "seconds": 1.77,
+        "cancelled": false,
+        "healed_folders": 0,
+        "removed_roots": [],
+        "low_disk": false,
+        "struck": null,
+        "quarantined": 0,
+        "parse_errors": 0,
+        "repaired_vectors": 0,
+        "nested_roots": []
+      }
+    },
+    "source": "ADR-0011 §1-§4, ADR-0016: read-only, formats, names, long paths, malformed and oversized files",
+    "seconds": 8.8,
+    "exe": "079996801794ae0d",
+    "ok": true,
+    "at": "2026-10-29T01:29:32"
+  },
+  "C02": {
+    "checks": {
+      "finishes within 120 s": true,
+      "exactly the 20 real files": true
+    },
+    "metrics": {
+      "seconds": 1.7
+    },
+    "source": "ADR-0011 §2 + Rev. 1: junction loops are never descended",
+    "seconds": 1.8,
+    "exe": "079996801794ae0d",
+    "ok": true,
+    "at": "2026-10-29T01:29:39"
+  },
+  "C03": {
+    "checks": {
+      "exit 0": true,
+      "indexed as placeholder (not 'locked': it was never opened)": true,
+      "its content is not in the index": true,
+      "only file-system times recorded": true
+    },
+    "source": "ADR-0011 §3: offline/placeholder files are never opened",
+    "seconds": 1.8,
+    "exe": "079996801794ae0d",
+    "ok": true,
+    "at": "2026-10-29T01:29:46"
+  },
+  "C04": {
+    "checks": {
+      "first scan: 'locked', no crash": true,
+      "next scan reads it": true,
+      "then found by content": true
+    },
+    "source": "ADR-0011 §4: a locked file becomes an error row and is retried next scan",
+    "seconds": 3.0,
+    "exe": "079996801794ae0d",
+    "ok": true,
+    "at": "2026-10-29T01:29:54"
+  },
+  "C05": {
+    "checks": {
+      "deny applied": true,
+      "both scans exit 0": true,
+      "files under the unreadable folder kept": true,
+      "the folder error is recorded": true
+    },
+    "source": "ADR-0011 §2: an unreadable folder is an error, and never tombstones its files",
+    "seconds": 2.0,
+    "exe": "079996801794ae0d",
+    "ok": true,
+    "at": "2026-10-29T01:30:01"
+  },
+  "C14": {
+    "checks": {
+      "exit 5 with disk_low": true,
+      "index untouched": true
+    },
+    "source": "ADR-0012 §4: low disk refuses to start and leaves the index untouched",
+    "seconds": 13.4,
+    "exe": "079996801794ae0d",
+    "ok": true,
+    "at": "2026-10-29T01:30:19"
+  },
+  "C17": {
+    "checks": {
+      "selftest exit 0": true,
+      "ALL PASS": true
+    },
+    "metrics": {
+      "tail": [
+        "  [PASS] end-to-end time - 0.7s",
+        "  [PASS] no code loaded from a dev environment or another Python",
+        "  loaded: 896 Python modules, 99 DLLs",
+        "  note: DLL injected by other software (not ours): C:\\ProgramData\\A-Volute\\A-Volute.Nahimic\\Modules\\Scheduled\\x64\\AudioDevProps2.dll",
+        "  note: DLL injected by other software (not ours): C:\\ProgramData\\Microsoft\\Windows Defender\\Platform\\4.18.26100.4-0\\MpOAV.dll",
+        "RESULT: ALL PASS"
+      ]
+    },
+    "source": "Decision 95: the frozen self test passes",
+    "seconds": 1.5,
+    "exe": "079996801794ae0d",
+    "ok": true,
+    "at": "2026-10-29T01:30:25"
+  },
+  "C18": {
+    "checks": {
+      "found while listed": true,
+      "gone after removal": true,
+      "reported": true
+    },
+    "source": "Phase 33 real-data finding: a folder removed from Settings leaves search (packaged child)",
+    "seconds": 4.8,
+    "exe": "079996801794ae0d",
+    "ok": true,
+    "at": "2026-10-29T01:30:35"
+  }
+}

@@ -862,6 +862,7 @@ def c22(args) -> dict:
 
 
 def main() -> int:
+    global WORK, TRASH
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--only", default="")
     parser.add_argument("--work", type=Path, default=WORK, help="scratch folder for corpora and indexes")
@@ -869,7 +870,6 @@ def main() -> int:
     parser.add_argument("--scale", type=int, default=30000)
     parser.add_argument("--tag", default=f"p5-{datetime.now():%Y%m%d}")
     args = parser.parse_args()
-    global WORK, TRASH
     WORK, TRASH = args.work, args.work / "_trash"
     if not GUI_EXE.exists():
         print("build first: python scripts/build_app.py")
