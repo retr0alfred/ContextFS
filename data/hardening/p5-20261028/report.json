@@ -1,0 +1,88 @@
+{
+  "C01": {
+    "checks": {
+      "case ran": false
+    },
+    "metrics": {
+      "exception": "RuntimeError: console --find exit 1: Traceback (most recent call last):\n  File \"__main__.py\", line 95, in <module>\n  File \"__main__.py\", line 86, in main\n  File \"__main__.py\", line 57, in _find\n  File \"encodings\\cp1252.py\", line 19, in encode\nUnicodeEncodeError: 'charmap' codec can't encode characters in position 103-107: character maps to <undefined>\n[PYI-3244:ERROR] Failed to execute script '__main__' due to unhandled exception!\n"
+    },
+    "source": "ADR-0011 §1-§4, ADR-0016: read-only, formats, names, long paths, malformed and oversized files",
+    "seconds": 17.2,
+    "exe": "deddfd6cbfda9609",
+    "ok": false,
+    "at": "2026-10-28T22:17:59"
+  },
+  "C02": {
+    "checks": {
+      "finishes within 120 s": true,
+      "exactly the 20 real files": true
+    },
+    "metrics": {
+      "seconds": 4.6
+    },
+    "source": "ADR-0011 §2 + Rev. 1: junction loops are never descended",
+    "seconds": 6.8,
+    "exe": "deddfd6cbfda9609",
+    "ok": true,
+    "at": "2026-10-28T22:18:06"
+  },
+  "C03": {
+    "checks": {
+      "exit 0": true,
+      "indexed as placeholder (not 'locked': it was never opened)": true,
+      "its content is not in the index": true,
+      "only file-system times recorded": true
+    },
+    "source": "ADR-0011 §3: offline/placeholder files are never opened",
+    "seconds": 2.9,
+    "exe": "deddfd6cbfda9609",
+    "ok": true,
+    "at": "2026-10-28T22:18:09"
+  },
+  "C04": {
+    "checks": {
+      "first scan: 'locked', no crash": true,
+      "next scan reads it": false,
+      "then found by content": false
+    },
+    "source": "ADR-0011 §4: a locked file becomes an error row and is retried next scan",
+    "seconds": 3.6,
+    "exe": "deddfd6cbfda9609",
+    "ok": false,
+    "at": "2026-10-28T22:18:12"
+  },
+  "C05": {
+    "checks": {
+      "deny applied": true,
+      "both scans exit 0": true,
+      "files under the unreadable folder kept": true,
+      "the folder error is recorded": true
+    },
+    "source": "ADR-0011 §2: an unreadable folder is an error, and never tombstones its files",
+    "seconds": 4.5,
+    "exe": "deddfd6cbfda9609",
+    "ok": true,
+    "at": "2026-10-28T22:18:17"
+  },
+  "C17": {
+    "checks": {
+      "selftest exit 0": true,
+      "ALL PASS": true
+    },
+    "metrics": {
+      "tail": [
+        "  [PASS] end-to-end time - 0.8s",
+        "  [PASS] no code loaded from a dev environment or another Python",
+        "  loaded: 896 Python modules, 99 DLLs",
+        "  note: DLL injected by other software (not ours): C:\\ProgramData\\A-Volute\\A-Volute.Nahimic\\Modules\\Scheduled\\x64\\AudioDevProps2.dll",
+        "  note: DLL injected by other software (not ours): C:\\ProgramData\\Microsoft\\Windows Defender\\Platform\\4.18.26100.4-0\\MpOAV.dll",
+        "RESULT: ALL PASS"
+      ]
+    },
+    "source": "Decision 95: the frozen self test passes",
+    "seconds": 1.7,
+    "exe": "deddfd6cbfda9609",
+    "ok": true,
+    "at": "2026-10-28T22:18:19"
+  }
+}

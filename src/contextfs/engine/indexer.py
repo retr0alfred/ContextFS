@@ -36,6 +36,9 @@ READ_EXT_FOR_EVIDENCE = {".jpg", ".jpeg", ".tif", ".tiff", ".zip"}  # read for i
 #: Zip-based documents are checked before parsing: a small file can unpack to gigabytes.
 ZIP_FORMATS = {".docx", ".pptx", ".xlsx", ".odt", ".ods", ".odp", ".epub", ".zip"}
 ZIP_EXPANDED_CAP = 512 * 2**20
+#: Read failures that may clear by themselves (a file open in another app, a transient error):
+#: retried on every scan even if size and mtime are unchanged (ADR-0011 §4; Phase 33 suite C04).
+RETRY_ACCESS = {"locked", "denied", "io", "missing", "changed"}
 FORCED_DETAIL = {
     "quarantined": "made the indexer crash or hang twice; not opened again until it changes",
     "parse_error": "reading or parsing failed; indexed by name and dates only (see errors)",
@@ -219,7 +222,7 @@ def _run_update(engine, roots, progress, cancel, clock, prune_other_roots, rep, 
         known = {
             r["rel_path"]: r
             for r in conn.execute(
-                "SELECT file_id, rel_path, size, mtime_ns, content_hash, status FROM files WHERE root_id=?",
+                "SELECT file_id, rel_path, size, mtime_ns, content_hash, status, access FROM files WHERE root_id=?",
                 (root_id,),
             )
         }
@@ -244,6 +247,7 @@ def _run_update(engine, roots, progress, cancel, clock, prune_other_roots, rep, 
                 and prev["status"] == "present"
                 and prev["size"] == entry.size
                 and prev["mtime_ns"] == entry.mtime_ns
+                and prev["access"] not in RETRY_ACCESS
             ):
                 rep.unchanged += 1
                 continue

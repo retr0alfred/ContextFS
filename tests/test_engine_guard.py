@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import json
 import sqlite3
+import sys
 import time
 import zipfile
 
@@ -180,6 +181,28 @@ def test_a_newer_index_is_refused_not_rebuilt(tmp_path):
     with pytest.raises(RuntimeError, match="newer"):
         Engine.open(idx, mode="write")
     assert not list(idx.glob("damaged-*"))
+
+
+@pytest.mark.skipif(sys.platform != "win32", reason="Windows share modes")
+def test_a_file_locked_during_one_scan_is_read_on_the_next(tmp_path):
+    # Hardening suite C04: the locked file kept its size and mtime, so it was never retried.
+    import ctypes
+    from ctypes import wintypes
+
+    corpus = _corpus(tmp_path / "c")
+    target = corpus / "a" / "notes.md"
+    k32 = ctypes.WinDLL("kernel32", use_last_error=True)
+    k32.CreateFileW.restype = wintypes.HANDLE
+    handle = k32.CreateFileW(str(target), 0x80000000, 0, None, 3, 0x80, None)  # no sharing at all
+    with Engine.open(tmp_path / "idx", mode="write") as eng:
+        try:
+            eng.update([corpus])
+            assert _access(eng, "a/notes.md") == "locked"
+        finally:
+            k32.CloseHandle(wintypes.HANDLE(handle))
+        eng.update([corpus])
+        assert _access(eng, "a/notes.md") == "ok"
+        assert eng.search("normalization BCNF").paths[0] == "a/notes.md"
 
 
 def test_the_watchdog_reports_a_stuck_file(tmp_path):

@@ -54,7 +54,9 @@ def _find(args: list[str]) -> int:
             out.append({"query": q, "ms": round((time.perf_counter() - t) * 1000, 2), "notes": resp.notes,
                         "results": [{"rel_path": r.rel_path, "score": round(r.score, 6), "reasons": r.reasons}
                                     for r in resp.results]})
-    sys.stdout.write(json.dumps({"queries": out}, ensure_ascii=False) + "\n")
+    # bytes, not text: the Windows console encoding (cp1252) cannot print non-English file names
+    sys.stdout.buffer.write((json.dumps({"queries": out}, ensure_ascii=False) + "\n").encode("utf-8"))
+    sys.stdout.flush()
     return 0
 
 
