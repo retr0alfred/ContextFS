@@ -19,14 +19,14 @@ Last updated: 2026-10-29 (end of v2-P5) · Branch: `v2`
 
 ## Open items needing the user
 1. Say "continue" to start v2-P6 (novelty: direction A, the probabilistic/reconciled time estimator).
-2. **LICENSE** — first build exists now; `pyproject.toml` says MIT but there is no LICENSE file (your and your co-author's call). Needed before SignPath and any release.
-3. Clean-account check (Part B of `docs/release/CLEAN_ACCOUNT_CHECKLIST.md`) — deferred by you; Part A demo done.
+2. LICENSE: **done** (MIT, Alfred Mathew, 2026; Decision 105). Before any release: a third-party notices file.
+3. **Standing item (no phase):** clean-account check (Part B of `docs/release/CLEAN_ACCOUNT_CHECKLIST.md`) — revisit before any release or demo on a machine other than yours (Decision 105).
 4. Smart App Control is in Evaluation mode on this laptop; the build is unsigned. Checked by every self test.
 5. Optional: donor statistics from another source; user-only transfer-table rows; real-user study recruitment (needs ethics approval; protocol in `docs/study/`).
 
 ## Machine notes
 - D: (the project drive) is a bus-powered USB HDD that resets under sustained small-file writes. Test scratch lives in `C:\ContextFS-scratch` (disposable; user-approved). See log.md Decision 104.
-- Open P8 risk: indexer peak memory 1.5 GB at 10k files with the GPU (1.1 GB on CPU) — at the 1.5 GB job limit for ≤ 8 GB machines.
+- Open risk (home not yet decided, Decision 105): indexer peak memory 1.5 GB at 10k files with the GPU (1.1 GB on CPU), at the 1.5 GB job limit for ≤ 8 GB machines; a limit kill would count as a crash strike.
 
 ## Standing reminders
 - Paper-strategy docs stay local (public repo).

@@ -4076,3 +4076,12 @@ deferred by the user, not skipped.
 - Part B clean-account check.
 - Smart App Control is in Evaluation; the build is unsigned.
 - Optional: delete `C:\ContextFS-scratch` at any time (disposable).
+
+### Decision 105 — Licence, the clean-account check, and where the 8 GB memory risk lives (user decisions, 2026-10-29)
+- **LICENSE:** MIT, "Copyright (c) 2026 Alfred Mathew", added at the repo root. `scripts/build_app.py` copies it next to the exe as `LICENSE.txt`. `pyproject.toml` already declared MIT. Still to do before any release: a third-party notices file for the bundled components (Qt/PySide6 LGPL, ONNX Runtime, the MiniLM model, and others; ADR-0016).
+- **Clean-account check (Part B of `docs/release/CLEAN_ACCOUNT_CHECKLIST.md`):** deferred by the user. It is a **standing open item, not tied to a phase**: revisit before any release or demo on a machine other than the user's own laptop.
+- **8 GB memory-cap risk (Phase 33 measurement):**
+  - **Phase 8 as defined does not cover it.** CLAUDE.md defines Phase 8 as "optimise/slim within a user-signed accuracy tolerance". ADR-0014 lists ANN, sparse session linkage, the watcher, NER cut by ablation and granite. Neither mentions low-spec support or 8 GB verification.
+  - Reducing peak memory *would* fit Phase 8 as an optimisation.
+  - The wrong-strike part is different: a Job memory-limit kill is counted as a crash strike, so it can quarantine good files. That is a correctness issue, not an optimisation.
+  - Raised with the user to decide when to tackle it; pending their answer.

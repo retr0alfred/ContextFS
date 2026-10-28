@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import argparse
 import os
+import shutil
 import subprocess
 import sys
 import time
@@ -42,6 +43,7 @@ def main() -> int:
         return rc
     app = DIST / "ContextFS"
     internal = app / "_internal"
+    shutil.copy2(ROOT / "LICENSE", app / "LICENSE.txt")  # MIT, beside the exe (log.md Decision 105)
     print(f"built {app} in {time.perf_counter() - t:.0f}s: {folder_size(app) / 2**20:.0f} MB, "
           f"{sum(1 for f in app.rglob('*') if f.is_file())} files")
     parts = sorted(((folder_size(p) if p.is_dir() else p.stat().st_size, p.name) for p in internal.iterdir()),
