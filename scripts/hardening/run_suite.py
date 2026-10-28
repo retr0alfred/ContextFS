@@ -862,15 +862,19 @@ def c22(args) -> dict:
 
 
 def main() -> int:
-    global WORK, TRASH
+    global WORK, TRASH, DIST, GUI_EXE, CON_EXE
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--only", default="")
     parser.add_argument("--work", type=Path, default=WORK, help="scratch folder for corpora and indexes")
     parser.add_argument("--pause", type=float, default=5.0, help="seconds to rest between cases")
+    parser.add_argument("--dist", type=Path, default=DIST,
+                        help="the packaged app folder to test (default dist/ContextFS)")
     parser.add_argument("--scale", type=int, default=30000)
     parser.add_argument("--tag", default=f"p5-{datetime.now():%Y%m%d}")
     args = parser.parse_args()
     WORK, TRASH = args.work, args.work / "_trash"
+    DIST = args.dist
+    GUI_EXE, CON_EXE = DIST / "ContextFS.exe", DIST / "ContextFS-console.exe"
     if not GUI_EXE.exists():
         print("build first: python scripts/build_app.py")
         return 2

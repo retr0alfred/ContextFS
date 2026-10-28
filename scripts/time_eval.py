@@ -194,7 +194,7 @@ def main() -> int:
                     and summary["rows"][k].get("n", 0) >= 30]
             if rows:
                 summary["macro"][f"{name}|{event}"] = {
-                    m: round(statistics.mean(r[m] for r in rows), 4) for m in ("coverage", "within1d")}
+                    m: round(statistics.mean(r[m] for r in rows), 4) for m in ("coverage", "within1d", "is20_d")}
     for (name, origin, event), (tp, fn, fp, tn) in sorted(exist.items()):
         summary["existence"][f"{name}|{origin}|{event}"] = {
             "TP": tp, "FN": fn, "FP": fp, "TN": tn,

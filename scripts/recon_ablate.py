@@ -5,10 +5,11 @@ r"""recon_v1 ablations and perturbations on the dev split (log.md Phase 34, Deci
 Everything runs in memory through the engine's own ``estimate_folder`` (no index writes), with
 *uncalibrated* estimators (no fitted widening) so that only the rules differ between variants.
 
-Variants (pre-declared in Decision 106 and the independent review):
+Variants (from Decision 106 and the two independent reviews; arrival_B is the variant not chosen):
 - ``recon_v1``            the shipped rules;
 - ``no_existence``        an edit is dated for every file, as rules_v0 does;
 - ``arrival_B``           a reset file came in "between creation and the copy" (variant B);
+- ``rules_v0_bulk``       baseline: rules_v0 with recon_v1's bulk-copy detector (review 2, finding 5);
 - ``sim_motw``            the uncorrected simulator view: download marks restored on content-copied
                           downloads (what the benchmark looked like before T v1.1);
 Perturbations (departures from the simulator's conventions; truth adjusted where the event changes):
@@ -66,11 +67,11 @@ def adjusted_truth(kind: str, truth: dict, rel: str, ev_rows_m: int | None) -> d
 
 
 def run(persona: Path, index_root: Path, variant: str) -> list[dict]:
-    from contextfs.engine.estimate import ReconV1
+    from contextfs.engine.estimate import ReconV1, RulesV0Bulk
     from contextfs.engine.indexer import _folder_of, estimate_folder
     from contextfs.engine.schema import connect
 
-    est = ReconV1(params={})
+    est = RulesV0Bulk() if variant == "rules_v0_bulk" else ReconV1(params={})
     if variant == "no_existence":
         est.EXISTENCE_GATING = False
     if variant == "arrival_B":
@@ -135,8 +136,8 @@ def main() -> int:
     if any("-B-" in d.name for d in args.persona_dirs):
         print("refusing: test personas (family B) are frozen until v2-P7")
         return 2
-    variants = ("recon_v1", "no_existence", "arrival_B", "sim_motw", "own_export_dt0", "edited_download",
-                "photo_mtime_import")
+    variants = ("recon_v1", "rules_v0_bulk", "no_existence", "arrival_B", "sim_motw", "own_export_dt0",
+                "edited_download", "photo_mtime_import")
     result = {}
     for v in variants:
         recs = [r for d in args.persona_dirs for r in run(d, args.index_root, v)]

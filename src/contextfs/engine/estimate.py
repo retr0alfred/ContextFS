@@ -115,6 +115,24 @@ class RawMtime:
         return {"authored": t, "arrived_here": t, "last_user_edit": t}
 
 
+class RulesV0Bulk:
+    """Evaluation baseline only: rules_v0 with recon_v1's bulk-copy events as its burst detector.
+
+    Its provisional detector is replaced by the dev-fitted events, so recon_v1's gain is not
+    credited for the detector alone (independent review, Phase 34). Not in ESTIMATORS.
+    """
+
+    name = "rules_v0_bulk"
+
+    def estimate(self, ev: FileEvidence, ctx: FolderContext) -> dict[str, EventTime]:
+        """rules_v0, with a file in a bulk-copy event counted as part of a burst."""
+        b = ev.utc("ntfs:created")
+        in_bulk = b is not None and any(s - 60 <= b <= e + 60 for s, e in ctx.bulk_events)
+        sizes = dict(ctx.burst_sizes)
+        sizes[ev.file_id] = RulesV0.BURST_N if in_bulk else 1
+        return RulesV0().estimate(ev, FolderContext(sizes, ctx.bulk_events, ctx.sibling_created))
+
+
 class RulesV0:
     """Rules from T v1 and the frozen default calibration. Nothing here is fitted on data."""
 
@@ -261,9 +279,9 @@ class ReconV1:
     EDIT_SLACK = 60  # m later than b (or a bulk event) by more than this: a real edit
     UNEDITED = 600  # in-file modified - created <= 10 min: the document was never re-saved
     #: Arrival of a reset file with no download mark or camera date: True = anywhere between its
-    #: creation and the copy (variant B), False = at its creation (variant A). Variant A won on the
-    #: pre-declared criterion, the lowest dev (LOPO) macro interval score over damage types: 230.8 vs
-    #: 314.6 (log.md Phase 34). B is reported as an ablation.
+    #: creation and the copy (variant B), False = at its creation (variant A). Selected on dev by the
+    #: lowest LOPO macro interval score over damage types (A 230.8, B 314.6, C 310.4; the criterion
+    #: was not committed before the runs, so this is a dev model selection, log.md Phase 34).
     AGNOSTIC_MOVED_ARRIVAL = False
     #: Ablation switch (log.md Phase 34): False = date an edit for every file, like rules_v0, instead
     #: of only on positive evidence.

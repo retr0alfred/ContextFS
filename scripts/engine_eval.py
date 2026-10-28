@@ -22,10 +22,11 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import sqlite3
 import statistics
 import sys
 import time
-from datetime import datetime
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
@@ -45,6 +46,9 @@ from contextfs.evalkit import (  # noqa: E402
 )
 
 SOURCES = ("time_off", "raw_mtime", "rules_v0", "recon_v1", "oracle")
+#: The generator writes naive wall-clock times in IST (no DST); a fixed zone keeps results independent
+#: of the evaluating machine's zone (review 2, finding 8; matches scripts/time_eval.py).
+GENERATOR_TZ = timezone(timedelta(hours=5, minutes=30))
 #: P-A2 / P-A2s (Decision 106, pre-declared before any P-A2 number): a query is time-cued when its
 #: generator cue is one whose templates always carry a time slot.
 TIME_CUED = {"temporal", "mixed"}
@@ -61,7 +65,7 @@ def oracle_override(persona_dir: Path) -> tuple:
         for ev in ("authored", "arrived_here", "last_user_edit"):
             v = r["truth"].get(ev)
             if v:
-                t = int(datetime.fromisoformat(v).astimezone().timestamp())
+                t = int(datetime.fromisoformat(v).replace(tzinfo=GENERATOR_TZ).timestamp())
                 out.append((r["rel_path"], ev, t, t + 1))
     return tuple(out)
 
@@ -75,6 +79,20 @@ def config_for(source: str, weights, oracle=()) -> SearchConfig:
         return SearchConfig(weights=w, time_source="override", time_override=oracle, top_k=100, keep_pool=True,
                             time_feature=tf)
     return SearchConfig(weights=w, time_source=source, top_k=100, keep_pool=True, time_feature=tf)
+
+
+def power_n(diffs: list[float], alpha: float = 0.05, power: float = 0.8) -> dict:
+    """Queries needed to detect the pre-registered 0.03 and the observed mean paired difference.
+
+    Normal approximation, as scripts/power_calc.py (ADR-0015 §8).
+    """
+    from statistics import NormalDist
+
+    sd = statistics.stdev(diffs)
+    z = NormalDist().inv_cdf(1 - alpha / 2) + NormalDist().inv_cdf(power)
+    mean = abs(statistics.mean(diffs))
+    return {"sd": round(sd, 4), "n_for_0.03": int((z * sd / 0.03) ** 2) + 1,
+            "n_for_observed": int((z * sd / mean) ** 2) + 1 if mean > 0 else None}
 
 
 def damage_of(persona_dir: Path) -> dict[str, str]:
@@ -103,6 +121,9 @@ def cluster_boot(rows_a: list[dict], rows_b: list[dict], rows_o: list[dict] | No
             if abs(do) > 1e-9:
                 vals.append(da / do)
     vals.sort()
+    dropped = n - len(vals)  # resamples with no oracle headroom cannot give a share
+    if rows_o is not None and dropped:
+        print(f"  cluster_boot: {dropped}/{n} resamples dropped (zero headroom)")
     return [round(vals[int(0.025 * len(vals))], 4), round(vals[int(0.975 * len(vals)) - 1], 4)] if vals else None
 
 
@@ -146,6 +167,7 @@ def main() -> int:
         weights = json.loads(args.weights.read_text(encoding="utf-8"))["weights"]
     started = time.perf_counter()
     records = []  # (query, source, pool, online_ranked)
+    recon_fp: dict[str, str] = {}  # which calibrated recon_v1 rows each persona's run used
     for d in args.persona_dirs:
         idx = (args.index_root / d.name) if args.index_root else d / "index_v2"
         if not (idx / "contextfs.db").exists():
@@ -153,9 +175,13 @@ def main() -> int:
                 rep = eng.update([d / "corpus"])
                 print(f"indexed {d.name}: {rep.new} files in {rep.seconds}s")
         meta = json.loads((d / "truth" / "persona.json").read_text(encoding="utf-8"))
-        as_of = datetime.fromisoformat(meta["persona"]["end"]).astimezone()
+        as_of = datetime.fromisoformat(meta["persona"]["end"]).replace(tzinfo=GENERATOR_TZ)
         oracle = oracle_override(d)
         dmg = damage_of(d)
+        with sqlite3.connect(f"file:{(idx / 'contextfs.db').as_posix()}?mode=ro", uri=True) as c:
+            rows = c.execute("SELECT f.rel_path, t.event, t.lo_utc, t.hi_utc, t.point_utc, t.confidence FROM file_time t "
+                             "JOIN files f ON f.file_id=t.file_id WHERE t.estimator='recon_v1' ORDER BY 1, 2").fetchall()
+        recon_fp[d.name] = hashlib.sha256(json.dumps(rows).encode()).hexdigest()[:16]
         queries = [json.loads(x) for x in (d / "truth" / "queries_llm.jsonl").read_text(encoding="utf-8").splitlines()]
         for q in queries:
             q["persona"], q["target_damage"] = d.name, dmg.get(q["target"], "none")
@@ -206,7 +232,8 @@ def main() -> int:
     summary = {"tag": args.tag, "personas": [d.name for d in args.persona_dirs], "weights": weights,
                "n_queries": len(per["rules_v0"]), "seconds": round(time.perf_counter() - started, 1),
                "offline_online_mismatches": mismatches, "systems": {}, "by_cue": {}, "by_cue_target": {},
-               "paired": {}, "time_feature": TIME_FEATURE, "p_a2": {}, "p_a2s": {}}
+               "paired": {}, "time_feature": TIME_FEATURE, "p_a2": {}, "p_a2s": {},
+               "recon_v1_rows_sha256_16": recon_fp}
     for s, rows in per.items():
         summary["systems"][s] = {m: {"mean": round(statistics.mean(r[m] for r in rows), 4),
                                      "ci95": [round(v, 4) for v in bootstrap_ci([r[m] for r in rows])]}
@@ -232,7 +259,8 @@ def main() -> int:
         diffs = [x["ndcg10"] - y["ndcg10"] for x, y in zip(cued[a], cued[b], strict=True)]
         summary["p_a2"][f"{a} - {b}"] = {"mean": round(statistics.mean(diffs), 4),
                                          "p": round(paired_randomisation_p(diffs), 5),
-                                         "ci95_persona": cluster_boot(cued[a], cued[b])}
+                                         "ci95_persona": cluster_boot(cued[a], cued[b]),
+                                         "power": power_n(diffs)}
     # P-A2s (pre-registered, Decision 106): time-cued queries whose target's fs times were reset;
     # share of the oracle's headroom over raw mtime recovered.
     sub = {s: [r for r in rows if r["target_damage"] in RESET_DAMAGE] for s, rows in cued.items()}
