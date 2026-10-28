@@ -1533,7 +1533,7 @@ def v2_update(
     try:
         device = "auto" if (gpu or Settings.load().gpu) == "auto" else "cpu"
         with Engine.open(_v2_index_dir(index_dir), mode="write", device=device) as eng:
-            rep = eng.update(targets)
+            rep = eng.update(targets, prune_other_roots=not roots)  # saved list = the complete list
             note = eng.device_note
     except WriterLocked as exc:
         err_console.print(f"{exc}. Search still works; try again when it finishes.")

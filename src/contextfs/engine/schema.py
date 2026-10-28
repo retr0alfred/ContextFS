@@ -74,6 +74,13 @@ MIGRATIONS: list[list[str]] = [
         """CREATE TABLE scans (
             scan_id INTEGER PRIMARY KEY, started_at TEXT, finished_at TEXT, state TEXT, stats_json TEXT)""",
     ],
+    # 2 (Phase 33): files that crashed or hung the indexer (engine.guard). Keyed by path; a strike
+    # counts only while size and mtime are unchanged.
+    [
+        """CREATE TABLE strikes (
+            root_id INTEGER NOT NULL, rel_path TEXT NOT NULL, size INTEGER, mtime_ns INTEGER,
+            count INTEGER NOT NULL, last_at INTEGER, PRIMARY KEY(root_id, rel_path))""",
+    ],
 ]
 SCHEMA_VERSION = len(MIGRATIONS)
 
@@ -84,12 +91,17 @@ def connect(path, read_only: bool = False) -> sqlite3.Connection:
         conn = sqlite3.connect(f"file:{path}?mode=ro", uri=True, check_same_thread=False)
     else:
         conn = sqlite3.connect(str(path), check_same_thread=False)
-        conn.execute("PRAGMA journal_mode=WAL")
-        conn.execute("PRAGMA journal_size_limit=67108864")
-    conn.row_factory = sqlite3.Row
-    conn.execute("PRAGMA synchronous=NORMAL")
-    conn.execute("PRAGMA foreign_keys=ON")
-    conn.execute("PRAGMA busy_timeout=5000")
+    try:
+        if not read_only:
+            conn.execute("PRAGMA journal_mode=WAL")
+            conn.execute("PRAGMA journal_size_limit=67108864")
+        conn.row_factory = sqlite3.Row
+        conn.execute("PRAGMA synchronous=NORMAL")
+        conn.execute("PRAGMA foreign_keys=ON")
+        conn.execute("PRAGMA busy_timeout=5000")
+    except sqlite3.Error:
+        conn.close()  # a damaged file must not stay open: Windows could not move it aside
+        raise
     return conn
 
 
@@ -101,8 +113,16 @@ def migrate(conn: sqlite3.Connection) -> int:
             f"index schema {current} is newer than this ContextFS ({SCHEMA_VERSION})"
         )
     for version in range(current, SCHEMA_VERSION):
-        with conn:
+        # Explicit BEGIN: Python's sqlite3 does not open a transaction for DDL on its own, so
+        # ``with conn:`` alone left a half-applied migration possible (log.md Phase 33).
+        conn.commit()
+        conn.execute("BEGIN IMMEDIATE")
+        try:
             for stmt in MIGRATIONS[version]:
                 conn.execute(stmt)
             conn.execute(f"PRAGMA user_version = {version + 1}")
+            conn.execute("COMMIT")
+        except BaseException:
+            conn.execute("ROLLBACK")
+            raise
     return SCHEMA_VERSION

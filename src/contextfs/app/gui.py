@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import json
 import os
+import sqlite3
 import subprocess
 import sys
 from datetime import datetime, timezone
@@ -22,6 +23,7 @@ from html import escape
 from pathlib import Path
 
 from PySide6.QtCore import QObject, QProcess, QRunnable, Qt, QThreadPool, QTimer, Signal, Slot
+from PySide6.QtGui import QKeySequence, QShortcut
 from PySide6.QtWidgets import (
     QApplication,
     QCheckBox,
@@ -171,6 +173,12 @@ class SearchJob(QRunnable):
             self.signals.done.emit((resp, dates), self.seq)
         except FileNotFoundError:
             self.signals.failed.emit("The index is being built for the first time. Try again in a moment.", self.seq)
+        except sqlite3.DatabaseError:
+            if SearchJob.engine is not None:
+                SearchJob.engine.close()
+                SearchJob.engine = None
+            self.signals.failed.emit("The index looks damaged. The next update (F5) checks it and rebuilds it "
+                                     "if needed; your files are not affected.", self.seq)
         except Exception as exc:  # noqa: BLE001 - shown in the status bar
             self.signals.failed.emit(f"Search failed: {type(exc).__name__}: {exc}", self.seq)
 
@@ -247,7 +255,16 @@ class MainWindow(QMainWindow):
         self.status.addPermanentWidget(self.cancel_btn)
         self.setStatusBar(self.status)
         self.current = None
+        from contextfs.app.winjob import ChildJob
+
+        self.job = ChildJob()  # the child dies with this window, and has a memory limit (ADR-0001)
+        self.restarts, self.closing = 0, False
+        QShortcut(QKeySequence("F5"), self, activated=self.start_update)  # Refresh (ADR-0001 §4)
         QTimer.singleShot(200, self.start_update)
+        if os.environ.get("CONTEXTFS_SELFDRIVE"):  # hardening suite only; inert otherwise
+            from contextfs.app.autotest import attach
+
+            attach(self, os.environ["CONTEXTFS_SELFDRIVE"])
 
     # -- indexing child -----------------------------------------------------------------------
 
@@ -260,8 +277,10 @@ class MainWindow(QMainWindow):
 
     def start_update(self) -> None:
         """Launch-time incremental update in a child process."""
-        if self.proc is not None or not self.settings.roots:
+        if self.proc is not None:
             return
+        if not self.settings.roots and not (self.index_dir / "contextfs.db").exists():
+            return  # nothing chosen and nothing indexed; with an index, an empty list prunes it
         self.proc = QProcess(self)
         self.proc.readyReadStandardOutput.connect(self._child_output)
         self.proc.finished.connect(self._child_finished)
@@ -280,6 +299,8 @@ class MainWindow(QMainWindow):
         (self.index_dir / CANCEL_FILE).unlink(missing_ok=True)  # stale request from a crash
         program, args = self._child_command()
         self.proc.start(program, args)
+        if self.proc.waitForStarted(10000):
+            self.job.assign(int(self.proc.processId()))
         self.cancel_btn.show()
         self.status.showMessage("Updating the index… search works meanwhile")
 
@@ -300,10 +321,15 @@ class MainWindow(QMainWindow):
                 self.status.showMessage(f"{head}: {r['new']} new, {r['changed']} changed, "
                                         f"{r['deleted']} removed, {r['unchanged']} unchanged{device}")
                 self.reopen = True
+            elif msg.get("type") == "recovered":
+                self.status.showMessage("The index was damaged and is being rebuilt from your files "
+                                        "(the damaged copy is kept in the index folder).")
             elif msg.get("type") == "error":
                 self.status.showMessage(f"Indexing stopped: {msg.get('message')}")
 
-    def _child_finished(self, code: int = 0, _status=None) -> None:
+    def _child_finished(self, code: int = 0, status=None) -> None:
+        from contextfs.app.indexer_child import EXIT_DISK, EXIT_LOCKED
+
         self._child_output()  # drain lines that arrived together with 'finished'
         try:
             err = self.child_log.read_text(encoding="utf-8", errors="replace").strip()
@@ -314,6 +340,16 @@ class MainWindow(QMainWindow):
             self.status.showMessage(f"Indexing stopped (exit {code}): {err.splitlines()[-1][:200]}")
         self.cancel_btn.hide()
         self.proc = None
+        # A hang (exit 3) or a crash: the file in progress got a strike; restarting retries it once
+        # and then quarantines it, so a bad file costs a restart, never the whole scan.
+        crashed = status == QProcess.ExitStatus.CrashExit or code not in (0, EXIT_LOCKED, EXIT_DISK)
+        if crashed and not self.closing and self.restarts < 3:
+            self.restarts += 1
+            self.status.showMessage(f"The indexer stopped on a problem file; restarting ({self.restarts}/3)…")
+            QTimer.singleShot(1000, self.start_update)
+            return
+        if code == 0:
+            self.restarts = 0
         if self.box.text().strip():
             self.search()
 
@@ -330,6 +366,7 @@ class MainWindow(QMainWindow):
 
     def closeEvent(self, event) -> None:  # noqa: N802 - Qt API
         """Clean stop on close: cancel, wait up to 3 s, then kill (ADR-0001 Rev. 1)."""
+        self.closing = True
         if self.proc is not None:
             self._request_cancel()
             if not self.proc.waitForFinished(3000):
@@ -460,12 +497,47 @@ class MainWindow(QMainWindow):
                         "(checked against the CPU on first use; search always runs on the CPU)")
         gpu.setChecked(self.settings.gpu == "auto")
         lay.addWidget(gpu)
+        wipe = QPushButton("Delete my index…")
+        wipe.setToolTip("Removes the copy of text, names and dates ContextFS keeps. Your files are not touched.")
+        wipe.clicked.connect(lambda: self.delete_index(dlg))
+        lay.addWidget(wipe)
         lay.addWidget(bb)
         if dlg.exec():
             self.settings.roots = [lst.item(i).text() for i in range(lst.count())]
             self.settings.gpu = "auto" if gpu.isChecked() else "off"
             self.settings.save()
             self.start_update()
+
+    def delete_index(self, parent=None) -> bool:
+        """Privacy action (ADR-0016 §2): delete the index (text, names, dates); keep settings."""
+        import shutil
+
+        answer = QMessageBox.question(
+            parent or self, "Delete my index?",
+            "This deletes ContextFS's copy of your files' text, names and dates. Your files are not "
+            "touched. Your folder choices are kept, and the index is rebuilt at the next update (F5).")
+        if answer != QMessageBox.StandardButton.Yes:
+            return False
+        self.closing = True  # no automatic restart while deleting
+        if self.proc is not None:
+            self._request_cancel()
+            if not self.proc.waitForFinished(5000):
+                self.proc.kill()
+                self.proc.waitForFinished(3000)
+        self.pool.waitForDone(5000)
+        if SearchJob.engine is not None:
+            SearchJob.engine.close()
+            SearchJob.engine = None
+        for name in ("contextfs.db", "contextfs.db-wal", "contextfs.db-shm", "writer.lock", "inprogress.marker",
+                     "cancel.request"):
+            (self.index_dir / name).unlink(missing_ok=True)
+        for name in ("vectors", "tmp", *[d.name for d in self.index_dir.glob("damaged-*")]):
+            shutil.rmtree(self.index_dir / name, ignore_errors=True)
+        self.closing = False
+        self.results.clear()
+        self.details.clear()
+        self.status.showMessage("Index deleted. Your files were not touched; press F5 to rebuild it.")
+        return True
 
 
 def run() -> int:

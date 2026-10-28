@@ -44,7 +44,7 @@ class Engine:
         self, index_dir: Path, mode: str, model_dir: Path | None, threads: int, device: str = "cpu"
     ) -> None:
         """Use :meth:`open`."""
-        from contextfs.engine.schema import connect, migrate
+        from contextfs.engine.schema import connect
 
         self.index_dir = Path(index_dir)
         self.mode = mode
@@ -56,11 +56,11 @@ class Engine:
         self._encoder = None
         self._bulk_encoder = None
         db = self.index_dir / "contextfs.db"
+        self.recovered = ""  # why a damaged index was set aside and rebuilt (empty if it was not)
         if mode == "write":
             self.index_dir.mkdir(parents=True, exist_ok=True)
             self._acquire_writer_lock()
-            self.conn = connect(db)
-            migrate(self.conn)
+            self.recovered = self._open_writable(db)
         else:
             if not db.exists():
                 raise FileNotFoundError(f"no index at {self.index_dir}; run an update first")
@@ -82,6 +82,53 @@ class Engine:
         probe (``engine.gpu``). Queries always run on the CPU EP.
         """
         return cls(index_dir or default_index_dir(), mode, model_dir, threads, device)
+
+    # -- corruption recovery (ADR-0012 §3) -----------------------------------------------------
+
+    def _open_writable(self, db: Path) -> str:
+        """Open and migrate for writing. A damaged database is set aside and a new one started.
+
+        Checked: the open itself, the migrations, and ``PRAGMA quick_check`` on every writable open.
+        ADR-0012 ran it only after a dirty shutdown, but a damaged page behind an intact header and a
+        clean last scan would then go unnoticed; it costs about 1 s for a 286 MB index and runs in
+        the indexer child while search continues (log.md Phase 33). A database written by a *newer*
+        ContextFS raises instead: it is not damaged, and rebuilding would destroy it.
+        """
+        import sqlite3
+
+        from contextfs.engine.schema import connect, migrate
+
+        conn = None
+        try:
+            conn = connect(db)
+            migrate(conn)
+            verdict = conn.execute("PRAGMA quick_check").fetchone()[0]
+            if verdict != "ok":
+                raise sqlite3.DatabaseError(f"quick_check: {verdict}")
+            self.conn = conn
+            return ""
+        except sqlite3.DatabaseError as exc:
+            if conn is not None:
+                conn.close()
+            reason = f"{type(exc).__name__}: {exc}"[:200]
+            self._set_aside_damaged()
+            self.conn = connect(db)
+            migrate(self.conn)
+            return reason
+
+    def _set_aside_damaged(self) -> None:
+        """Move the damaged database and vectors to ``damaged-<time>/`` (only the latest is kept)."""
+        import shutil
+        import time
+
+        for old in self.index_dir.glob("damaged-*"):
+            shutil.rmtree(old, ignore_errors=True)
+        dest = self.index_dir / time.strftime("damaged-%Y%m%d-%H%M%S")
+        dest.mkdir()
+        for name in ("contextfs.db", "contextfs.db-wal", "contextfs.db-shm", "vectors"):
+            src = self.index_dir / name
+            if src.exists():
+                shutil.move(str(src), str(dest / name))
 
     # -- writer lock (ADR-0012) -----------------------------------------------------------------
 
@@ -145,13 +192,29 @@ class Engine:
 
     # -- API ---------------------------------------------------------------------------------
 
-    def update(self, roots, progress=None, cancel=None, clock=None):
-        """Incrementally index ``roots`` (write mode)."""
+    def update(
+        self,
+        roots,
+        progress=None,
+        cancel=None,
+        clock=None,
+        prune_other_roots=False,
+        file_timeout=None,
+        on_hang=None,
+    ):
+        """Incrementally index ``roots`` (write mode).
+
+        ``prune_other_roots=True`` means ``roots`` is the user's complete list (the app's Settings):
+        any other indexed root is marked *removed* and drops out of search. Its data is kept, so
+        adding the folder back is instant.
+        """
         if self.mode != "write":
             raise RuntimeError("open the engine with mode='write' to update")
         from contextfs.engine.indexer import run_update
 
-        return run_update(self, [Path(r) for r in roots], progress, cancel, clock)
+        return run_update(
+            self, [Path(r) for r in roots], progress, cancel, clock, prune_other_roots, file_timeout, on_hang
+        )
 
     def search(self, query: str, config=None, as_of=None):
         """Ranked, explained results for ``query`` (see ``engine.rank``)."""
@@ -179,7 +242,10 @@ class Engine:
         """Counts for the status bar and the CLI."""
         q = self.conn.execute
         return {
-            "files": q("SELECT COUNT(*) FROM files WHERE status='present'").fetchone()[0],
+            "files": q(
+                "SELECT COUNT(*) FROM files f JOIN roots r USING(root_id) "
+                "WHERE f.status='present' AND r.state!='removed'"
+            ).fetchone()[0],
             "offline": q("SELECT COUNT(*) FROM files WHERE status='offline'").fetchone()[0],
             "metadata_only": {
                 r[0]: r[1]

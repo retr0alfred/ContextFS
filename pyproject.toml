@@ -146,7 +146,7 @@ ignore = [
 
 [tool.ruff.lint.per-file-ignores]
 "tests/*" = ["D100", "D101", "D102", "D103", "D104"]
-"scripts/*" = ["D100", "D103"]
+"scripts/**" = ["D100", "D101", "D102", "D103", "D107"]
 
 [tool.ruff.lint.pydocstyle]
 convention = "google"
@@ -157,7 +157,8 @@ convention = "google"
 [tool.pytest.ini_options]
 minversion = "8.0"
 testpaths = ["tests"]
-addopts = "-ra --strict-markers"
+# Temp files stay in the project, never on C: (CLAUDE.md install-location rule; Phase 33).
+addopts = "-ra --strict-markers --basetemp=.tools/pytest-tmp"
 markers = [
     "slow: tests that load ML models or build full indexes",
     "integration: end-to-end tests across multiple layers",

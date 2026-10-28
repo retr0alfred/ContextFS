@@ -23,7 +23,7 @@ from pathlib import Path
 
 import numpy as np
 
-from contextfs.engine import fsio, timeev
+from contextfs.engine import fsio, guard, timeev
 from contextfs.engine.estimate import ESTIMATORS, FileEvidence, folder_context
 from contextfs.engine.schema import EVENTS
 from contextfs.engine.vectors import VectorFiles
@@ -33,6 +33,13 @@ __all__ = ["UpdateReport", "run_update"]
 BATCH_FILES = 500
 BATCH_SECONDS = 5.0
 READ_EXT_FOR_EVIDENCE = {".jpg", ".jpeg", ".tif", ".tiff", ".zip"}  # read for in-file times only
+#: Zip-based documents are checked before parsing: a small file can unpack to gigabytes.
+ZIP_FORMATS = {".docx", ".pptx", ".xlsx", ".odt", ".ods", ".odp", ".epub", ".zip"}
+ZIP_EXPANDED_CAP = 512 * 2**20
+FORCED_DETAIL = {
+    "quarantined": "made the indexer crash or hang twice; not opened again until it changes",
+    "parse_error": "reading or parsing failed; indexed by name and dates only (see errors)",
+}
 
 
 @dataclass
@@ -50,6 +57,13 @@ class UpdateReport:
     chunks_embedded: int = 0
     seconds: float = 0.0
     cancelled: bool = False
+    healed_folders: int = 0  # folders whose files had no per-event dates (see run_update)
+    removed_roots: list[str] = field(default_factory=list)  # left the user's list (prune)
+    low_disk: bool = False  # stopped cleanly below the free-space floor (engine.guard)
+    struck: str | None = None  # the previous run died inside this file (engine.guard)
+    quarantined: int = 0  # files indexed by name only after crashing/hanging the indexer twice
+    parse_errors: int = 0  # files whose reading or parsing raised; indexed by name only
+    repaired_vectors: int = 0  # files re-queued because their vectors were missing on disk
 
     def as_dict(self) -> dict:
         """JSON-serialisable form."""
@@ -60,15 +74,48 @@ def _utc_now(clock: Callable[[], datetime] | None) -> int:
     return int((clock() if clock else datetime.now(timezone.utc)).timestamp())
 
 
-def run_update(engine, roots: list[Path], progress=None, cancel=None, clock=None) -> UpdateReport:
-    """Index ``roots`` into ``engine``'s database. ``clock`` is injectable (ADR-0010 Rev. 1)."""
+def run_update(
+    engine,
+    roots: list[Path],
+    progress=None,
+    cancel=None,
+    clock=None,
+    prune_other_roots=False,
+    file_timeout: float | None = None,
+    on_hang=None,
+) -> UpdateReport:
+    """Index ``roots`` into ``engine``'s database. ``clock`` is injectable (ADR-0010 Rev. 1).
+
+    Safety (engine.guard): refuses to start when the disk is nearly full; records the file in
+    progress so a crash or hang becomes a strike against it; with ``file_timeout`` and
+    ``on_hang``, a watchdog reports a file stuck for longer than ``file_timeout`` seconds.
+    """
+    guard.check_free_space(engine.index_dir)
+    rep = UpdateReport()
+    marker = guard.InProgress(engine.index_dir)
+    crashed = marker.previous()
+    marker.open()
+    dog = guard.Watchdog(marker, file_timeout, on_hang).start() if file_timeout and on_hang else None
+    try:
+        return _run_update(engine, roots, progress, cancel, clock, prune_other_roots, rep, marker, crashed)
+    finally:
+        if dog is not None:
+            dog.stop()
+        marker.close()
+
+
+def _run_update(engine, roots, progress, cancel, clock, prune_other_roots, rep, marker, crashed):
     from xxhash import xxh3_128_hexdigest
 
     from contextfs.embed import chunk_blocks
     from contextfs.extract import extract_file, extractor_for
 
-    conn, rep, started = engine.conn, UpdateReport(), time.perf_counter()
+    conn, started = engine.conn, time.perf_counter()
     vecs = VectorFiles(engine.index_dir / "vectors")
+
+    def stop() -> bool:
+        return rep.low_disk or bool(cancel and cancel())
+
     tmp_dir = engine.index_dir / "tmp"
     tmp_dir.mkdir(exist_ok=True)
     for stale in tmp_dir.iterdir():  # sweep leftovers from a crash
@@ -79,9 +126,28 @@ def run_update(engine, roots: list[Path], progress=None, cancel=None, clock=None
         (datetime.fromtimestamp(now, timezone.utc).isoformat(),),
     ).lastrowid
     conn.commit()
+    if crashed:
+        _strike(conn, crashed, now)
+        rep.struck = crashed.get("rel_path")
+    rep.repaired_vectors = _repair_vectors(conn, vecs)
     pending_chunks: list[tuple[int, int, str]] = []  # (file_id, chunk_id, text)
+    # Folders whose per-event dates must be recomputed; drained at every batch commit, so a cancel
+    # or a kill never leaves committed files without dates (log.md Phase 33, real-data demo).
     touched_folders: set[tuple[int, str]] = set()
     batch_started, batch_n = time.perf_counter(), 0
+    if prune_other_roots:  # roots no longer in the user's list leave search (data kept)
+        wanted = {_root_key(r) for r in roots}
+        for row in conn.execute("SELECT root_id, path FROM roots WHERE state!='removed'").fetchall():
+            if _root_key(row[1]) not in wanted:
+                conn.execute("UPDATE roots SET state='removed' WHERE root_id=?", (row[0],))
+                rep.removed_roots.append(row[1])
+        conn.commit()
+    # Self-heal: indexes written before that fix (or killed mid-batch) may hold files with no dates.
+    healed = _folders_missing_times(conn)
+    if healed:
+        recompute_times(conn, healed)
+        _set_meta(conn, "sessions_stale", "1")
+        rep.healed_folders = len(healed)
 
     def flush():
         nonlocal batch_started, batch_n
@@ -113,14 +179,23 @@ def run_update(engine, roots: list[Path], progress=None, cancel=None, clock=None
             )
             rep.chunks_embedded += len(pending_chunks)
             pending_chunks.clear()
+        if touched_folders:
+            recompute_times(conn, touched_folders)
+            touched_folders.clear()
+            _set_meta(conn, "sessions_stale", "1")
         conn.commit()
+        if guard.low_disk_while_running(engine.index_dir):
+            rep.low_disk = True  # stop like a cancel: everything so far is committed
         batch_started, batch_n = time.perf_counter(), 0
 
     for root_path in roots:
         if rep.cancelled:
             break
         root_path = Path(root_path)
-        row = conn.execute("SELECT root_id FROM roots WHERE path=?", (str(root_path),)).fetchone()
+        row = next(
+            (r for r in conn.execute("SELECT root_id, path FROM roots") if _root_key(r[1]) == _root_key(root_path)),
+            None,
+        )
         root_id = (
             row["root_id"]
             if row
@@ -156,9 +231,9 @@ def run_update(engine, roots: list[Path], progress=None, cancel=None, clock=None
             stats=stats,
             self_exclude=[engine.index_dir],
             anchored=fsio.default_anchored_exclusions(),
-            cancel=cancel,
+            cancel=stop,
         ):
-            if cancel and cancel():
+            if stop():
                 rep.cancelled = True
                 break
             rep.seen += 1
@@ -172,20 +247,29 @@ def run_update(engine, roots: list[Path], progress=None, cancel=None, clock=None
             ):
                 rep.unchanged += 1
                 continue
-            file_id = _index_file(
-                engine,
-                conn,
-                entry,
-                prev,
-                now,
-                tmp_dir,
-                rep,
-                pending_chunks,
-                xxh3_128_hexdigest,
-                extract_file,
-                extractor_for,
-                chunk_blocks,
-            )
+            args = (engine, conn, entry, prev, now, tmp_dir, rep, pending_chunks,
+                    xxh3_128_hexdigest, extract_file, extractor_for, chunk_blocks)
+            forced = "quarantined" if _is_quarantined(conn, root_id, entry) else None
+            rep.quarantined += forced is not None
+            marker.set(root_id, entry.rel_path, entry.size, entry.mtime_ns)
+            snapshot = (rep.new, rep.changed, dict(rep.metadata_only), len(pending_chunks))
+            if not conn.in_transaction:  # keep the batch one transaction: a bare SAVEPOINT would
+                conn.execute("BEGIN")  # open one that RELEASE commits, before the batch's vectors
+            conn.execute("SAVEPOINT one_file")
+            try:
+                file_id = _index_file(*args, force_access=forced)
+            except Exception as exc:  # noqa: BLE001 - one bad file must never stop a scan
+                conn.execute("ROLLBACK TO one_file")
+                rep.new, rep.changed, rep.metadata_only = snapshot[0], snapshot[1], snapshot[2]
+                del pending_chunks[snapshot[3]:]
+                rep.parse_errors += 1
+                conn.execute(
+                    "INSERT INTO errors(scan_at, path, kind, detail) VALUES (?,?,?,?)",
+                    (str(now), entry.rel_path, "parse_error", f"{type(exc).__name__}: {exc}"[:300]),
+                )
+                file_id = _index_file(*args, force_access="parse_error")
+            conn.execute("RELEASE one_file")
+            marker.clear()
             folder = entry.rel_path.rsplit("/", 1)[0] if "/" in entry.rel_path else ""
             touched_folders.add((root_id, folder))
             batch_n += 1
@@ -194,7 +278,7 @@ def run_update(engine, roots: list[Path], progress=None, cancel=None, clock=None
             if batch_n >= BATCH_FILES or time.perf_counter() - batch_started > BATCH_SECONDS:
                 flush()
             del file_id
-        if cancel and cancel():
+        if stop():
             # the walk also stops on cancel; without this the tombstone pass below would
             # treat every file it never reached as deleted
             rep.cancelled = True
@@ -213,11 +297,13 @@ def run_update(engine, roots: list[Path], progress=None, cancel=None, clock=None
                     rep.deleted += 1
         flush()
 
-    if not rep.cancelled:
-        recompute_times(conn, touched_folders)
+    # Sessions are global and slower (5 s for 5k files), so they wait for a completed scan; the
+    # stale flag carries the need across cancelled scans.
+    if not rep.cancelled and _get_meta(conn, "sessions_stale", "1") == "1":
         from contextfs.engine.sessions import rebuild_sessions
 
         rebuild_sessions(conn)
+        _set_meta(conn, "sessions_stale", "0")
     rep.seconds = round(time.perf_counter() - started, 2)
     conn.execute(
         "UPDATE scans SET finished_at=?, state=?, stats_json=? WHERE scan_id=?",
@@ -248,10 +334,13 @@ def _index_file(
     extract_file,
     extractor_for,
     chunk_blocks,
+    force_access: str | None = None,
 ) -> int:
     ext = Path(entry.rel_path).suffix.lower()
     access, detail, content_hash, data = "ok", None, None, None
-    if entry.placeholder:
+    if force_access:
+        access, detail = force_access, FORCED_DETAIL[force_access]
+    elif entry.placeholder:
         access = "placeholder"
     elif entry.encrypted:
         access = "encrypted"
@@ -261,6 +350,10 @@ def _index_file(
             content_hash = hash_fn(data)
         except fsio.ReadError as err:
             access, detail = err.kind, err.detail
+        if data is not None and ext in ZIP_FORMATS:
+            expanded = _zip_expanded_bytes(data)
+            if expanded > ZIP_EXPANDED_CAP:
+                access, detail, data = "too_large", f"expands to {expanded // 2**20} MB when unpacked", None
     else:
         access = "unsupported"
     if access != "ok":
@@ -426,6 +519,93 @@ def _tombstone(conn, file_id: int) -> None:
     conn.execute("UPDATE vectors SET valid=0 WHERE file_id=?", (file_id,))
     conn.execute("DELETE FROM docs_fts WHERE rowid=?", (file_id,))
     conn.execute("DELETE FROM names_tri WHERE rowid=?", (file_id,))
+
+
+def _strike(conn, rec: dict, now: int) -> None:
+    """The previous run died inside ``rec``'s file: count a strike (reset if the file changed)."""
+    row = conn.execute(
+        "SELECT size, mtime_ns, count FROM strikes WHERE root_id=? AND rel_path=?",
+        (rec.get("root_id"), rec.get("rel_path")),
+    ).fetchone()
+    same = row is not None and (row[0], row[1]) == (rec.get("size"), rec.get("mtime_ns"))
+    conn.execute(
+        "INSERT OR REPLACE INTO strikes(root_id, rel_path, size, mtime_ns, count, last_at) VALUES (?,?,?,?,?,?)",
+        (rec.get("root_id"), rec.get("rel_path"), rec.get("size"), rec.get("mtime_ns"),
+         (row[2] + 1) if same else 1, now),
+    )
+    conn.commit()
+
+
+def _is_quarantined(conn, root_id: int, entry) -> bool:
+    row = conn.execute(
+        "SELECT size, mtime_ns, count FROM strikes WHERE root_id=? AND rel_path=?", (root_id, entry.rel_path)
+    ).fetchone()
+    return bool(row) and row[2] >= guard.QUARANTINE_STRIKES and (row[0], row[1]) == (entry.size, entry.mtime_ns)
+
+
+def _zip_expanded_bytes(data: bytes) -> int:
+    """Total unpacked size of a zip-based document (0 if it is not a readable zip)."""
+    import io
+    import zipfile
+
+    try:
+        with zipfile.ZipFile(io.BytesIO(data)) as zf:
+            return sum(i.file_size for i in zf.infolist())
+    except (zipfile.BadZipFile, ValueError, OSError):
+        return 0
+
+
+def _repair_vectors(conn, vecs: VectorFiles) -> int:
+    """Re-queue files whose vectors are missing; returns how many (ADR-0012 §3).
+
+    Covers manifest rows past the end of a truncated or lost vector file, and chunks that never
+    got a valid vector.
+    """
+    bad: set[int] = set()
+    for kind in ("chunk", "doc"):
+        total = vecs.rows(kind)
+        rows = conn.execute(
+            "SELECT file_id FROM vectors WHERE kind=? AND valid=1 AND row>=?", (kind, total)
+        ).fetchall()
+        if rows:
+            conn.execute("UPDATE vectors SET valid=0 WHERE kind=? AND valid=1 AND row>=?", (kind, total))
+            bad |= {r[0] for r in rows}
+    # chunks without a valid vector (any older inconsistency) are re-embedded the same way
+    bad |= {r[0] for r in conn.execute(
+        "SELECT DISTINCT c.file_id FROM chunks c JOIN files f ON f.file_id=c.file_id WHERE f.status='present' "
+        "AND NOT EXISTS (SELECT 1 FROM vectors v WHERE v.kind='chunk' AND v.item_id=c.chunk_id AND v.valid=1)"
+    )}
+    if bad:
+        # size -1 never matches the walk, so the next scan re-reads and re-embeds these files
+        # and no stored hash, so an unchanged file is still re-extracted and re-embedded
+        conn.executemany("UPDATE files SET size=-1, content_hash=NULL WHERE file_id=?", [(f,) for f in bad])
+    conn.commit()
+    return len(bad)
+
+
+def _root_key(path) -> str:
+    """Compare roots the way Windows does: separators and case do not matter."""
+    import os
+
+    return os.path.normcase(os.path.normpath(str(path)))
+
+
+def _get_meta(conn, key: str, default: str) -> str:
+    row = conn.execute("SELECT value FROM meta WHERE key=?", (key,)).fetchone()
+    return row[0] if row else default
+
+
+def _set_meta(conn, key: str, value: str) -> None:
+    conn.execute("INSERT OR REPLACE INTO meta(key, value) VALUES (?, ?)", (key, value))
+
+
+def _folders_missing_times(conn) -> set[tuple[int, str]]:
+    """Folders holding a present or offline file that has no ``file_time`` rows."""
+    rows = conn.execute(
+        "SELECT f.root_id, f.rel_path FROM files f WHERE f.status IN ('present','offline') "
+        "AND NOT EXISTS (SELECT 1 FROM file_time t WHERE t.file_id=f.file_id)"
+    )
+    return {(r[0], r[1].rsplit("/", 1)[0] if "/" in r[1] else "") for r in rows}
 
 
 def recompute_times(conn, folders: set[tuple[int, str]]) -> None:

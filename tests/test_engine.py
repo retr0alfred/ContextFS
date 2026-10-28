@@ -96,6 +96,74 @@ def test_cancel_mid_walk_keeps_unreached_files_and_resumes(indexed):
     assert not rep.cancelled and rep.changed == 1 and rep.deleted == 0
 
 
+def _undated(eng) -> int:
+    return eng.conn.execute(
+        "SELECT COUNT(*) FROM files f WHERE status='present' "
+        "AND NOT EXISTS (SELECT 1 FROM file_time t WHERE t.file_id=f.file_id)"
+    ).fetchone()[0]
+
+
+def test_a_cancelled_first_scan_still_dates_every_committed_file(tmp_path):
+    # Real-data demo (log.md Phase 33): every scan of a 20 GB folder was cancelled by closing the
+    # app, and per-event dates were only computed by completed scans, so no file had a date.
+    corpus = _corpus(tmp_path / "corpus")
+    calls = [0]
+
+    def cancel_after_two() -> bool:
+        calls[0] += 1
+        return calls[0] > 3
+
+    with Engine.open(tmp_path / "index", mode="write") as eng:
+        rep = eng.update([corpus], cancel=cancel_after_two)
+        assert rep.cancelled and 0 < eng.status()["files"] < 3
+        assert _undated(eng) == 0
+
+
+def test_an_index_without_dates_heals_on_the_next_update(indexed):
+    eng, corpus, _ = indexed
+    eng.conn.execute("DELETE FROM file_time")
+    eng.conn.commit()
+    rep = eng.update([corpus])
+    assert rep.healed_folders > 0 and _undated(eng) == 0
+
+
+def test_sessions_wait_for_a_completed_scan_then_rebuild(indexed):
+    eng, corpus, _ = indexed
+    eng.conn.execute("DELETE FROM sessions")
+    eng.conn.execute("INSERT OR REPLACE INTO meta(key, value) VALUES ('sessions_stale', '1')")
+    eng.conn.commit()
+    eng.update([corpus], cancel=lambda: True)
+    assert eng.conn.execute("SELECT COUNT(*) FROM sessions").fetchone()[0] == 0
+    eng.update([corpus])
+    assert eng.conn.execute("SELECT COUNT(*) FROM sessions").fetchone()[0] > 0
+
+
+def test_a_folder_removed_from_settings_leaves_search_and_comes_back(indexed, tmp_path):
+    # Real-data demo: a test folder removed in Settings still showed up in results.
+    eng, corpus, _ = indexed
+    other = tmp_path / "other"
+    other.mkdir()
+    (other / "cricket.md").write_text("club cricket scores", encoding="utf-8")
+    eng.update([corpus, other], prune_other_roots=True)
+    assert "cricket.md" in eng.search("cricket scores", as_of=AS_OF).paths
+    rep = eng.update([corpus], prune_other_roots=True)
+    assert rep.removed_roots == [str(other)]
+    assert "cricket.md" not in eng.search("cricket scores", as_of=AS_OF).paths
+    assert eng.status()["files"] == 3
+    # same folder written differently (separators, case) is the same root, restored instantly
+    rep = eng.update([corpus, str(other).upper().replace("\\", "/")], prune_other_roots=True)
+    assert rep.new == 0 and "cricket.md" in eng.search("cricket scores", as_of=AS_OF).paths
+
+
+def test_explicit_roots_without_prune_leave_other_roots_alone(indexed, tmp_path):
+    eng, corpus, _ = indexed
+    other = tmp_path / "other"
+    other.mkdir()
+    (other / "cricket.md").write_text("club cricket scores", encoding="utf-8")
+    eng.update([other])
+    assert eng.status()["files"] == 4
+
+
 def test_every_file_gets_per_event_times_from_every_estimator(indexed):
     eng, _, _ = indexed
     rows = eng.conn.execute(

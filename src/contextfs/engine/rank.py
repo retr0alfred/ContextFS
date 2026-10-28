@@ -171,7 +171,8 @@ def search(
             r["file_id"]: r
             for r in conn.execute(
                 f"SELECT f.file_id, f.rel_path, f.ext, r.path AS root FROM files f JOIN roots r ON r.root_id=f.root_id "
-                f"WHERE f.status IN ('present','offline') AND f.file_id IN ({','.join('?' * len(pool))})",
+                f"WHERE f.status IN ('present','offline') AND r.state!='removed' "
+                f"AND f.file_id IN ({','.join('?' * len(pool))})",
                 pool,
             )
         }
@@ -231,7 +232,8 @@ def search(
                         continue
                     v = cue.overlap(t["lo_utc"], t["hi_utc"]) * CONFIDENCE_WEIGHT[t["confidence"]]
                     if v > best:
-                        best, ref = v, {"event": ev, "cue": cue.surface, **t}
+                        best, ref = v, {"event": ev, "cue": cue.surface, **t,
+                                        "cue_lo": int(cue.lo.timestamp()), "cue_hi": int(cue.hi.timestamp())}
             x["time"][i] = best
             if ref:
                 time_refs[f] = ref
@@ -365,7 +367,15 @@ def _reason(feature: str, frame, time_ref, session_id) -> str:
             .astimezone()
             .strftime("%d %b %Y")
         )
-        return f"{label[time_ref['event']]} {when} ({time_ref['confidence']}), matches '{time_ref['cue']}'"
+        head = f"{label[time_ref['event']]} {when} ({time_ref['confidence']})"
+        # "matches" only when the date really falls inside the cue; a date that scored through the
+        # fading band says how far outside it is (log.md Phase 33: Jan 2021 "matched" Nov 2020).
+        lo, hi = time_ref["lo_utc"], time_ref["hi_utc"]
+        if hi >= time_ref["cue_lo"] and lo <= time_ref["cue_hi"]:
+            return f"{head}, matches '{time_ref['cue']}'"
+        before = hi < time_ref["cue_lo"]
+        days = round(((time_ref["cue_lo"] - hi) if before else (lo - time_ref["cue_hi"])) / 86400)
+        return f"{head}, {days} day{'s' * (days != 1)} {'before' if before else 'after'} '{time_ref['cue']}'"
     if feature == "format":
         return f"is a {frame.kind_word} file"
     if feature == "session":

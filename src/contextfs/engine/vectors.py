@@ -64,6 +64,9 @@ class VectorFiles:
         data = np.fromfile(self._path(kind), dtype=np.float32, count=total * DIM).reshape(
             total, DIM
         )
+        rows = [r for r in rows if r["row"] < total]  # a truncated/lost file: those rows are gone
+        if not rows:
+            return np.zeros((0, DIM), np.float32), np.zeros(0, np.int64), np.zeros(0, np.int64)
         idx = np.asarray([r["row"] for r in rows], dtype=np.int64)
         return (
             data[idx],
