@@ -4085,3 +4085,79 @@ deferred by the user, not skipped.
   - Reducing peak memory *would* fit Phase 8 as an optimisation.
   - The wrong-strike part is different: a Job memory-limit kill is counted as a crash strike, so it can quarantine good files. That is a correctness issue, not an optimisation.
   - Raised with the user to decide when to tackle it; pending their answer.
+
+---
+
+## Phase 34 — v2 programme, Phase 6: direction A, reconciled per-event time (IN PROGRESS — entry 1, 2026-10-29)
+
+### What happened first
+- **P-A1 harness** `scripts/time_eval.py` (dev only). Baseline `data/time_eval/dev-time-baseline`:
+  - content-only copies leave arrival and edit times **confidently wrong** for raw mtime and rules_v0
+    (coverage 0.04–0.06 at zero width, median error 209–258 d);
+  - rules_v0 dates **2,412 edits that never happened** (raw mtime: 3,908).
+- **T v1.1 addendum** (`scripts/measure_motw_survival.py`, `data/transfer_table/T_v1_1_motw.*`, hashed,
+  commit 4e7569b, before any new rule). T v1 only checked whether a Mark-of-the-Web *appeared*; now
+  *survival* was measured with T's own tool drivers on marked fixtures:
+  - **kept:** the Windows copy family, shutil.copy2, robocopy, same-volume move, in-place edit;
+  - **dropped:** shutil.copy/copyfile, Expand-Archive, zipfile, tar, git clone, safe-save,
+    python-docx re-save.
+  - The damage simulator kept the mark for every behaviour, which is optimistic for content-only
+    copies.
+- **Design note** `docs/engine/RECON_V1.md`, then an **independent methods review** by a fresh agent
+  (kept local: `docs/research/recon_v1_review.md`):
+  - **2 Blockers:**
+    - my origin and event-existence rules read generator constants (authored files always have
+      ≥ 20 min between in-file created and modified, non-authored files 0; downloads never edited);
+    - calibration would learn the simulator's fixed geometry.
+  - **6 Majors:**
+    - the arrival event's meaning;
+    - metric gaps in time_eval;
+    - P-A2 power and like-for-like;
+    - MotW fix scope;
+    - no simulator-fidelity replay;
+    - bulk-copy detection.
+  - Verified against dev data and generator code:
+    - **all 20 dev personas share one timeline and one migration date** (2024-09-30 → 2026-09-30,
+      migration 2026-06-02 21:00);
+    - the generator fixes `OBSERVED_AT` and `migration = end − 120 d`, so test shares that geometry
+      by construction.
+
+### Decision 106 — Benchmark corrections and framing, before any test run (user decisions, 2026-10-29)
+1. **MotW fidelity:**
+   - `benchgen/damage.py` removes the `Zone.Identifier` stream for the `content_copy` and
+     `git_clone` behaviours (T v1.1);
+   - it is re-applied deterministically to the existing **dev and test** personas from their
+     manifests; corpus, truth and queries are otherwise unchanged;
+   - the split freeze hashes (truth and queries) are therefore unaffected, and the correction's
+     per-persona record is hashed separately;
+   - `copyfile` keeps the mark: its dominant tools — Copy-Item, cmd/xcopy, the Explorer engine,
+     copy2 — keep it; Expand-Archive and tar, which drop it, are a minority of that behaviour;
+     stated as a limitation;
+   - `robocopy` keeps it (measured).
+2. **Geometry:**
+   - the frozen test split stays as is and is reported as an **in-distribution replication**;
+   - a **dev-only stress set** (other migration dates, two migrations, other timeline lengths) is
+     added for P-A1 robustness. No LLM queries are needed for intrinsic metrics.
+3. **The arrival event means "came into your files"** (download, import or creation), not the copy
+   date of a migration:
+   - the truth stays as generated; the paper and ADR-0006 define the event this way;
+   - the app's label changes from "Arrived on this PC" to "Came into your files".
+4. **Primaries:**
+   - P-A2 stays exactly as pre-registered and will be reported honestly. Dev headroom is +0.0093
+     nDCG@10 (time-cued +0.022), below its MDE of 0.03.
+   - **Pre-registered now, before any test run, as an added analysis (P-A2s):**
+     - time-cued queries whose target had its file-system times reset by damage (sealed damage
+       label `content_copy` or `git_clone`);
+     - metric: **share of the oracle's nDCG@10 headroom over raw mtime recovered** by each
+       estimator, `(est − raw) / (oracle − raw)`;
+     - persona-cluster bootstrap 95% CI;
+     - everything else frozen;
+     - one weight vector for all time sources: the Decision 100 weights;
+     - the time feature defined once for all sources.
+   - **P-A1 (date accuracy per damage type) is the headline primary for direction A.**
+   - Ablations to be reported with it:
+     - recon_v1 without origin/existence logic;
+     - recon_v1 with the uncorrected (simulator) MotW view;
+     - leave-one-profile-out and leave-one-archetype-out fits;
+     - a perturbation suite: own PDFs with created == modified, edited downloads, photo
+       mtime = import time.
