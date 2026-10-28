@@ -1,6 +1,6 @@
 # ContextFS v2 — status
 
-Last updated: 2026-10-29 (end of v2-P5) · Branch: `v2`
+Last updated: 2026-10-29 (end of v2-P6) · Branch: `v2`
 
 **▶ MILESTONE M1 (2026-10-27): architecture frozen; app scope reduced (Decision 95): portable app, no installer; clean-VM testing is a 1-day stretch goal; signing off the critical path.**
 
@@ -11,14 +11,14 @@ Last updated: 2026-10-29 (end of v2-P5) · Branch: `v2`
 | P2 Architecture debate | Phase 30 | **done** | `docs/adr/` 0001–0016 + debate record + fresh review + response. Decision 94 |
 | P3 Evaluation foundation | Phase 31 | **done** | Benchmark (44 personas, LLM queries), test split FROZEN (`split_v1.json` ed76950b…), harness + all baselines + ablations + faithfulness. Dev: CE-rerank 0.576 nDCG@10 > v1 0.454; v1 best MRR/Hit@1; time cues unsolved by all (direction A headroom) |
 | P4 Build the app | Phase 32 | **done** | Engine (3 event times per file, pluggable estimators), GUI + indexer child, CLI, parity tests, portable `dist/ContextFS` (330 MB; frozen self test ALL PASS, no dev-env leakage). GPU gates passed → DirectML wheel, discrete adapter only (Decisions 97–100). Dev (in-sample): rules_v0 0.679 nDCG@10; temporal-cue MRR 0.263 / Hit@1 0.135, **oracle times only 0.273 / 0.135** |
-| P5 Hardening | Phase 33 | **done → STOP** | 22/22 hardening cases pass on the packaged exe (`b8ae539c`; read-only, crashes/hangs/kills, damaged index, disk floor, GUI never stalls > 250 ms, 10k files: search p95 66 ms, no-op launch update 1.6 s). Real-data demo bugs + independent QA (4 High, 6 Medium) fixed with regression tests; 545 tests pass. Decisions 101–104 |
-| P6 Novelty features | Phase 34 | not started | A primary (probabilistic estimator); B only if time allows |
+| P5 Hardening | Phase 33 | **done** | 22/22 hardening cases pass on the packaged exe (`b8ae539c`; read-only, crashes/hangs/kills, damaged index, disk floor, GUI never stalls > 250 ms, 10k files: search p95 66 ms, no-op launch update 1.6 s). Real-data demo bugs + independent QA (4 High, 6 Medium) fixed with regression tests; 545 tests pass. Decisions 101–104 |
+| P6 Novelty features | Phase 34 | **done → STOP** | Direction A: `recon_v1` reconciled per-event time (widen-only calibration, dev only), app default (Decision 107). Dev P-A1 content-copy: arrival coverage 0.86 at ~2.3 y median width (rules_v0 0.06), last-edit within-1d 0.74 vs 0.04, false edits 524/0 vs 1,354/1,623; most coverage gain is bulk-copy detection. P-A2 +0.012 vs raw (n.s.), ≈ rules_v0; P-A2s 49% vs 39% of oracle headroom (not distinguishable). T v1.1 MotW fix applied to dev+test (Decision 106). 22/22 hardening on the final build. B not started |
 | P7 Final evaluation | Phase 35 | not started | 3 pre-registered primaries (ADR-0015 §7) |
 | P8 Optimise | Phase 36 | not started | tolerance needs user sign-off first |
 | P9 Paper kit | Phase 37 | not started | |
 
 ## Open items needing the user
-1. Say "continue" to start v2-P6 (novelty: direction A, the probabilistic/reconciled time estimator).
+1. Say "continue" to start v2-P7 (final evaluation: one run on the frozen test split; pre-test checklist in log.md Phase 34 entry 2).
 2. LICENSE: **done** (MIT, Alfred Mathew, 2026; Decision 105). Before any release: a third-party notices file.
 3. **Standing item (no phase):** clean-account check (Part B of `docs/release/CLEAN_ACCOUNT_CHECKLIST.md`) — revisit before any release or demo on a machine other than yours (Decision 105).
 4. Smart App Control is in Evaluation mode on this laptop; the build is unsigned. Checked by every self test.
@@ -27,6 +27,8 @@ Last updated: 2026-10-29 (end of v2-P5) · Branch: `v2`
 ## Machine notes
 - D: (the project drive) is a bus-powered USB HDD that resets under sustained small-file writes. Test scratch lives in `C:\ContextFS-scratch` (disposable; user-approved). See log.md Decision 104.
 - Open risk (home not yet decided, Decision 105): indexer peak memory 1.5 GB at 10k files with the GPU (1.1 GB on CPU), at the 1.5 GB job limit for ≤ 8 GB machines; a limit kill would count as a crash strike.
+
+- Run `dist\ContextFS\ContextFS.exe` from internal storage if possible: from the USB disk the window can freeze 1–3 s after the disk idles (log.md Phase 34).
 
 ## Standing reminders
 - Paper-strategy docs stay local (public repo).
