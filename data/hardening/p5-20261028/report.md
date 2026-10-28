@@ -1,12 +1,16 @@
 # Hardening report `p5-20261028`
 
-Packaged build `ContextFS.exe` sha256[:16] = `deddfd6cbfda9609`
+Packaged build `ContextFS.exe` sha256[:16] = `0867f31d6e30f798`
 
 | Case | Source | Result | Seconds |
 |---|---|---|---|
-| C01 | ADR-0011 §1-§4, ADR-0016: read-only, formats, names, long paths, malformed and oversized files | FAIL | 17.2 |
+| C01 | ADR-0011 §1-§4, ADR-0016: read-only, formats, names, long paths, malformed and oversized files | FAIL | 16.6 |
 | C02 | ADR-0011 §2 + Rev. 1: junction loops are never descended | PASS | 6.8 |
 | C03 | ADR-0011 §3: offline/placeholder files are never opened | PASS | 2.9 |
-| C04 | ADR-0011 §4: a locked file becomes an error row and is retried next scan | FAIL | 3.6 |
+| C04 | ADR-0011 §4: a locked file becomes an error row and is retried next scan | PASS | 4.3 |
 | C05 | ADR-0011 §2: an unreadable folder is an error, and never tombstones its files | PASS | 4.5 |
+| C08 | ADR-0012 §1: a second writer is refused; the first is unaffected | PASS | 219.6 |
+| C11 | ADR-0001 §2: a native parser crash (access violation) is quarantined after two strikes | FAIL | 31.0 |
+| C14 | ADR-0012 §4: low disk refuses to start and leaves the index untouched | PASS | 28.2 |
 | C17 | Decision 95: the frozen self test passes | PASS | 1.7 |
+| C18 | Phase 33 real-data finding: a folder removed from Settings leaves search (packaged child) | PASS | 17.3 |

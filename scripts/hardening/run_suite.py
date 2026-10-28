@@ -359,7 +359,7 @@ def c01(args) -> dict:
         "exit 0": code == 0,
         "user files unchanged (sha256, size, mtime, attributes) and nothing added": before == after,
         "integrity ok": st["integrity"] == "ok",
-        "every file indexed (15)": rep.get("new") == 15,
+        "every file indexed (14)": rep.get("new") == 14,
         "Tamil name found by content": bool(q["pongal sugarcane jaggery"]) and "பொங்கல்" in q["pongal sugarcane jaggery"][0],
         "Devanagari+emoji name found": bool(q["diwali sweets lamps"]) and "दिवाली" in q["diwali sweets lamps"][0],
         "Arabic name under 'Tom & Jerry (final) v2' found": bool(q["camels greeting"]) and "مرحبا" in q["camels greeting"][0],

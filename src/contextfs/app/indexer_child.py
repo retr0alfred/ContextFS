@@ -57,7 +57,7 @@ def _install_test_fault(spec: str) -> None:
     ``CONTEXTFS_TEST_FAULT=hang:<name>`` or ``crash:<name>`` affects any file whose path contains
     <name>. Inert unless that variable is set.
     """
-    import ctypes
+    import faulthandler
     import time
 
     import contextfs.extract as extract
@@ -70,7 +70,8 @@ def _install_test_fault(spec: str) -> None:
             if mode == "hang":
                 time.sleep(10**6)
             elif mode == "crash":
-                ctypes.string_at(0)  # access violation: the process dies with no Python cleanup
+                # a real segfault: ctypes would turn a bad read into a catchable OSError instead
+                faulthandler._sigsegv()
         return real(path, rel_path, *args, **kwargs)
 
     extract.extract_file = faulty

@@ -1,16 +1,51 @@
 {
   "C01": {
     "checks": {
-      "case ran": false
+      "exit 0": true,
+      "user files unchanged (sha256, size, mtime, attributes) and nothing added": true,
+      "integrity ok": true,
+      "every file indexed (15)": false,
+      "Tamil name found by content": true,
+      "Devanagari+emoji name found": true,
+      "Arabic name under 'Tom & Jerry (final) v2' found": true,
+      "path of 444 chars found": true,
+      "docx/pdf extracted": true,
+      "zip bomb not unpacked": true,
+      "126 MB file not read": true,
+      "malformed files survive as name-only rows": true,
+      "peak child memory < 1.5 GB": true
     },
     "metrics": {
-      "exception": "RuntimeError: console --find exit 1: Traceback (most recent call last):\n  File \"__main__.py\", line 95, in <module>\n  File \"__main__.py\", line 86, in main\n  File \"__main__.py\", line 57, in _find\n  File \"encodings\\cp1252.py\", line 19, in encode\nUnicodeEncodeError: 'charmap' codec can't encode characters in position 103-107: character maps to <undefined>\n[PYI-3244:ERROR] Failed to execute script '__main__' due to unhandled exception!\n"
+      "seconds": 7.9,
+      "peak_mb": 715,
+      "report": {
+        "seen": 14,
+        "new": 14,
+        "changed": 0,
+        "unchanged": 0,
+        "deleted": 0,
+        "offline_roots": [],
+        "metadata_only": {
+          "too_large": 2
+        },
+        "errors": 0,
+        "chunks_embedded": 14,
+        "seconds": 2.86,
+        "cancelled": false,
+        "healed_folders": 0,
+        "removed_roots": [],
+        "low_disk": false,
+        "struck": null,
+        "quarantined": 0,
+        "parse_errors": 0,
+        "repaired_vectors": 0
+      }
     },
     "source": "ADR-0011 §1-§4, ADR-0016: read-only, formats, names, long paths, malformed and oversized files",
-    "seconds": 17.2,
-    "exe": "deddfd6cbfda9609",
+    "seconds": 16.6,
+    "exe": "0867f31d6e30f798",
     "ok": false,
-    "at": "2026-10-28T22:17:59"
+    "at": "2026-10-28T22:22:06"
   },
   "C02": {
     "checks": {
@@ -42,14 +77,14 @@
   "C04": {
     "checks": {
       "first scan: 'locked', no crash": true,
-      "next scan reads it": false,
-      "then found by content": false
+      "next scan reads it": true,
+      "then found by content": true
     },
     "source": "ADR-0011 §4: a locked file becomes an error row and is retried next scan",
-    "seconds": 3.6,
-    "exe": "deddfd6cbfda9609",
-    "ok": false,
-    "at": "2026-10-28T22:18:12"
+    "seconds": 4.3,
+    "exe": "0867f31d6e30f798",
+    "ok": true,
+    "at": "2026-10-28T22:22:10"
   },
   "C05": {
     "checks": {
@@ -84,5 +119,58 @@
     "exe": "deddfd6cbfda9609",
     "ok": true,
     "at": "2026-10-28T22:18:19"
+  },
+  "C08": {
+    "checks": {
+      "second writer exits 4 with 'locked'": true,
+      "first writer completes": true
+    },
+    "source": "ADR-0012 §1: a second writer is refused; the first is unaffected",
+    "seconds": 219.6,
+    "exe": "0867f31d6e30f798",
+    "ok": true,
+    "at": "2026-10-28T22:25:49"
+  },
+  "C11": {
+    "checks": {
+      "crash, crash, then success": false,
+      "quarantined": false,
+      "integrity ok": true
+    },
+    "metrics": {
+      "exit_codes": [
+        0,
+        0,
+        0
+      ]
+    },
+    "source": "ADR-0001 §2: a native parser crash (access violation) is quarantined after two strikes",
+    "seconds": 31.0,
+    "exe": "0867f31d6e30f798",
+    "ok": false,
+    "at": "2026-10-28T22:26:20"
+  },
+  "C14": {
+    "checks": {
+      "exit 5 with disk_low": true,
+      "index untouched": true
+    },
+    "source": "ADR-0012 §4: low disk refuses to start and leaves the index untouched",
+    "seconds": 28.2,
+    "exe": "0867f31d6e30f798",
+    "ok": true,
+    "at": "2026-10-28T22:26:49"
+  },
+  "C18": {
+    "checks": {
+      "found while listed": true,
+      "gone after removal": true,
+      "reported": true
+    },
+    "source": "Phase 33 real-data finding: a folder removed from Settings leaves search (packaged child)",
+    "seconds": 17.3,
+    "exe": "0867f31d6e30f798",
+    "ok": true,
+    "at": "2026-10-28T22:27:06"
   }
 }
