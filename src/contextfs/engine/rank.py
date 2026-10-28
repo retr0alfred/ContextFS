@@ -36,22 +36,25 @@ CONFIDENCE_WEIGHT = {"sure": 1.0, "probably": 0.7, "unknown": 0.3}
 class SearchConfig:
     """Everything that changes a ranking. Hashed into every response (ADR-0010)."""
 
+    #: Fitted by ``scripts/engine_eval.py --fit`` on the 20 dev personas only (rules_v0 times;
+    #: data/scorer/weights_dev-engine-v1-fit.json, log.md Phase 32). Never fitted on test.
     weights: tuple[tuple[str, float], ...] = (
-        ("bm25", 0.35),
-        ("dense", 0.45),
-        ("name", 0.10),
+        ("bm25", 0.05),
+        ("dense", 0.60),
+        ("name", 0.05),
         ("format", 0.25),
-        ("time", 0.40),
-        ("session", 0.05),
+        ("time", 0.20),
+        ("session", 0.10),
     )
-    weights_source: str = "provisional-hand-set"
+    weights_source: str = "dev-engine-v1-fit"
     time_source: str = "rules_v0"
     signals: tuple[str, ...] = FEATURES
     overrides: tuple[tuple[str, str], ...] = ()
     top_k: int = 10
-    time_override: tuple[
-        tuple[int, int, int], ...
-    ] = ()  # (file_id, lo, hi): oracle, from the harness
+    #: (rel_path, event, lo_utc, hi_utc): oracle times supplied by the evaluation harness from the
+    #: sealed truth. The engine never opens truth files (ADR-0006 E3).
+    time_override: tuple[tuple[str, str, int, int], ...] = ()
+    keep_pool: bool = False  # return the candidate pool's features (offline re-scoring, fitting)
 
     def weight(self, name: str) -> float:
         """Weight of a feature, 0 if masked out."""
@@ -96,6 +99,7 @@ class Response:
     config_hash: str
     generation: str | None
     pool_size: int = 0
+    pool: dict | None = None  # filled when SearchConfig.keep_pool
     notes: list[str] = field(default_factory=list)
 
     @property
@@ -212,7 +216,7 @@ def search(
             x["format"][i] = 0.5
     time_refs: dict[int, dict] = {}
     if frame.time:
-        times = _file_times(conn, pool, cfg)
+        times = _file_times(conn, pool, cfg, present)
         for i, f in enumerate(pool):
             best, ref = 0.0, None
             for cue in frame.time:
@@ -252,6 +256,9 @@ def search(
     ]
     resp.signals_used = used
     absent = {f: _absent(f, x[f]) for f in used}
+    if cfg.keep_pool:
+        resp.pool = {"paths": [present[f]["rel_path"] for f in pool],
+                     "x": {f: x[f].tolist() for f in FEATURES}, "absent": absent, "used": used}
     contrib = {f: cfg.weight(f) * (x[f] - absent[f]) for f in used}
     score = sum(contrib.values()) if used else np.zeros(len(pool))
     order = sorted(
@@ -323,8 +330,9 @@ def search(
     return resp
 
 
-def _file_times(conn, pool, cfg) -> dict[tuple[int, str], dict]:
+def _file_times(conn, pool, cfg, paths=None) -> dict[tuple[int, str], dict]:
     if cfg.time_source == "override":
+        by_path = {paths[f]["rel_path"]: f for f in pool} if paths else {}
         return {
             (fid, ev): {
                 "lo_utc": lo,
@@ -334,8 +342,8 @@ def _file_times(conn, pool, cfg) -> dict[tuple[int, str], dict]:
                 "method": "oracle override",
                 "evidence_json": "[]",
             }
-            for fid, lo, hi in cfg.time_override
-            for ev in ("authored", "arrived_here", "last_user_edit")
+            for rel, ev, lo, hi in cfg.time_override
+            if (fid := by_path.get(rel)) is not None
         }
     rows = conn.execute(
         f"SELECT file_id, event, lo_utc, hi_utc, point_utc, confidence, method, evidence_json FROM file_time "

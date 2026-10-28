@@ -1,0 +1,47 @@
+{
+  "dev_ndcg10": 0.6794,
+  "fitted_on": [
+    "professional-s1-A-x2.5-mixed",
+    "professional-s10-A-x2.5-copyfile_all",
+    "professional-s13-A-x2.5-mixed",
+    "professional-s16-A-x2.5-none",
+    "professional-s19-A-x2.5-content_copy_all",
+    "professional-s4-A-x2.5-none",
+    "professional-s7-A-x2.5-content_copy_all",
+    "researcher-s11-A-x2.5-content_copy_all",
+    "researcher-s14-A-x2.5-copyfile_all",
+    "researcher-s17-A-x2.5-mixed",
+    "researcher-s2-A-x2.5-copyfile_all",
+    "researcher-s20-A-x2.5-none",
+    "researcher-s5-A-x2.5-mixed",
+    "researcher-s8-A-x2.5-none",
+    "student-s12-A-x1-none",
+    "student-s15-A-x1-content_copy_all",
+    "student-s18-A-x1-copyfile_all",
+    "student-s3-A-x1-content_copy_all",
+    "student-s6-A-x1-copyfile_all",
+    "student-s9-A-x1-mixed"
+  ],
+  "grid": [
+    0.0,
+    0.05,
+    0.1,
+    0.2,
+    0.3,
+    0.45,
+    0.6,
+    0.8,
+    1.0,
+    1.4
+  ],
+  "metric": "nDCG@10",
+  "time_source": "rules_v0",
+  "weights": {
+    "bm25": 0.05,
+    "dense": 0.6,
+    "format": 0.25,
+    "name": 0.05,
+    "session": 0.1,
+    "time": 0.2
+  }
+}

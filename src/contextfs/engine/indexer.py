@@ -117,6 +117,8 @@ def run_update(engine, roots: list[Path], progress=None, cancel=None, clock=None
         batch_started, batch_n = time.perf_counter(), 0
 
     for root_path in roots:
+        if rep.cancelled:
+            break
         root_path = Path(root_path)
         row = conn.execute("SELECT root_id FROM roots WHERE path=?", (str(root_path),)).fetchone()
         root_id = (
@@ -192,6 +194,10 @@ def run_update(engine, roots: list[Path], progress=None, cancel=None, clock=None
             if batch_n >= BATCH_FILES or time.perf_counter() - batch_started > BATCH_SECONDS:
                 flush()
             del file_id
+        if cancel and cancel():
+            # the walk also stops on cancel; without this the tombstone pass below would
+            # treat every file it never reached as deleted
+            rep.cancelled = True
         for err in stats.errors:
             conn.execute(
                 "INSERT INTO errors(scan_at, path, kind, detail) VALUES (?,?,?,?)",

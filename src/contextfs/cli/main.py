@@ -11,6 +11,8 @@ See log.md, Phase 2, Decision 9.
 
 from __future__ import annotations
 
+import json
+import sys
 from pathlib import Path
 from typing import Annotated
 
@@ -1501,6 +1503,95 @@ def config_cmd(
             "[bold]No config file found; using built-in defaults.[/bold] "
             "Create contextfs.toml, or pass --config."
         )
+
+
+# ---------------------------------------------------------------------------
+# v2 engine commands (ADR-0010): thin wrappers over contextfs.engine, sharing the GUI's settings.
+# ---------------------------------------------------------------------------
+
+
+def _v2_index_dir(index_dir: Path | None) -> Path:
+    from contextfs.app.settings import Settings
+
+    return Path(index_dir) if index_dir else Path(Settings.load().index_dir)
+
+
+@app.command(name="update")
+def v2_update(
+    roots: Annotated[list[Path] | None, typer.Argument(help="Folders to index (default: saved roots).")] = None,
+    index_dir: Annotated[Path | None, typer.Option("--index-dir")] = None,
+) -> None:
+    """Incrementally update the v2 index (same engine as the desktop app)."""
+    from contextfs.app.settings import Settings
+    from contextfs.engine import Engine, WriterLocked
+
+    targets = [str(r) for r in roots] if roots else Settings.load().roots
+    if not targets:
+        err_console.print("No folders to index. Pass them as arguments or choose them in the app.")
+        raise typer.Exit(EXIT_CONFIG_ERROR)
+    try:
+        with Engine.open(_v2_index_dir(index_dir), mode="write") as eng:
+            rep = eng.update(targets)
+    except WriterLocked as exc:
+        err_console.print(f"{exc}. Search still works; try again when it finishes.")
+        raise typer.Exit(4) from exc
+    console.print_json(data=rep.as_dict())
+
+
+@app.command(name="find")
+def v2_find(
+    query: Annotated[str, typer.Argument(help="What you remember about the file.")],
+    index_dir: Annotated[Path | None, typer.Option("--index-dir")] = None,
+    as_json: Annotated[bool, typer.Option("--json")] = False,
+    time_source: Annotated[str, typer.Option("--time-source")] = "rules_v0",
+    as_of: Annotated[str | None, typer.Option("--as-of", help="ISO date to read relative time from.")] = None,
+    top_k: Annotated[int, typer.Option("--top-k")] = 10,
+) -> None:
+    """Search the v2 index; every result says why it matched."""
+    from dataclasses import asdict
+    from datetime import datetime
+
+    from contextfs.engine import Engine
+    from contextfs.engine.rank import SearchConfig
+
+    when = datetime.fromisoformat(as_of).astimezone() if as_of else None
+    try:
+        eng = Engine.open(_v2_index_dir(index_dir))
+    except FileNotFoundError as exc:
+        err_console.print(f"{exc}")
+        raise typer.Exit(EXIT_CONFIG_ERROR) from exc
+    with eng:
+        resp = eng.search(query, SearchConfig(time_source=time_source, top_k=top_k), as_of=when)
+    if as_json:
+        out = {"query": resp.query, "frame": resp.frame, "signals_used": resp.signals_used,
+               "config_hash": resp.config_hash, "generation": resp.generation, "notes": resp.notes,
+               "results": [asdict(r) | {"path": r.path} for r in resp.results]}
+        sys.stdout.write(json.dumps(out, ensure_ascii=False) + "\n")
+        return
+    if not resp.results:
+        console.print("Nothing found." + (f" ({'; '.join(resp.notes)})" if resp.notes else ""))
+        return
+    for r in resp.results:
+        console.print(f"[bold]{r.rank:>2}. {r.rel_path}[/bold]  [dim]{r.root}[/dim]")
+        for reason in r.reasons:
+            console.print(f"      - {reason}")
+
+
+@app.command(name="status")
+def v2_status(index_dir: Annotated[Path | None, typer.Option("--index-dir")] = None) -> None:
+    """Show what the v2 index holds."""
+    from contextfs.engine import Engine
+
+    with Engine.open(_v2_index_dir(index_dir)) as eng:
+        console.print_json(data=eng.status())
+
+
+@app.command(name="selftest")
+def v2_selftest() -> None:
+    """Offline end-to-end check of the installed app (no network allowed)."""
+    from contextfs.app.selftest import run_selftest
+
+    raise typer.Exit(run_selftest(console))
 
 
 if __name__ == "__main__":  # pragma: no cover

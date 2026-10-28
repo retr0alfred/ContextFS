@@ -80,6 +80,22 @@ def test_missing_root_goes_offline_and_is_not_purged(indexed, tmp_path):
     assert eng.status()["files"] == 3 and rep.deleted == 0
 
 
+def test_cancel_mid_walk_keeps_unreached_files_and_resumes(indexed):
+    eng, corpus, _ = indexed
+    (corpus / "Personal" / "recipe_biryani.txt").write_text("changed", encoding="utf-8")
+    calls = [0]
+
+    def cancel_after_first_check() -> bool:
+        calls[0] += 1
+        return calls[0] > 1
+
+    rep = eng.update([corpus], cancel=cancel_after_first_check)
+    assert rep.cancelled and rep.deleted == 0
+    assert eng.status()["files"] == 3
+    rep = eng.update([corpus])
+    assert not rep.cancelled and rep.changed == 1 and rep.deleted == 0
+
+
 def test_every_file_gets_per_event_times_from_every_estimator(indexed):
     eng, _, _ = indexed
     rows = eng.conn.execute(
