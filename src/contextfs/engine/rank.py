@@ -48,6 +48,9 @@ class SearchConfig:
     )
     weights_source: str = "dev-engine-v1-fit"
     time_source: str = "rules_v0"
+    #: "expected": mean soft overlap over the estimate's interval (log.md Phase 34); "overlap": the
+    #: Phase 32 feature (1 if the interval touches the cue at all). Identical for point estimates.
+    time_feature: str = "expected"
     signals: tuple[str, ...] = FEATURES
     overrides: tuple[tuple[str, str], ...] = ()
     top_k: int = 10
@@ -230,7 +233,8 @@ def search(
                     t = times.get((f, ev))
                     if not t:
                         continue
-                    v = cue.overlap(t["lo_utc"], t["hi_utc"]) * CONFIDENCE_WEIGHT[t["confidence"]]
+                    score = cue.expected_overlap if cfg.time_feature == "expected" else cue.overlap
+                    v = score(t["lo_utc"], t["hi_utc"]) * CONFIDENCE_WEIGHT[t["confidence"]]
                     if v > best:
                         best, ref = v, {"event": ev, "cue": cue.surface, **t,
                                         "cue_lo": int(cue.lo.timestamp()), "cue_hi": int(cue.hi.timestamp())}
@@ -359,7 +363,7 @@ def _reason(feature: str, frame, time_ref, session_id) -> str:
     if feature == "time" and time_ref:
         label = {
             "authored": "written",
-            "arrived_here": "arrived on this PC",
+            "arrived_here": "came into your files",  # download, import or creation (Decision 106)
             "last_user_edit": "last edited",
         }
         from contextfs.engine.timeev import local_datetime
@@ -369,13 +373,20 @@ def _reason(feature: str, frame, time_ref, session_id) -> str:
             # "written 28 Oct 2026 (unknown), matches 'last year'" claimed a match it did not have)
             span = f"{local_datetime(time_ref['lo_utc']):%Y}–{local_datetime(time_ref['hi_utc']):%Y}"
             return f"{label[time_ref['event']]} date unknown ({span}), so '{time_ref['cue']}' is not ruled out"
-        when = local_datetime(time_ref["point_utc"]).strftime("%d %b %Y")
-        head = f"{label[time_ref['event']]} {when} ({time_ref['confidence']})"
-        # "matches" only when the date really falls inside the cue; a date that scored through the
-        # fading band says how far outside it is (log.md Phase 33: Jan 2021 "matched" Nov 2020).
         lo, hi = time_ref["lo_utc"], time_ref["hi_utc"]
-        if hi >= time_ref["cue_lo"] and lo <= time_ref["cue_hi"]:
-            return f"{head}, matches '{time_ref['cue']}'"
+        if hi - lo > 2 * 86400:  # an estimated range (recon_v1), not one date (log.md Phase 34)
+            head = (f"{label[time_ref['event']]} between {local_datetime(lo):%d %b %Y} and "
+                    f"{local_datetime(hi):%d %b %Y} ({time_ref['confidence']}, estimated)")
+            inside = time_ref["cue_lo"] <= lo and hi <= time_ref["cue_hi"]
+            if hi >= time_ref["cue_lo"] and lo <= time_ref["cue_hi"]:
+                return f"{head}, {'within' if inside else 'overlapping'} '{time_ref['cue']}'"
+        else:
+            when = local_datetime(time_ref["point_utc"]).strftime("%d %b %Y")
+            head = f"{label[time_ref['event']]} {when} ({time_ref['confidence']})"
+            # "matches" only when the date really falls inside the cue; a date that scored through
+            # the fading band says how far outside it is (log.md Phase 33: Jan 2021 "matched" Nov 2020).
+            if hi >= time_ref["cue_lo"] and lo <= time_ref["cue_hi"]:
+                return f"{head}, matches '{time_ref['cue']}'"
         before = hi < time_ref["cue_lo"]
         days = round(((time_ref["cue_lo"] - hi) if before else (lo - time_ref["cue_hi"])) / 86400)
         return f"{head}, {days} day{'s' * (days != 1)} {'before' if before else 'after'} '{time_ref['cue']}'"

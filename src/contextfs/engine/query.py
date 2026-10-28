@@ -83,6 +83,28 @@ class TimeCue:
     event_hint: str  # authored | arrived_here | last_user_edit | any
     surface: str
 
+    def expected_overlap(self, lo_utc: int, hi_utc: int) -> float:
+        """Mean of the soft overlap over [lo, hi], i.e. its expectation for a time uniform in it.
+
+        Equals ``overlap`` for a point (width <= 1 s), so point-estimate sources (raw mtime,
+        oracle) score exactly as before; a wide estimate is credited only for the share of it the
+        cue covers (log.md Phase 34).
+        """
+        if hi_utc - lo_utc <= 1:
+            return self.overlap(lo_utc, hi_utc)
+        a, b = self.lo.timestamp(), self.hi.timestamp()
+        w = max(self.band_days * 86400, 1.0)
+
+        def area(t: float) -> float:  # integral of the soft-overlap profile from -inf to t
+            x = min(max(t, a - w), a)
+            rise = (x - (a - w)) ** 2 / (2 * w)
+            core = min(max(t, a), b) - a
+            y = min(max(t, b), b + w) - b
+            fall = y - y * y / (2 * w)
+            return rise + core + fall
+
+        return max(0.0, min(1.0, (area(hi_utc) - area(lo_utc)) / (hi_utc - lo_utc)))
+
     def overlap(self, lo_utc: int, hi_utc: int) -> float:
         """1 inside the core, decaying linearly to 0 across the band."""
         a, b = self.lo.timestamp(), self.hi.timestamp()

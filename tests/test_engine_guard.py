@@ -383,3 +383,28 @@ def test_sessions_do_not_depend_on_the_order_files_were_indexed(tmp_path):
         eng.update([corpus])
     a, b = partition(tmp_path / "a"), partition(tmp_path / "b")
     assert a and a == b
+
+
+def test_expected_overlap_equals_overlap_for_points_and_shares_for_ranges():
+    from datetime import datetime, timezone
+
+    from contextfs.engine.query import TimeCue
+
+    cue = TimeCue(datetime(2025, 3, 1, tzinfo=timezone.utc), datetime(2025, 3, 31, tzinfo=timezone.utc),
+                  10.0, "any", "march 2025")
+    for t in (1740787200, 1741000000, 1742000000, 1745000000, 1700000000):  # inside, band, far
+        assert abs(cue.expected_overlap(t, t + 1) - cue.overlap(t, t + 1)) < 1e-9
+    a, b = cue.lo.timestamp(), cue.hi.timestamp()
+    assert abs(cue.expected_overlap(int(a), int(b)) - 1.0) < 1e-6  # all inside
+    half = cue.expected_overlap(int(a), int(b + (b - a)))  # half inside, half mostly beyond the band
+    assert 0.5 < half < 0.7
+    assert cue.expected_overlap(int(b + 30 * 86400), int(b + 60 * 86400)) == 0.0
+
+
+def test_an_estimated_range_is_explained_as_a_range():
+    from contextfs.engine.rank import _reason
+
+    ref = {"event": "arrived_here", "confidence": "probably", "lo_utc": 1740787200, "hi_utc": 1748736000,
+           "point_utc": 1740787200, "cue": "march 2025", "cue_lo": 1740787200, "cue_hi": 1743379199}
+    text = _reason("time", None, ref, None)
+    assert "between" in text and "estimated" in text and "overlapping" in text and "matches" not in text

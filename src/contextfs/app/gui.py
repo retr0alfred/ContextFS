@@ -50,7 +50,7 @@ from PySide6.QtWidgets import (
 from contextfs.app.settings import Settings, validate_index_dir
 from contextfs.engine.fsio import DEFAULT_EXCLUDED_NAMES, plain_path
 
-EVENT_LABEL = {"authored": "Written", "arrived_here": "Arrived on this PC", "last_user_edit": "Last edited"}
+EVENT_LABEL = {"authored": "Written", "arrived_here": "Came into your files", "last_user_edit": "Last edited"}
 
 
 def _fmt(utc: int | None, resolution_day: bool = False) -> str:
