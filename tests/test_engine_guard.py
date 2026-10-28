@@ -346,3 +346,40 @@ def test_a_folder_with_more_files_than_sqlite_parameters_indexes(tmp_path):
             "SELECT COUNT(*) FROM files f WHERE NOT EXISTS (SELECT 1 FROM file_time t WHERE t.file_id=f.file_id)"
         ).fetchone()[0]
         assert undated == 0
+
+
+def test_sessions_do_not_depend_on_the_order_files_were_indexed(tmp_path):
+    # Suite C07 (Phase 33): with many identical timestamps, sessions followed storage order, so a
+    # resumed index and a clean one grouped files differently.
+    import os
+    import shutil
+
+    corpus = tmp_path / "c"
+    for i in range(600):
+        f = corpus / f"d{i % 7}" / f"f{i:03d}.txt"
+        f.parent.mkdir(parents=True, exist_ok=True)
+        f.write_text(f"lab report draft {i % 5} results", encoding="utf-8")
+        os.utime(f, (1_700_000_000, 1_700_000_000))
+
+    def partition(idx):
+        with Engine.open(idx) as eng:
+            groups: dict[str, set] = {}
+            for rel, sid in eng.conn.execute(
+                "SELECT f.rel_path, s.session_id FROM sessions s JOIN files f USING(file_id)"
+            ):
+                groups.setdefault(sid, set()).add(rel)
+            return sorted(sorted(g) for g in groups.values())
+
+    with Engine.open(tmp_path / "a", mode="write") as eng:
+        eng.update([corpus])
+    parked = tmp_path / "parked"
+    parked.mkdir()
+    for d in ("d0", "d1", "d2"):  # index the other folders first, so storage order differs
+        shutil.move(str(corpus / d), str(parked / d))
+    with Engine.open(tmp_path / "b", mode="write") as eng:
+        eng.update([corpus])
+        for d in ("d0", "d1", "d2"):
+            shutil.move(str(parked / d), str(corpus / d))
+        eng.update([corpus])
+    a, b = partition(tmp_path / "a"), partition(tmp_path / "b")
+    assert a and a == b

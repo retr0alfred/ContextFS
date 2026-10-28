@@ -72,7 +72,9 @@ def rebuild_sessions(conn) -> int:
     rows = conn.execute(
         "SELECT f.file_id, f.rel_path, t.point_utc, t.lo_utc, t.hi_utc FROM files f "
         "JOIN file_time t ON t.file_id=f.file_id AND t.estimator='rules_v0' AND t.event='last_user_edit' "
-        "WHERE f.status='present' AND f.access='ok' ORDER BY t.point_utc"
+        # rel_path breaks timestamp ties: storage order differs between a resumed and a clean
+        # build, and block cuts and clustering follow input order (Phase 33 suite C07)
+        "WHERE f.status='present' AND f.access='ok' ORDER BY t.point_utc, f.rel_path"
     ).fetchall()
     rows = [r for r in rows if (r["hi_utc"] - r["lo_utc"]) <= G_HOURS * 3600]
     conn.execute("DELETE FROM sessions")
