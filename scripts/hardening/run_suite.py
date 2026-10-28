@@ -65,11 +65,20 @@ def write(p: Path, data, mode="w") -> Path:
     return p
 
 
+TRASH = WORK / "_trash"
+
+
 def fresh(name: str) -> Path:
+    """An empty case folder.
+
+    The old one is renamed into _trash (instant; deleting thousands of files case by case cost
+    minutes on the project's USB hard disk) and emptied at the end of the run.
+    """
     d = WORK / name
     if d.exists():
         subprocess.run(["icacls", str(d), "/reset", "/T", "/C", "/Q"], capture_output=True)  # undo deny ACEs
-        shutil.rmtree(lp(d), ignore_errors=True)
+        TRASH.mkdir(parents=True, exist_ok=True)
+        d.rename(TRASH / f"{name}-{time.time_ns()}")
     d.mkdir(parents=True)
     return d
 
@@ -213,11 +222,27 @@ def set_offline(p: Path) -> None:
         raise ctypes.WinError(ctypes.get_last_error())
 
 
+class _PROCESSENTRY32W(ctypes.Structure):
+    _fields_ = [("dwSize", wintypes.DWORD), ("cntUsage", wintypes.DWORD), ("th32ProcessID", wintypes.DWORD),
+                ("th32DefaultHeapID", ctypes.c_size_t), ("th32ModuleID", wintypes.DWORD),
+                ("cntThreads", wintypes.DWORD), ("th32ParentProcessID", wintypes.DWORD),
+                ("pcPriClassBase", ctypes.c_long), ("dwFlags", wintypes.DWORD), ("szExeFile", ctypes.c_wchar * 260)]
+
+
 def child_pids(parent: int) -> list[int]:
-    out = subprocess.run(["powershell", "-NoProfile", "-Command",
-                          f"(Get-CimInstance Win32_Process -Filter 'ParentProcessId={parent}').ProcessId"],
-                         capture_output=True, text=True)
-    return [int(x) for x in out.stdout.split() if x.strip().isdigit()]
+    """Direct children of ``parent`` (Toolhelp snapshot; WMI took over a minute per call here)."""
+    K32.CreateToolhelp32Snapshot.restype = wintypes.HANDLE
+    snap = K32.CreateToolhelp32Snapshot(0x2, 0)  # TH32CS_SNAPPROCESS
+    entry = _PROCESSENTRY32W()
+    entry.dwSize = ctypes.sizeof(entry)
+    out = []
+    ok = K32.Process32FirstW(snap, ctypes.byref(entry))
+    while ok:
+        if entry.th32ParentProcessID == parent:
+            out.append(int(entry.th32ProcessID))
+        ok = K32.Process32NextW(snap, ctypes.byref(entry))
+    K32.CloseHandle(wintypes.HANDLE(snap))
+    return out
 
 
 def pid_alive(pid: int) -> bool:
@@ -791,6 +816,7 @@ def main() -> int:
     for cid, r in sorted(results.items()):
         lines.append(f"| {cid} | {r['source']} | {'PASS' if r['ok'] else 'FAIL'} | {r['seconds']} |")
     (out_dir / "report.md").write_text("\n".join(lines) + "\n", encoding="utf-8")
+    shutil.rmtree(lp(TRASH), ignore_errors=True)
     passed = sum(r["ok"] for r in results.values())
     print(f"\n{passed}/{len(results)} cases pass -> {report_path}")
     return 0 if passed == len(results) else 1

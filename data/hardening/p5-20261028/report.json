@@ -4,7 +4,7 @@
       "exit 0": true,
       "user files unchanged (sha256, size, mtime, attributes) and nothing added": true,
       "integrity ok": true,
-      "every file indexed (15)": false,
+      "every file indexed (14)": true,
       "Tamil name found by content": true,
       "Devanagari+emoji name found": true,
       "Arabic name under 'Tom & Jerry (final) v2' found": true,
@@ -16,8 +16,8 @@
       "peak child memory < 1.5 GB": true
     },
     "metrics": {
-      "seconds": 7.9,
-      "peak_mb": 715,
+      "seconds": 4.4,
+      "peak_mb": 714,
       "report": {
         "seen": 14,
         "new": 14,
@@ -30,7 +30,7 @@
         },
         "errors": 0,
         "chunks_embedded": 14,
-        "seconds": 2.86,
+        "seconds": 2.92,
         "cancelled": false,
         "healed_folders": 0,
         "removed_roots": [],
@@ -42,10 +42,10 @@
       }
     },
     "source": "ADR-0011 §1-§4, ADR-0016: read-only, formats, names, long paths, malformed and oversized files",
-    "seconds": 16.6,
-    "exe": "0867f31d6e30f798",
-    "ok": false,
-    "at": "2026-10-28T22:22:06"
+    "seconds": 10.9,
+    "exe": "dc39b8c63a222971",
+    "ok": true,
+    "at": "2026-10-28T22:29:50"
   },
   "C02": {
     "checks": {
@@ -133,22 +133,22 @@
   },
   "C11": {
     "checks": {
-      "crash, crash, then success": false,
-      "quarantined": false,
+      "crash, crash, then success": true,
+      "quarantined": true,
       "integrity ok": true
     },
     "metrics": {
       "exit_codes": [
-        0,
-        0,
+        3,
+        3,
         0
       ]
     },
     "source": "ADR-0001 §2: a native parser crash (access violation) is quarantined after two strikes",
-    "seconds": 31.0,
-    "exe": "0867f31d6e30f798",
-    "ok": false,
-    "at": "2026-10-28T22:26:20"
+    "seconds": 36.7,
+    "exe": "dc39b8c63a222971",
+    "ok": true,
+    "at": "2026-10-28T22:29:35"
   },
   "C14": {
     "checks": {
@@ -172,5 +172,76 @@
     "exe": "0867f31d6e30f798",
     "ok": true,
     "at": "2026-10-28T22:27:06"
+  },
+  "C12": {
+    "checks": {
+      "header: exit 0": true,
+      "header: recovered message": true,
+      "header: damaged copy kept": true,
+      "header: search works after": true,
+      "page: exit 0": true,
+      "page: recovered message": true,
+      "page: damaged copy kept": true,
+      "page: search works after": true
+    },
+    "metrics": {
+      "header": "DatabaseError: file is not a database\n[PYI-19844:ERROR] Failed to execute script '__main__' due to unhandled exception!\n",
+      "page": "no error"
+    },
+    "source": "ADR-0012 §3: a damaged database is detected, set aside and rebuilt; search recovers",
+    "seconds": 292.6,
+    "exe": "dc39b8c63a222971",
+    "ok": true,
+    "at": "2026-10-28T22:34:43"
+  },
+  "C13": {
+    "checks": {
+      "search on the damaged index does not crash": true,
+      "update repairs": true,
+      "found again": true,
+      "integrity ok": true
+    },
+    "source": "ADR-0012 §3: truncated vector files are repaired; search never crashes",
+    "seconds": 103.4,
+    "exe": "dc39b8c63a222971",
+    "ok": true,
+    "at": "2026-10-28T22:36:27"
+  },
+  "C09": {
+    "checks": {
+      "the child was running": true,
+      "child dies with the window": true,
+      "the index is writable afterwards (lock released) and resumes": true
+    },
+    "metrics": {
+      "child_pids": [
+        15208
+      ],
+      "resume_report": {
+        "seen": 3040,
+        "new": 3040,
+        "changed": 0,
+        "unchanged": 0,
+        "deleted": 0,
+        "offline_roots": [],
+        "metadata_only": {},
+        "errors": 0,
+        "chunks_embedded": 3040,
+        "seconds": 450.51,
+        "cancelled": false,
+        "healed_folders": 0,
+        "removed_roots": [],
+        "low_disk": false,
+        "struck": "docs/0033_DS_assignment_draft.docx",
+        "quarantined": 0,
+        "parse_errors": 0,
+        "repaired_vectors": 0
+      }
+    },
+    "source": "ADR-0001 §2: the indexer child cannot outlive the window (Job Object)",
+    "seconds": 771.3,
+    "exe": "dc39b8c63a222971",
+    "ok": true,
+    "at": "2026-10-28T23:06:35"
   }
 }
