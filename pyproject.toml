@@ -73,6 +73,18 @@ gui = [
     # See log.md, Decision 83.
     "PySide6-Essentials>=6.6,<7",
 ]
+# The v2 desktop app (Phase 32). One ONNX Runtime wheel for the app AND evaluation
+# (ADR-0003): the DirectML build passed the three GPU gates (log.md Phase 32). It
+# carries only the CPU and DirectML providers; queries always use the CPU one.
+app = [
+    "onnxruntime-directml==1.24.4",
+    "tokenizers>=0.20,<1",
+    "PySide6-Essentials>=6.6,<7",
+]
+# Portable one-dir build (Decision 95): scripts/build_app.py.
+build = [
+    "pyinstaller>=6.10,<7",
+]
 dev = [
     "pytest>=8.2,<9",
     "pytest-cov>=5.0,<8",

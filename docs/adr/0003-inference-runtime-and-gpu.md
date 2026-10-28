@@ -114,3 +114,22 @@ The user **acknowledged** this ADR's deviation:
 - otherwise CPU-only, with the user's sign-off at that point;
 - one embedding model ships at first.
 Status: **Accepted (deviation acknowledged).**
+
+## Status update — 2026-10-28: GPU gates passed (log.md Phase 32, Decisions 97–98)
+- **Precision (Decision 97, corrects §2):** int8 MiniLM was measured against fp32 on 500 texts:
+  mean cosine 0.959 (min 0.899), top-10 agreement 82%. That fails the export-parity bar, so
+  **fp32 is the only shipped precision**, on the CPU and the GPU alike. One precision per index
+  (Revision 1) therefore holds trivially.
+- **DirectML spike (Decision 98)** on the RTX 5060 Laptop GPU (DXGI device 1; device 0 is the
+  Radeon 780M iGPU), `onnxruntime-directml` 1.24.4, fp32 vs fp32 on the CPU EP:
+  - (a) 2,000 dev chunks: min cosine 0.99999982 — pass;
+  - (b) 758/758 dev queries give an identical top-10 when the DML-built index is queried on the
+    CPU EP — pass;
+  - (c) 525 vs 66 chunks/s (7.9×) — pass.
+  - Data: `data/gpu_spike/`; script: `scripts/gpu_spike_dml.py`.
+- So, per §4, `onnxruntime-directml` 1.24.4 is now **the single wheel** for the app and the
+  evaluation. Its CPU EP matches the stored ORT 1.31.0 CPU vectors (min cosine 0.9999998 on
+  1,165 dev chunks).
+- **Adapter choice is explicit** (`engine/gpu.py`): the discrete adapter with the most dedicated
+  memory (≥ 2 GB), never DirectML's default adapter 0, which on hybrid laptops is the iGPU. Then the
+  on-device 200-text probe (mean ≥ 0.999, min ≥ 0.99), else the CPU with a stated reason.

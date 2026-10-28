@@ -87,13 +87,13 @@ def run_update(engine, roots: list[Path], progress=None, cancel=None, clock=None
         nonlocal batch_started, batch_n
         if pending_chunks:
             texts = [t for _, _, t in pending_chunks]
-            mat = engine.encoder.encode(texts)
+            mat = engine.bulk_encoder.encode(texts)
             start = vecs.append("chunk", mat)
             conn.executemany(
                 "INSERT OR REPLACE INTO vectors(kind,item_id,file_id,segment,row,embedder,valid) "
                 "VALUES ('chunk',?,?,'chunk',?,?,1)",
                 [
-                    (cid, fid, start + i, engine.encoder.fingerprint)
+                    (cid, fid, start + i, engine.bulk_encoder.fingerprint)
                     for i, (fid, cid, _) in enumerate(pending_chunks)
                 ],
             )
@@ -107,7 +107,7 @@ def run_update(engine, roots: list[Path], progress=None, cancel=None, clock=None
                 "INSERT OR REPLACE INTO vectors(kind,item_id,file_id,segment,row,embedder,valid) "
                 "VALUES ('doc',?,?,'doc',?,?,1)",
                 [
-                    (fid, fid, dstart + i, engine.encoder.fingerprint)
+                    (fid, fid, dstart + i, engine.bulk_encoder.fingerprint)
                     for i, fid in enumerate(by_file)
                 ],
             )
@@ -360,6 +360,18 @@ def _name_words(rel_path: str) -> str:
     return " ".join(re.split(r"[\\/_\-.\s()]+", rel_path))
 
 
+def embedding_text(rel_path: str, ord_: int, text: str, name_only: bool) -> str:
+    """The text a chunk is embedded from (stored chunk text is kept unprefixed for snippets).
+
+    A name-only chunk embeds the file's name words; the first content chunk is prefixed with
+    them so dense search can match a file by its name and its opening together.
+    """
+    name_line = _name_words(rel_path)
+    if name_only:
+        return name_line
+    return f"{name_line}. {text}" if ord_ == 0 else text
+
+
 def _store_document(
     conn, file_id, rel_path, doc, content_hash, pending_chunks, chunk_blocks
 ) -> None:
@@ -399,14 +411,14 @@ def _store_document(
             "INSERT INTO chunks(file_id, ord, char_start, char_end, text) VALUES (?,?,?,?,?)",
             (file_id, 0, 0, 0, name_line),
         ).lastrowid
-        pending_chunks.append((file_id, cid, name_line))
+        pending_chunks.append((file_id, cid, embedding_text(rel_path, 0, name_line, name_only=True)))
         return
     for i, ch in enumerate(chunks[:200]):  # cap chunks per document (ADR-0001 Rev. 1)
         cid = conn.execute(
             "INSERT INTO chunks(file_id, ord, char_start, char_end, text) VALUES (?,?,?,?,?)",
             (file_id, i, ch.char_start, ch.char_end, ch.text),
         ).lastrowid
-        pending_chunks.append((file_id, cid, f"{name_line}. {ch.text}" if i == 0 else ch.text))
+        pending_chunks.append((file_id, cid, embedding_text(rel_path, i, ch.text, name_only=False)))
 
 
 def _tombstone(conn, file_id: int) -> None:

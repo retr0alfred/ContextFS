@@ -40,7 +40,9 @@ class WriterLocked(RuntimeError):
 class Engine:
     """Open an index for reading or writing."""
 
-    def __init__(self, index_dir: Path, mode: str, model_dir: Path | None, threads: int) -> None:
+    def __init__(
+        self, index_dir: Path, mode: str, model_dir: Path | None, threads: int, device: str = "cpu"
+    ) -> None:
         """Use :meth:`open`."""
         from contextfs.engine.schema import connect, migrate
 
@@ -48,8 +50,11 @@ class Engine:
         self.mode = mode
         self.model_dir = Path(model_dir) if model_dir else default_model_dir()
         self.threads = threads
+        self.device = device  # "cpu" | "auto" (GPU for bulk indexing if it passes the probe)
+        self.device_note = ""  # set when indexing first embeds: which device, and why
         self._lock_fh = None
         self._encoder = None
+        self._bulk_encoder = None
         db = self.index_dir / "contextfs.db"
         if mode == "write":
             self.index_dir.mkdir(parents=True, exist_ok=True)
@@ -69,9 +74,14 @@ class Engine:
         mode: str = "read",
         model_dir: Path | None = None,
         threads: int = 4,
+        device: str = "cpu",
     ) -> Engine:
-        """Open (and in write mode create or migrate) the index at ``index_dir``."""
-        return cls(index_dir or default_index_dir(), mode, model_dir, threads)
+        """Open (and in write mode create or migrate) the index at ``index_dir``.
+
+        ``device="auto"`` lets *indexing* use a discrete GPU via DirectML, behind the on-device
+        probe (``engine.gpu``). Queries always run on the CPU EP.
+        """
+        return cls(index_dir or default_index_dir(), mode, model_dir, threads, device)
 
     # -- writer lock (ADR-0012) -----------------------------------------------------------------
 
@@ -118,6 +128,20 @@ class Engine:
 
             self._encoder = OnnxEncoder(self.model_dir, threads=self.threads)
         return self._encoder
+
+    @property
+    def bulk_encoder(self):
+        """The encoder for indexing: a probed GPU when ``device="auto"`` allows it, else the CPU."""
+        if self._bulk_encoder is None:
+            self._bulk_encoder = self.encoder
+            self.device_note = "CPU (GPU off in Settings)"
+            if self.device == "auto":
+                from contextfs.engine.gpu import gpu_encoder
+
+                gpu, self.device_note = gpu_encoder(self.model_dir, self.encoder, self.threads)
+                if gpu is not None:
+                    self._bulk_encoder = gpu
+        return self._bulk_encoder
 
     # -- API ---------------------------------------------------------------------------------
 

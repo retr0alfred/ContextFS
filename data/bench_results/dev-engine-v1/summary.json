@@ -1,0 +1,355 @@
+{
+  "tag": "dev-engine-v1",
+  "personas": [
+    "professional-s1-A-x2.5-mixed",
+    "professional-s10-A-x2.5-copyfile_all",
+    "professional-s13-A-x2.5-mixed",
+    "professional-s16-A-x2.5-none",
+    "professional-s19-A-x2.5-content_copy_all",
+    "professional-s4-A-x2.5-none",
+    "professional-s7-A-x2.5-content_copy_all",
+    "researcher-s11-A-x2.5-content_copy_all",
+    "researcher-s14-A-x2.5-copyfile_all",
+    "researcher-s17-A-x2.5-mixed",
+    "researcher-s2-A-x2.5-copyfile_all",
+    "researcher-s20-A-x2.5-none",
+    "researcher-s5-A-x2.5-mixed",
+    "researcher-s8-A-x2.5-none",
+    "student-s12-A-x1-none",
+    "student-s15-A-x1-content_copy_all",
+    "student-s18-A-x1-copyfile_all",
+    "student-s3-A-x1-content_copy_all",
+    "student-s6-A-x1-copyfile_all",
+    "student-s9-A-x1-mixed"
+  ],
+  "weights": {
+    "bm25": 0.05,
+    "dense": 0.6,
+    "name": 0.05,
+    "format": 0.25,
+    "time": 0.2,
+    "session": 0.1
+  },
+  "n_queries": 758,
+  "seconds": 40.9,
+  "offline_online_mismatches": 0,
+  "systems": {
+    "time_off": {
+      "ndcg10": {
+        "mean": 0.6516,
+        "ci95": [
+          0.632,
+          0.6702
+        ]
+      },
+      "mrr": {
+        "mean": 0.391,
+        "ci95": [
+          0.3649,
+          0.4169
+        ]
+      },
+      "hit1": {
+        "mean": 0.2401,
+        "ci95": [
+          0.2098,
+          0.2704
+        ]
+      },
+      "r10": {
+        "mean": 0.7665,
+        "ci95": [
+          0.7361,
+          0.7968
+        ]
+      }
+    },
+    "raw_mtime": {
+      "ndcg10": {
+        "mean": 0.6782,
+        "ci95": [
+          0.659,
+          0.6966
+        ]
+      },
+      "mrr": {
+        "mean": 0.4225,
+        "ci95": [
+          0.396,
+          0.4488
+        ]
+      },
+      "hit1": {
+        "mean": 0.2718,
+        "ci95": [
+          0.2401,
+          0.3034
+        ]
+      },
+      "r10": {
+        "mean": 0.7718,
+        "ci95": [
+          0.7414,
+          0.8021
+        ]
+      }
+    },
+    "rules_v0": {
+      "ndcg10": {
+        "mean": 0.6794,
+        "ci95": [
+          0.6599,
+          0.698
+        ]
+      },
+      "mrr": {
+        "mean": 0.4241,
+        "ci95": [
+          0.3976,
+          0.4508
+        ]
+      },
+      "hit1": {
+        "mean": 0.2718,
+        "ci95": [
+          0.2401,
+          0.3034
+        ]
+      },
+      "r10": {
+        "mean": 0.7691,
+        "ci95": [
+          0.7388,
+          0.7982
+        ]
+      }
+    },
+    "oracle": {
+      "ndcg10": {
+        "mean": 0.6875,
+        "ci95": [
+          0.6685,
+          0.706
+        ]
+      },
+      "mrr": {
+        "mean": 0.4321,
+        "ci95": [
+          0.4056,
+          0.4585
+        ]
+      },
+      "hit1": {
+        "mean": 0.277,
+        "ci95": [
+          0.2454,
+          0.3087
+        ]
+      },
+      "r10": {
+        "mean": 0.785,
+        "ci95": [
+          0.7559,
+          0.814
+        ]
+      }
+    }
+  },
+  "by_cue": {
+    "activity": {
+      "time_off": 0.6789,
+      "raw_mtime": 0.6773,
+      "rules_v0": 0.6691,
+      "oracle": 0.6762,
+      "n": 118
+    },
+    "entity": {
+      "time_off": 0.5964,
+      "raw_mtime": 0.5992,
+      "rules_v0": 0.5986,
+      "oracle": 0.5982,
+      "n": 104
+    },
+    "format": {
+      "time_off": 0.6945,
+      "raw_mtime": 0.6945,
+      "rules_v0": 0.6945,
+      "oracle": 0.6945,
+      "n": 107
+    },
+    "mixed": {
+      "time_off": 0.6444,
+      "raw_mtime": 0.7002,
+      "rules_v0": 0.7032,
+      "oracle": 0.7236,
+      "n": 102
+    },
+    "semantic": {
+      "time_off": 0.6089,
+      "raw_mtime": 0.6081,
+      "rules_v0": 0.6071,
+      "oracle": 0.6066,
+      "n": 110
+    },
+    "temporal": {
+      "time_off": 0.6894,
+      "raw_mtime": 0.7421,
+      "rules_v0": 0.7508,
+      "oracle": 0.7643,
+      "n": 119
+    },
+    "vague": {
+      "time_off": 0.6401,
+      "raw_mtime": 0.7237,
+      "rules_v0": 0.7305,
+      "oracle": 0.7482,
+      "n": 98
+    }
+  },
+  "by_cue_target": {
+    "activity": {
+      "time_off": {
+        "mrr": 0.2416,
+        "hit1": 0.1017
+      },
+      "raw_mtime": {
+        "mrr": 0.2408,
+        "hit1": 0.1017
+      },
+      "rules_v0": {
+        "mrr": 0.235,
+        "hit1": 0.0932
+      },
+      "oracle": {
+        "mrr": 0.2369,
+        "hit1": 0.0932
+      }
+    },
+    "entity": {
+      "time_off": {
+        "mrr": 0.4105,
+        "hit1": 0.2692
+      },
+      "raw_mtime": {
+        "mrr": 0.4166,
+        "hit1": 0.2788
+      },
+      "rules_v0": {
+        "mrr": 0.4166,
+        "hit1": 0.2788
+      },
+      "oracle": {
+        "mrr": 0.4166,
+        "hit1": 0.2788
+      }
+    },
+    "format": {
+      "time_off": {
+        "mrr": 0.5151,
+        "hit1": 0.3364
+      },
+      "raw_mtime": {
+        "mrr": 0.5151,
+        "hit1": 0.3364
+      },
+      "rules_v0": {
+        "mrr": 0.5151,
+        "hit1": 0.3364
+      },
+      "oracle": {
+        "mrr": 0.5151,
+        "hit1": 0.3364
+      }
+    },
+    "mixed": {
+      "time_off": {
+        "mrr": 0.4694,
+        "hit1": 0.3235
+      },
+      "raw_mtime": {
+        "mrr": 0.5613,
+        "hit1": 0.4118
+      },
+      "rules_v0": {
+        "mrr": 0.5588,
+        "hit1": 0.3922
+      },
+      "oracle": {
+        "mrr": 0.604,
+        "hit1": 0.4314
+      }
+    },
+    "semantic": {
+      "time_off": {
+        "mrr": 0.4458,
+        "hit1": 0.2909
+      },
+      "raw_mtime": {
+        "mrr": 0.4488,
+        "hit1": 0.3
+      },
+      "rules_v0": {
+        "mrr": 0.4475,
+        "hit1": 0.3
+      },
+      "oracle": {
+        "mrr": 0.4437,
+        "hit1": 0.2909
+      }
+    },
+    "temporal": {
+      "time_off": {
+        "mrr": 0.2207,
+        "hit1": 0.084
+      },
+      "raw_mtime": {
+        "mrr": 0.2572,
+        "hit1": 0.1176
+      },
+      "rules_v0": {
+        "mrr": 0.2625,
+        "hit1": 0.1345
+      },
+      "oracle": {
+        "mrr": 0.2731,
+        "hit1": 0.1345
+      }
+    },
+    "vague": {
+      "time_off": {
+        "mrr": 0.4784,
+        "hit1": 0.3163
+      },
+      "raw_mtime": {
+        "mrr": 0.5734,
+        "hit1": 0.4082
+      },
+      "rules_v0": {
+        "mrr": 0.5899,
+        "hit1": 0.4184
+      },
+      "oracle": {
+        "mrr": 0.5945,
+        "hit1": 0.4286
+      }
+    }
+  },
+  "paired": {
+    "rules_v0 - raw_mtime": {
+      "mean": 0.0011,
+      "p": 0.64037
+    },
+    "oracle - raw_mtime": {
+      "mean": 0.0093,
+      "p": 0.0005
+    },
+    "rules_v0 - time_off": {
+      "mean": 0.0278,
+      "p": 5e-05
+    },
+    "oracle - rules_v0": {
+      "mean": 0.0082,
+      "p": 0.00015
+    }
+  }
+}

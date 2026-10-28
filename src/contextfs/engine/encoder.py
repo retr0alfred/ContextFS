@@ -1,8 +1,9 @@
-"""ONNX Runtime sentence encoder: mean pooling + L2 norm, CPU EP only (ADR-0003).
+"""ONNX Runtime sentence encoder: mean pooling + L2 norm (ADR-0003).
 
-The execution provider is named explicitly. The default ORT wheel also registers an
-``AzureExecutionProvider`` (a cloud backend), which a local-first app must never reach.
-Thread counts are pinned so results do not depend on the machine's defaults (ADR-0010 §2).
+The execution provider is always named explicitly: the CPU EP, or DirectML for bulk indexing
+(``engine.gpu`` decides, behind an on-device parity probe). The app ships the single
+``onnxruntime-directml`` wheel, which has no cloud (Azure) provider. Thread counts are pinned so
+results do not depend on the machine's defaults (ADR-0010 §2).
 """
 
 from __future__ import annotations
@@ -15,7 +16,7 @@ __all__ = ["OnnxEncoder"]
 
 
 class OnnxEncoder:
-    """Encode text with an exported transformer, CPU only, deterministic thread settings."""
+    """Encode text with an exported transformer on the CPU EP or a DirectML adapter."""
 
     def __init__(
         self,
@@ -23,8 +24,9 @@ class OnnxEncoder:
         model_file: str = "model_fp32.onnx",
         threads: int = 4,
         max_tokens: int = 256,
+        dml_device_id: int | None = None,
     ) -> None:
-        """Load the ONNX graph and tokenizer from ``model_dir``."""
+        """Load the ONNX graph and tokenizer; ``dml_device_id`` selects a DirectML adapter."""
         import onnxruntime as ort
         from tokenizers import Tokenizer
 
@@ -34,15 +36,25 @@ class OnnxEncoder:
         opts.intra_op_num_threads = threads
         opts.inter_op_num_threads = 1
         opts.execution_mode = ort.ExecutionMode.ORT_SEQUENTIAL
+        if dml_device_id is None:
+            providers, self.device = ["CPUExecutionProvider"], "cpu"
+        else:
+            opts.enable_mem_pattern = False  # required by the DirectML EP
+            opts.log_severity_level = 3  # ORT places shape ops on the CPU by design; not a warning
+            providers = [("DmlExecutionProvider", {"device_id": dml_device_id})]
+            self.device = f"dml{dml_device_id}"
         self.session = ort.InferenceSession(
-            str(self.model_dir / model_file), sess_options=opts, providers=["CPUExecutionProvider"]
+            str(self.model_dir / model_file), sess_options=opts, providers=providers
         )
+        expected = "CPUExecutionProvider" if dml_device_id is None else "DmlExecutionProvider"
+        if self.session.get_providers()[0] != expected:
+            raise RuntimeError(f"{expected} not available: {self.session.get_providers()}")
         self.tokenizer = Tokenizer.from_file(str(self.model_dir / "tokenizer.json"))
         self.tokenizer.enable_truncation(max_length=max_tokens)
         self.tokenizer.enable_padding(pad_id=0, pad_token="[PAD]")
         self.inputs = {i.name for i in self.session.get_inputs()}
         self.dimension = 384
-        self.fingerprint = f"{self.model_dir.name}/{model_file}/cpu/t{threads}"
+        self.fingerprint = f"{self.model_dir.name}/{model_file}/{self.device}/t{threads}"
 
     def encode(self, texts: list[str], batch_size: int = 32) -> np.ndarray:
         """Return L2-normalised float32 embeddings, one row per text."""

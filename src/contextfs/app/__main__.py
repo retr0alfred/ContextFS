@@ -2,7 +2,8 @@
 
 - ``ContextFS.exe``                 → the GUI
 - ``ContextFS.exe --indexer ...``   → the indexer child (started by the GUI)
-- ``ContextFS.exe --selftest``      → headless offline self test (Decision 95)
+- ``ContextFS.exe --selftest [--gpu]`` → headless offline self test (Decision 95); ``--gpu`` also
+  runs the GPU parity probe
 """
 
 from __future__ import annotations
@@ -20,7 +21,7 @@ def main() -> int:
     if args[:1] == ["--selftest"]:
         from contextfs.app.selftest import run_selftest
 
-        return run_selftest()
+        return run_selftest(gpu="--gpu" in args)
     from contextfs.app.gui import run
 
     return run()

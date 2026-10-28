@@ -1,0 +1,20 @@
+{
+  "date": "2026-10-28",
+  "ort": "1.24.4",
+  "adapter": {
+    "device_id": 1,
+    "name": "NVIDIA GeForce RTX 5060 Laptop GPU",
+    "vendor": "0x10de",
+    "dedicated_vram_mb": 7899,
+    "software": false
+  },
+  "chunks": 2000,
+  "cos_min": 0.9999998211860657,
+  "cos_mean": 1.0,
+  "cos_p01": 0.9999998807907104,
+  "cpu_chunks_per_s": 66.49508319725895,
+  "dml_chunks_per_s": 525.4253732151334,
+  "speedup": 7.901717660183217,
+  "gate_a": true,
+  "gate_c": true
+}

@@ -252,7 +252,8 @@ class MainWindow(QMainWindow):
     # -- indexing child -----------------------------------------------------------------------
 
     def _child_command(self) -> tuple[str, list[str]]:
-        args = ["--indexer", str(self.index_dir), *self.settings.roots]
+        gpu = "auto" if self.settings.gpu == "auto" else "off"
+        args = ["--indexer", "--gpu", gpu, str(self.index_dir), *self.settings.roots]
         if getattr(sys, "frozen", False):
             return sys.executable, args
         return sys.executable, ["-m", "contextfs.app", *args]
@@ -295,8 +296,9 @@ class MainWindow(QMainWindow):
                 r = msg["report"]
                 head = ("Update paused (resumes next launch)" if r["cancelled"]
                         else "Index up to date")
+                device = f" · embedded on {msg['device']}" if msg.get("device") else ""
                 self.status.showMessage(f"{head}: {r['new']} new, {r['changed']} changed, "
-                                        f"{r['deleted']} removed, {r['unchanged']} unchanged")
+                                        f"{r['deleted']} removed, {r['unchanged']} unchanged{device}")
                 self.reopen = True
             elif msg.get("type") == "error":
                 self.status.showMessage(f"Indexing stopped: {msg.get('message')}")
@@ -453,10 +455,15 @@ class MainWindow(QMainWindow):
         row.addWidget(add)
         row.addWidget(rem)
         lay.addLayout(row)
-        lay.addWidget(QLabel(f"Index location: {self.settings.index_dir}\nGPU: CPU only in this build."))
+        lay.addWidget(QLabel(f"Index location: {self.settings.index_dir}"))
+        gpu = QCheckBox("Use a dedicated graphics card to speed up indexing, when there is one\n"
+                        "(checked against the CPU on first use; search always runs on the CPU)")
+        gpu.setChecked(self.settings.gpu == "auto")
+        lay.addWidget(gpu)
         lay.addWidget(bb)
         if dlg.exec():
             self.settings.roots = [lst.item(i).text() for i in range(lst.count())]
+            self.settings.gpu = "auto" if gpu.isChecked() else "off"
             self.settings.save()
             self.start_update()
 

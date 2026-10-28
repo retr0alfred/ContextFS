@@ -3560,3 +3560,234 @@ temporal cue (n=119):  nDCG  path_mtime 0.465, ce 0.587, v1 0.267  |  MRR  all s
 - donor statistics (Decision 96, optional);
 - test runs, capped at 3 (P7);
 - a 10⁴-file persona for the scale experiments (P7).
+
+---
+
+## Phase 32 — v2 programme, Phase 4: build the app (2026-10-28)
+
+**Headline (kept in front at the user's request, 2026-10-28):** on the dev benchmark, *time cues
+defeat every system.*
+- Phase 31 measured exact-target MRR ≤ 0.15 and Hit@1 ≤ 4% on temporal cues for all baselines and
+  for v1.
+- The v2 engine, measured below, reaches MRR 0.263 / Hit@1 0.135 on temporal cues with `rules_v0`
+  times. This is a different index, so it is not directly comparable.
+- **Even with the true file times (oracle) it only reaches MRR 0.273 / Hit@1 0.135.** Better time
+  estimates alone will not close the gap. How ranking *uses* time (band shape, cue-to-event
+  mapping, separating the many files from one period) is at least as large a bottleneck. This is
+  the first steer for direction A in P6.
+- Phase 4 was built for direction A from the start:
+  - every file carries three separate event times (**written / arrived on this PC / last
+    edited**), each an interval with a confidence, from pluggable estimators;
+  - a reconciled-time estimator slots in as one more estimator, with no schema change.
+
+### What was built
+- **Engine** (`src/contextfs/engine/`, the one library behind the GUI, the CLI and the evaluation;
+  ADR-0010):
+  - `fsio`: safe walker. `\\?\` long paths, reparse points and junction loops, cloud placeholders
+    never opened, share-delete reads, and a changed-while-reading check.
+  - `timeev` + `estimate`: raw time clues (NTFS created/modified/accessed, in-file
+    OOXML/PDF/EXIF/ZIP, Mark-of-the-Web zone) go into `time_evidence`.
+    - Per-event intervals go into `file_time(file, estimator, event)`.
+    - Estimators: `raw_mtime` (baseline) and `rules_v0` (copy signature, download bursts,
+      per-event confidence; N=5 / W=120 s provisional).
+    - The oracle enters only through the harness's `time_override`; the engine never opens truth
+      files.
+  - `indexer`:
+    - incremental; batches of 500 files / 5 s;
+    - offline roots kept, tombstones only in listed directories;
+    - per-event times and sessions recomputed after each update.
+  - `query` + `rank`:
+    - parsed frame: words, format, time cues with an event hint and a fading band;
+    - first stage: FTS5 BM25 ∪ doc-vector top-200;
+    - linear scorer whose contributions are the explanations; reasons gated by rank, citing only
+      what the file contains;
+    - nothing-found floor.
+  - `encoder` (ONNX Runtime, fp32 MiniLM; Decision 97) and `gpu` (Decision 98).
+- **App** (`src/contextfs/app/`):
+  - first-run wizard;
+  - main window: results with dates *by event*, a why-line, a snippet, and a **"Dates for this
+    file"** panel (every raw clue plus each estimator's interval). This is direction A made
+    visible;
+  - Settings: folders, plus a GPU tick-box;
+  - the indexer runs as a child process (QProcess, JSON-line progress, Cancel; Decision 99);
+  - `--selftest [--gpu]`.
+- **CLI** (`contextfs update [--gpu] | find --json | status | selftest`): thin wrappers over the
+  same engine.
+- **Portable build** (`packaging/contextfs.spec`, `scripts/build_app.py`):
+  - `dist/ContextFS/` is a one-dir PyInstaller app with `ContextFS.exe` (windowed; it also runs as
+    the indexer child, so no console flashes) and `ContextFS-console.exe` (self test and support);
+  - no installer (Decision 95);
+  - PyInstaller's cache is redirected into `.tools/cache/pyinstaller` (it defaults to C:).
+- **Harness** `scripts/engine_eval.py`: dev only, refuses test personas.
+  - Sources: time_off / raw_mtime / rules_v0 / oracle.
+  - Offline re-scoring of kept pools, with a check that offline == online.
+  - `--fit` coordinate ascent; per-cue nDCG and per-cue MRR / Hit@1.
+- `pyproject.toml` gains the `app` extra (pinned ORT wheel, tokenizers, PySide6-Essentials) and the
+  `build` extra (`pyinstaller` 6.22.3 installed).
+
+### Decision 97 — fp32 is the only shipped precision (corrects ADR-0003 §2, which chose int8)
+- Measured by `scripts/export_onnx.py` on 500 texts against sentence-transformers
+  (`models/onnx/minilm-l6-v2/export_report.json`):
+  - fp32: mean cosine 1.0, min 1.0, top-10 agreement 1.0;
+  - int8: mean cosine **0.958691**, min **0.899373**, top-10 agreement **0.82**.
+- int8 fails the ADR's own export-parity bar (≥ 0.9999), so it is used nowhere: the app, the GPU
+  path and the evaluation all use `model_fp32.onnx`.
+- Cost: an 87 MB model instead of ~23 MB.
+- The fp32 query cost is well inside ADR-0003 Rev. 1's 50 ms budget:
+  - query encoding p50 **3.3 ms**, p95 4.4 ms, max 8.0 ms;
+  - full search p50 7.1 ms, p95 10.0 ms;
+  - measured on 115 dev queries over 3 dev indexes of 224–256 files, 4 threads;
+  - search time will grow with index size; P5 measures it at scale.
+
+### Decision 98 — The GPU gates passed; `onnxruntime-directml` 1.24.4 is the single ORT wheel
+- **The adapter was checked before any GPU work** (DXGI enumeration, no GPU workload):
+  - device 0 = AMD Radeon 780M Graphics (512 MB, the iGPU);
+  - device 1 = NVIDIA GeForce RTX 5060 Laptop GPU (7,899 MB);
+  - device 2 = Microsoft Basic Render Driver.
+  - The user confirmed device 1 (2026-10-28) before the spike ran.
+- **Spike** (`scripts/gpu_spike_dml.py`; a separate venv `.tools/venv-dml`, because the two ORT
+  wheels conflict; dev personas only):
+  ```
+  .tools/venv-dml/Scripts/python.exe -I scripts/gpu_spike_dml.py embed --device-id 1
+    chunks 2000  cos_min 0.9999998211860657  cos_mean 1.0  cpu 66.5 chunks/s  dml 525.4 chunks/s
+    speedup 7.90  gate_a true  gate_c true              (data/gpu_spike/gates_a_c.json)
+  .venv/Scripts/python.exe scripts/gpu_spike_dml.py compare
+    queries 758  top10_identical 758  share 1.0  gate_b true   (data/gpu_spike/gate_b.json)
+  ```
+- **A first spike run reported gate (b) at 15/758.** The cause was a bug in the spike, not the GPU:
+  - the indexer embeds the first chunk as "name words. text", but the spike re-embedded the stored,
+    unprefixed text;
+  - fixed by exposing the indexer's rule as `indexer.embedding_text()` and using it in both places;
+  - a CPU rebuild then reproduced the stored vectors (min cosine 0.9999998), and the re-run gives
+    the numbers above.
+  - An earlier speed reading of the same gate (c), 545 vs 79 chunks/s = 6.9×, came from the buggy
+    text set; it is superseded.
+- Per ADR-0003 §4, all three gates passing makes the DirectML wheel the single wheel for the app
+  **and** the evaluation. The project venv was switched from `onnxruntime` 1.31.0:
+  - its CPU EP matches the stored 1.31.0 CPU vectors: min cosine 0.9999998 on 1,165 dev chunks;
+  - the dev evaluation re-run under it reproduces the earlier numbers (below);
+  - its providers are only DmlExecutionProvider and CPUExecutionProvider (no Azure).
+- **Product finding:** DirectML's default adapter on this hybrid laptop is the **iGPU**. So
+  "GPU: Auto" never uses device 0:
+  - `engine/gpu.py` picks the discrete adapter with the most dedicated memory (≥ 2 GB), otherwise
+    the CPU;
+  - on first GPU use it runs the 200-text on-device probe (mean ≥ 0.999, each ≥ 0.99), falling
+    back to the CPU with a stated reason;
+  - any exception also means the CPU; nothing raises.
+  - Queries always run on the CPU EP. The indexer's `done` message, the CLI and the GUI status bar
+    say which device embedded the files.
+- **End-to-end effect is small on the benchmark corpora:**
+  - `contextfs update` of professional-s1 (229 files, 229 chunks): 16.17 s CPU vs 16.08 s GPU;
+  - extraction dominates for short files, so the 7.9× embedding speed-up only pays off on
+    text-heavy folders;
+  - not a paper claim.
+- Tests (`tests/test_engine_gpu.py`):
+  - fakes: hybrid → discrete; integrated or software only → CPU; probe mismatch → CPU; device
+    error → CPU; no discrete GPU → CPU;
+  - opt-in real-GPU test (`CONTEXTFS_TEST_GPU=1`): a GPU-built index gives the same results as a
+    CPU-built one. It passed on device 1.
+
+### Decision 99 — The indexer child is cancelled by a request file, never through stdin
+- **Bug:** under the GUI, the child emitted `started` and then sat idle until something arrived on
+  stdin. Writing "cancel" made it finish with 0 files.
+  - A stdin-reader thread (`for line in sys.stdin`) stalled the main thread on a Qt-created Windows
+    pipe.
+  - Standalone runs (console stdin) worked, so the engine tests never saw it.
+- **Fix:**
+  - the GUI writes `<index>/cancel.request`, and the child polls it between files;
+  - the GUI deletes stale requests *before* launching, so a cancel issued immediately is not lost;
+  - the child's stderr goes to `%LOCALAPPDATA%\ContextFS\logs\indexer.log`, because an undrained
+    pipe can stall it.
+- **Second bug found while fixing it (data safety):** a cancel that stopped the *walk* early left
+  `rep.cancelled` false. The tombstone pass then marked every file the walk had not reached as
+  deleted.
+  - Fixed: cancel is re-checked after the walk, and later roots are skipped.
+  - Regression test: `test_cancel_mid_walk_keeps_unreached_files_and_resumes`.
+
+### Decision 100 — The dev-fitted scorer weights are the default
+- `python scripts/engine_eval.py data/bench/*-A-* --tag dev-engine-v1-fit --fit` ran coordinate
+  ascent over the grid {0 … 1.4} on the 20 **dev** personas (rules_v0 times).
+- Result: bm25 .05 · dense .60 · name .05 · format .25 · time .20 · session .10
+  (`data/scorer/weights_dev-engine-v1-fit.json`).
+- These replace the provisional hand-set weights; `SearchConfig.weights_source =
+  "dev-engine-v1-fit"`.
+- They are **in-sample on dev**. The test split is untouched and is scored once, in P7.
+
+### Measured
+1. **Dev engine evaluation** — `python scripts/engine_eval.py data/bench/*-A-* --tag dev-engine-v1`
+   - 758 LLM queries, 20 dev personas, default (fitted) weights, ORT DirectML wheel on the CPU EP;
+   - identical to the fit run under ORT 1.31.0; 0/3,032 offline vs online mismatches.
+   ```
+   time_off   nDCG@10 0.652 [0.632, 0.670]  MRR 0.391  Hit@1 0.240  R@10 0.766
+   raw_mtime  nDCG@10 0.678 [0.659, 0.697]  MRR 0.422  Hit@1 0.272  R@10 0.772
+   rules_v0   nDCG@10 0.679 [0.660, 0.698]  MRR 0.424  Hit@1 0.272  R@10 0.769
+   oracle     nDCG@10 0.688 [0.669, 0.706]  MRR 0.432  Hit@1 0.277  R@10 0.785
+   temporal (n=119) nDCG  0.689 / 0.742 / 0.751 / 0.764   MRR/Hit@1  0.221/0.084  0.257/0.118  0.263/0.135  0.273/0.135
+   vague    (n=98)  nDCG  0.640 / 0.724 / 0.731 / 0.748
+   mixed    (n=102) nDCG  0.644 / 0.700 / 0.703 / 0.724
+   paired nDCG@10: rules_v0−raw +0.0011 (p 0.64) · oracle−raw +0.0093 (p 0.0005) ·
+                   oracle−rules_v0 +0.0082 (p 0.00015) · rules_v0−time_off +0.0278 (p 5e-5)
+   ```
+   **Reading (dev, in-sample, not paper numbers):**
+   - Time helps: +0.028 overall and +0.06 on temporal cues.
+   - `rules_v0` is **not** better than raw mtime overall (p 0.64), while true times are (p 0.0005):
+     this is the room for a better estimator (direction A's first half).
+   - Not comparable to Phase 31's baselines: a different index (the v2 engine's own chunking and
+     first stage). P7 runs all systems on the same index.
+2. **Tests:** `pytest tests/` with start.bat's `HF_HOME` → **518 passed, 1 skipped** (the opt-in
+   GPU test, run separately: passed).
+   - Without `HF_HOME`, the v1 tests try to download their model and fail. That is an environment
+     issue; `start.bat` sets it.
+3. **Parity** (`tests/test_parity.py`, 5 tests, all pass):
+   - GUI search job == CLI `find --json` == in-process engine (same paths, scores to 1e-6, same
+     config hash);
+   - CLI under OMP/MKL threads = 1 and = 8: identical;
+   - engine threads 1 vs 4: identical;
+   - harness offline re-scoring == online ranking;
+   - two independent builds of one corpus give the same logical index: files, chunks, per-event
+     times and sessions equal, vectors to 1e-5.
+4. **GUI end to end** (offscreen, venv, student-s12 corpus, 229 files):
+   - a cancel was honoured in 1.6 s (55 files kept, "Update paused");
+   - the resume added 174 new with 55 unchanged;
+   - a stale request was ignored; an immediate cancel was honoured in 0.8 s;
+   - "the pdf I downloaded about clustering" → 25 rows, with the dates panel showing Written /
+     Arrived on this PC.
+5. **Portable build** (`python scripts/build_app.py`):
+   - `dist/ContextFS`: 330 MB, 288 files;
+   - largest parts: model 87 MB, PySide6 72 MB, onnxruntime-directml 63 MB, numpy libs 20 MB;
+   - **no v1-only library bundled** (torch / sentence-transformers / spaCy / LanceDB / pyarrow /
+     scipy excluded, and the build checks for them).
+6. **Frozen self test**:
+   - command: `ContextFS-console.exe --selftest --gpu` under `env -i` (only Windows on PATH), run
+     from `%TEMP%`;
+   - result: **ALL PASS**;
+   - it writes and finds .md, .csv, .txt, .docx, .xlsx and .pdf files; the re-update is a no-op;
+     every result is explained; gibberish → a clear note; the GPU probe picks the RTX 5060
+     (cosine 1.000000);
+   - **no code from `.venv`, `.tools` or another Python** among 895 modules and 129 DLLs. The only
+     outside DLLs are injected by Nahimic audio and Windows Defender; the test lists them as notes.
+   - It reports Smart App Control: **Evaluation**.
+7. **Frozen GUI → frozen child** (offscreen, saved settings): the windowed child indexed 229 files
+   in ~23 s while the GUI stayed up; empty error log.
+   - The windowed exe driven by QProcess: a cancel after 4 s kept 44 files; the resume added 185;
+     0 errors.
+
+### Phase 4 deliverables vs the brief
+| Item | State |
+|---|---|
+| Shared engine library (GUI = CLI = harness) | ✔ parity tests |
+| Built for direction A (three event times, room for a reconciled estimator) | ✔ `file_time` per (file, estimator, event); "Dates for this file" panel |
+| First run | ✔ wizard (places, exclusions, what to expect) |
+| Incremental update at launch; search during indexing; cancel/resume | ✔ (Decision 99) |
+| Portable build + self test + no dev-environment leakage | ✔ (Decision 95: no installer) |
+| GPU: detect → use, else clean CPU fallback | ✔ gates passed (Decision 98) |
+| Light clean-account check | ◐ `docs/release/CLEAN_ACCOUNT_CHECKLIST.md`; needs the user at the keyboard |
+| Study tool | ✗ moved to P5 (needs the hardened app) |
+| granite dense evaluation row | ✗ moved to the P7 eval bundle (ADR-0003 Rev. 1) |
+
+### Open (needs the user)
+- **LICENSE.** Deferred "until the first build"; this is the first build. `pyproject.toml` says
+  MIT, but there is no LICENSE file. It is the user's and the co-author's call, and is needed
+  before SignPath and before any release.
+- The acceptance demo on this laptop, and the light clean-account check (checklist above).
+- Smart App Control is in **Evaluation** on this laptop, and the build is unsigned.

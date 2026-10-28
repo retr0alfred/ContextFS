@@ -1,7 +1,8 @@
 """The indexer child process (ADR-0001): the only writer; reports progress as JSON lines.
 
-Started by the GUI with ``--indexer <index_dir> <root> [<root> ...]``. It writes one JSON object
-per line to stdout (``started`` / ``progress`` / ``done`` / ``error``).
+Started by the GUI with ``--indexer [--gpu auto|off] <index_dir> <root> [<root> ...]``. It writes
+one JSON object per line to stdout (``started`` / ``progress`` / ``done`` / ``error``); ``done``
+says which device embedded the files (a probed GPU or the CPU, with the reason).
 
 **Cancellation is a file**, not stdin. The GUI creates ``<index_dir>/cancel.request``, and the
 child checks for it between files, commits its batch and exits cleanly, so the next launch
@@ -21,12 +22,16 @@ CANCEL_FILE = "cancel.request"
 
 
 def main(argv: list[str]) -> int:
-    """Entry point: ``argv = [index_dir, root, ...]``."""
+    """Entry point: ``argv = [--gpu auto|off,] index_dir, root, ...``."""
     import logging
 
     from contextfs.engine import Engine, WriterLocked
 
     logging.getLogger("pypdf").setLevel(logging.ERROR)  # malformed-PDF chatter, not our errors
+    device = "cpu"
+    if argv[:1] == ["--gpu"]:
+        device = "auto" if argv[1] == "auto" else "cpu"
+        argv = argv[2:]
     index_dir, roots = Path(argv[0]), argv[1:]
     cancel_path = index_dir / CANCEL_FILE  # the GUI removes stale ones before launching us
 
@@ -43,10 +48,10 @@ def main(argv: list[str]) -> int:
             emit({"type": "progress", "seen": rep.seen, "processed": done, "unchanged": rep.unchanged})
 
     try:
-        with Engine.open(index_dir, mode="write") as eng:
+        with Engine.open(index_dir, mode="write", device=device) as eng:
             emit({"type": "started", "roots": roots})
             rep = eng.update(roots, progress=progress, cancel=cancel_path.exists)
-            emit({"type": "done", "report": rep.as_dict()})
+            emit({"type": "done", "report": rep.as_dict(), "device": eng.device_note})
         return 0
     except WriterLocked as exc:
         emit({"type": "error", "kind": "locked", "message": str(exc)})

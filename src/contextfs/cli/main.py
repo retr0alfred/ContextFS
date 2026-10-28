@@ -1520,6 +1520,7 @@ def _v2_index_dir(index_dir: Path | None) -> Path:
 def v2_update(
     roots: Annotated[list[Path] | None, typer.Argument(help="Folders to index (default: saved roots).")] = None,
     index_dir: Annotated[Path | None, typer.Option("--index-dir")] = None,
+    gpu: Annotated[str | None, typer.Option("--gpu", help="auto | off (default: the app's setting).")] = None,
 ) -> None:
     """Incrementally update the v2 index (same engine as the desktop app)."""
     from contextfs.app.settings import Settings
@@ -1530,12 +1531,14 @@ def v2_update(
         err_console.print("No folders to index. Pass them as arguments or choose them in the app.")
         raise typer.Exit(EXIT_CONFIG_ERROR)
     try:
-        with Engine.open(_v2_index_dir(index_dir), mode="write") as eng:
+        device = "auto" if (gpu or Settings.load().gpu) == "auto" else "cpu"
+        with Engine.open(_v2_index_dir(index_dir), mode="write", device=device) as eng:
             rep = eng.update(targets)
+            note = eng.device_note
     except WriterLocked as exc:
         err_console.print(f"{exc}. Search still works; try again when it finishes.")
         raise typer.Exit(4) from exc
-    console.print_json(data=rep.as_dict())
+    console.print_json(data=rep.as_dict() | {"device": note})
 
 
 @app.command(name="find")

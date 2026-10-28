@@ -159,7 +159,8 @@ def main() -> int:
         per[src].append({"cue": q["cue"], **metrics(ranked, q)})
     summary = {"tag": args.tag, "personas": [d.name for d in args.persona_dirs], "weights": weights,
                "n_queries": len(per["rules_v0"]), "seconds": round(time.perf_counter() - started, 1),
-               "offline_online_mismatches": mismatches, "systems": {}, "by_cue": {}, "paired": {}}
+               "offline_online_mismatches": mismatches, "systems": {}, "by_cue": {}, "by_cue_target": {},
+               "paired": {}}
     for s, rows in per.items():
         summary["systems"][s] = {m: {"mean": round(statistics.mean(r[m] for r in rows), 4),
                                      "ci95": [round(v, 4) for v in bootstrap_ci([r[m] for r in rows])]}
@@ -168,6 +169,10 @@ def main() -> int:
         summary["by_cue"][cue] = {s: round(statistics.mean(r["ndcg10"] for r in rows if r["cue"] == cue), 4)
                                   for s, rows in per.items()}
         summary["by_cue"][cue]["n"] = sum(1 for r in per["rules_v0"] if r["cue"] == cue)
+        # exact-target metrics per cue: "time cues defeat every system" is about these (Phase 31)
+        summary["by_cue_target"][cue] = {
+            s: {m: round(statistics.mean(r[m] for r in rows if r["cue"] == cue), 4) for m in ("mrr", "hit1")}
+            for s, rows in per.items()}
     for a, b in (("rules_v0", "raw_mtime"), ("oracle", "raw_mtime"), ("rules_v0", "time_off"), ("oracle", "rules_v0")):
         diffs = [x["ndcg10"] - y["ndcg10"] for x, y in zip(per[a], per[b], strict=True)]
         summary["paired"][f"{a} - {b}"] = {"mean": round(statistics.mean(diffs), 4),
@@ -182,6 +187,9 @@ def main() -> int:
     print("by cue (nDCG@10):")
     for cue, row in summary["by_cue"].items():
         print(f"  {cue:<9} n={row['n']:<4} " + "  ".join(f"{s}={row[s]:.3f}" for s in SOURCES))
+    print("by cue (MRR / Hit@1):")
+    for cue, row in summary["by_cue_target"].items():
+        print(f"  {cue:<9} " + "  ".join(f"{s}={row[s]['mrr']:.3f}/{row[s]['hit1']:.3f}" for s in SOURCES))
     print("paired:", json.dumps(summary["paired"]))
     return 0
 
