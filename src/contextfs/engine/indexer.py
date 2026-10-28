@@ -692,39 +692,55 @@ def _folders_missing_times(conn) -> set[tuple[int, str]]:
     return {(r[0], r[1].rsplit("/", 1)[0] if "/" in r[1] else "") for r in rows}
 
 
+def _chunks(seq: list, size: int = 900):
+    """Slices of at most ``size`` (under SQLite's oldest parameter limit, 999)."""
+    for i in range(0, len(seq), size):
+        yield seq[i : i + size]
+
+
 def recompute_times(conn, folders: set[tuple[int, str]]) -> None:
     """Re-estimate per-event times for every file in the touched folders, for every estimator."""
     for root_id, folder in folders:
-        like = f"{folder}/%" if folder else "%"
-        files = conn.execute(
-            "SELECT file_id, rel_path FROM files WHERE root_id=? AND status IN ('present','offline') AND rel_path LIKE ?",
-            (root_id, like),
-        ).fetchall()
-        files = [
-            f
-            for f in files
-            if (f["rel_path"].rsplit("/", 1)[0] if "/" in f["rel_path"] else "") == folder
-        ]
+        # Direct children only, through the (root_id, rel_path) index: a range on the "folder/"
+        # prefix ('0' is the character after '/'), not a LIKE that fetched the whole subtree
+        # (the root folder fetched every file in the index, every batch; Phase 33).
+        if folder:
+            rows = conn.execute(
+                "SELECT file_id, rel_path FROM files WHERE root_id=? AND rel_path >= ? AND rel_path < ? "
+                "AND status IN ('present','offline')",
+                (root_id, folder + "/", folder + "0"),
+            ).fetchall()
+            skip = len(folder) + 1
+            files = [f for f in rows if "/" not in f["rel_path"][skip:]]
+        else:
+            files = conn.execute(
+                "SELECT file_id, rel_path FROM files WHERE root_id=? AND instr(rel_path, '/')=0 "
+                "AND status IN ('present','offline')",
+                (root_id,),
+            ).fetchall()
         if not files:
             continue
         ids = [f["file_id"] for f in files]
-        marks = ",".join("?" * len(ids))
         ev_rows: dict[int, dict[str, dict]] = {i: {} for i in ids}
-        for r in conn.execute(f"SELECT * FROM time_evidence WHERE file_id IN ({marks})", ids):
-            ev_rows[r["file_id"]][f"{r['source']}:{r['kind']}"] = dict(r)
-        first_seen = {
-            r["file_id"]: r["at"]
+        first_seen: dict[int, int] = {}
+        # In chunks: one folder can hold more files than SQLite allows parameters in a query
+        # (32,766; a camera or Downloads folder), which failed every update (Phase 33).
+        for part in _chunks(ids):
+            marks = ",".join("?" * len(part))
+            for r in conn.execute(f"SELECT * FROM time_evidence WHERE file_id IN ({marks})", part):
+                ev_rows[r["file_id"]][f"{r['source']}:{r['kind']}"] = dict(r)
             for r in conn.execute(
                 f"SELECT file_id, MIN(at_utc) AS at FROM observations WHERE kind='first_seen' AND file_id IN ({marks})"
                 " GROUP BY file_id",
-                ids,
-            )
-        }
+                part,
+            ):
+                first_seen[r["file_id"]] = r["at"]
         births = {
             i: ev_rows[i]["ntfs:created"]["utc_s"] for i in ids if "ntfs:created" in ev_rows[i]
         }
         ctx = folder_context(births)
-        conn.execute(f"DELETE FROM file_time WHERE file_id IN ({marks})", ids)
+        for part in _chunks(ids):
+            conn.execute(f"DELETE FROM file_time WHERE file_id IN ({','.join('?' * len(part))})", part)
         rows = []
         for i in ids:
             ev = FileEvidence(i, ev_rows[i], first_seen.get(i))

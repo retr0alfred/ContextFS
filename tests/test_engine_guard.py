@@ -328,3 +328,21 @@ def test_qa_m6_a_root_inside_another_root_is_not_indexed_twice(tmp_path):
         rep = eng.update([corpus, corpus / "a"])
         assert rep.nested_roots == [str(corpus / "a")] and rep.new == 3
         assert eng.search("biryani saffron").paths.count("a/recipe.txt") == 1
+
+
+def test_a_folder_with_more_files_than_sqlite_parameters_indexes(tmp_path):
+    # Phase 33: recompute_times put every file id of one folder into a single IN (...); a folder
+    # over SQLite's parameter limit (32,766; a camera dump) failed every update. The limit is
+    # lowered here so a 1,000-file folder reproduces it.
+    camera = tmp_path / "c" / "camera"
+    camera.mkdir(parents=True)
+    for i in range(1000):
+        (camera / f"IMG_{i:04d}.txt").write_text(f"photo caption {i}", encoding="utf-8")
+    with Engine.open(tmp_path / "idx", mode="write") as eng:
+        eng.conn.setlimit(sqlite3.SQLITE_LIMIT_VARIABLE_NUMBER, 950)
+        rep = eng.update([tmp_path / "c"])
+        assert rep.new == 1000
+        undated = eng.conn.execute(
+            "SELECT COUNT(*) FROM files f WHERE NOT EXISTS (SELECT 1 FROM file_time t WHERE t.file_id=f.file_id)"
+        ).fetchone()[0]
+        assert undated == 0
