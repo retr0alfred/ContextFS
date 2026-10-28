@@ -3472,3 +3472,14 @@ inspected item will be in the frozen test split. Recorded for transparency.
   - **from now on it starts with `--api-key`** (a random key held by the scripts) so no other local
     program or web page can use it.
 - The GPU was released at pause (`nvidia-smi`: 0 MiB, no compute processes).
+
+#### Phase 31 — entry 3 (2026-10-28 15:10): paused on low battery
+- Test split v1 **frozen** (commit `3b36c1a`, `split_v1.json` sha256 `ed76950b…`): 24 test personas
+  (916 LLM queries, never displayed) and 20 dev personas (758 LLM queries).
+- The LLM server was restarted with `--api-key-file` (git-ignored); keyless requests got HTTP 401.
+  The two long generations seen on 2026-10-27 were confirmed as the user's own.
+- **Dev evaluation `dev-v1-llm` was stopped mid-run** at the user's request (battery 9%):
+  7/20 dev indexes are complete and kept, and one partial index was deleted. No results are
+  recorded yet.
+- **To resume:** `python scripts/bench_eval.py data/bench/*-A-* --tag dev-v1-llm --ce` (it reuses
+  the 7 indexes). Then: end-of-phase log, STATUS, stop.

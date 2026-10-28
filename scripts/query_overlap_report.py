@@ -29,9 +29,7 @@ sys.path.insert(0, str(PROJECT_ROOT / "src"))
 from contextfs.extract import extract_file  # noqa: E402
 
 STOP = set(
-    "the a an and or of for to in on at by with from about my me i was were is it this that what "
-    "which some something thing file files doc document notes note when did had have from back "
-    "around last early late mid".split()
+    ["the", "a", "an", "and", "or", "of", "for", "to", "in", "on", "at", "by", "with", "from", "about", "my", "me", "i", "was", "were", "is", "it", "this", "that", "what", "which", "some", "something", "thing", "file", "files", "doc", "document", "notes", "note", "when", "did", "had", "have", "from", "back", "around", "last", "early", "late", "mid"]
 )
 WORD = re.compile(r"[a-z]{3,}")
 
