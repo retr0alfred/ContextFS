@@ -68,17 +68,29 @@ def apply_damage(
     profile: str,
     migration: datetime,
     seed: int,
+    chain: bool = False,
 ) -> dict[str, int]:
-    """Apply ``profile`` at ``migration`` time. Returns counts per behaviour."""
+    """Apply ``profile`` at ``migration`` time. Returns counts per behaviour.
+
+    ``chain=True`` (a second migration, dev stress set only; log.md Phase 34): the behaviour acts on
+    the file's *current* times, as left by the first migration, instead of the planned ones.
+    Files the second migration does not hit keep their first-migration label.
+    """
     shares = PROFILES[profile]
     rng = random.Random(seed * 104729 + 3)
     counts: dict[str, int] = {}
     for plan in plans:
         created, modified = fs_times_for(plan)
         if created >= migration or not shares:
-            plan.damage = "none"
+            if not chain:
+                plan.damage = "none"
             counts["none"] = counts.get("none", 0) + 1
             continue
+        if chain:  # act on the times the first migration left on disk
+            import os
+
+            st = os.stat(corpus / plan.rel_path)
+            modified = datetime.fromtimestamp(st.st_mtime)
         roll, behaviour = rng.random(), "robocopy"
         acc = 0.0
         for name, share in shares.items():

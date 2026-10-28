@@ -47,7 +47,9 @@ class SearchConfig:
         ("session", 0.10),
     )
     weights_source: str = "dev-engine-v1-fit"
-    time_source: str = "rules_v0"
+    #: recon_v1 since Phase 34 (Decision 107): on par with rules_v0 for ranking on dev, far better
+    #: on date accuracy (P-A1), and it never dates edits that did not happen.
+    time_source: str = "recon_v1"
     #: "expected": mean soft overlap over the estimate's interval (log.md Phase 34); "overlap": the
     #: Phase 32 feature (1 if the interval touches the cue at all). Identical for point estimates.
     time_feature: str = "expected"

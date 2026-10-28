@@ -1546,7 +1546,7 @@ def v2_find(
     query: Annotated[str, typer.Argument(help="What you remember about the file.")],
     index_dir: Annotated[Path | None, typer.Option("--index-dir")] = None,
     as_json: Annotated[bool, typer.Option("--json")] = False,
-    time_source: Annotated[str, typer.Option("--time-source")] = "rules_v0",
+    time_source: Annotated[str, typer.Option("--time-source")] = "recon_v1",
     as_of: Annotated[str | None, typer.Option("--as-of", help="ISO date to read relative time from.")] = None,
     top_k: Annotated[int, typer.Option("--top-k")] = 10,
 ) -> None:

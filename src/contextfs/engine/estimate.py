@@ -265,6 +265,9 @@ class ReconV1:
     #: pre-declared criterion, the lowest dev (LOPO) macro interval score over damage types: 230.8 vs
     #: 314.6 (log.md Phase 34). B is reported as an ablation.
     AGNOSTIC_MOVED_ARRIVAL = False
+    #: Ablation switch (log.md Phase 34): False = date an edit for every file, like rules_v0, instead
+    #: of only on positive evidence.
+    EXISTENCE_GATING = True
 
     def __init__(self, params: dict | None = None) -> None:
         """``params`` overrides RECON_PARAMS (the fitting harness uses this; the engine does not)."""
@@ -356,11 +359,15 @@ class ReconV1:
         edit = None
         if reset_edited:
             edit = ("fs_mtime_after_copy", m, m + 1, m, "sure", ["ntfs:modified"])
-        elif motw:
+        elif motw and self.EXISTENCE_GATING:
             if not copy and not moved and m > b + self.EDIT_SLACK:
                 edit = ("download_edited", m, m + 1, m, "sure", ["ntfs:modified", "motw:zone"])
-        elif capture:
-            if not moved and not (capture[0] - 3600 <= m <= capture[1] + 3600):  # m left the capture
+        elif capture and self.EXISTENCE_GATING:
+            # an edit shows as an mtime later than both the capture and the import (or, after a
+            # CopyFile copy that reset the birth, later than the capture). Import tools that stamp
+            # the import time as mtime are not edits (perturbation suite, log.md Phase 34).
+            edited = m > capture[1] + self.EDIT_SLACK if copy else m > max(b, capture[1]) + self.EDIT_SLACK
+            if not moved and edited:
                 edit = ("photo_edited", m, m + 1, m, "probably", ["ntfs:modified", "exif:original"])
         elif not moved:
             edit = ("fs_mtime", m, m + 1, m, "sure", ["ntfs:modified"])

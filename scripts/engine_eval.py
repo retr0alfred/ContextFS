@@ -44,7 +44,13 @@ from contextfs.evalkit import (  # noqa: E402
     reciprocal_rank,
 )
 
-SOURCES = ("time_off", "raw_mtime", "rules_v0", "oracle")
+SOURCES = ("time_off", "raw_mtime", "rules_v0", "recon_v1", "oracle")
+#: P-A2 / P-A2s (Decision 106, pre-declared before any P-A2 number): a query is time-cued when its
+#: generator cue is one whose templates always carry a time slot.
+TIME_CUED = {"temporal", "mixed"}
+#: P-A2s subgroup: the target's file-system times were reset by damage (sealed damage label).
+RESET_DAMAGE = {"content_copy", "git_clone"}
+TIME_FEATURE = "expected"
 GRID = (0.0, 0.05, 0.1, 0.2, 0.3, 0.45, 0.6, 0.8, 1.0, 1.4)
 
 
@@ -61,12 +67,43 @@ def oracle_override(persona_dir: Path) -> tuple:
 
 
 def config_for(source: str, weights, oracle=()) -> SearchConfig:
-    w = tuple(weights)
+    w, tf = tuple(weights), TIME_FEATURE
     if source == "time_off":
-        return SearchConfig(weights=w, signals=tuple(f for f in FEATURES if f != "time"), top_k=100, keep_pool=True)
+        return SearchConfig(weights=w, signals=tuple(f for f in FEATURES if f != "time"), top_k=100,
+                            keep_pool=True, time_feature=tf)
     if source == "oracle":
-        return SearchConfig(weights=w, time_source="override", time_override=oracle, top_k=100, keep_pool=True)
-    return SearchConfig(weights=w, time_source=source, top_k=100, keep_pool=True)
+        return SearchConfig(weights=w, time_source="override", time_override=oracle, top_k=100, keep_pool=True,
+                            time_feature=tf)
+    return SearchConfig(weights=w, time_source=source, top_k=100, keep_pool=True, time_feature=tf)
+
+
+def damage_of(persona_dir: Path) -> dict[str, str]:
+    return {r["rel_path"]: r["damage"] for r in map(
+        json.loads, (persona_dir / "truth" / "truth_manifest.jsonl").read_text(encoding="utf-8").splitlines())}
+
+
+def cluster_boot(rows_a: list[dict], rows_b: list[dict], rows_o: list[dict] | None = None, n: int = 2000):
+    """Persona-cluster bootstrap 95% CI of mean(a - b), or of the share of oracle headroom recovered.
+
+    With rows_o the statistic is (mean a - mean b) / (mean o - mean b). Rows are aligned by query.
+    """
+    import random
+
+    by: dict[str, list[int]] = {}
+    for i, r in enumerate(rows_a):
+        by.setdefault(r["persona"], []).append(i)
+    keys, rng, vals = list(by), random.Random(0), []
+    for _ in range(n):
+        idx = [i for k in (rng.choice(keys) for _ in keys) for i in by[k]]
+        da = statistics.mean(rows_a[i]["ndcg10"] for i in idx) - statistics.mean(rows_b[i]["ndcg10"] for i in idx)
+        if rows_o is None:
+            vals.append(da)
+        else:
+            do = statistics.mean(rows_o[i]["ndcg10"] for i in idx) - statistics.mean(rows_b[i]["ndcg10"] for i in idx)
+            if abs(do) > 1e-9:
+                vals.append(da / do)
+    vals.sort()
+    return [round(vals[int(0.025 * len(vals))], 4), round(vals[int(0.975 * len(vals)) - 1], 4)] if vals else None
 
 
 def offline_rank(pool: dict, weights: dict) -> list[str]:
@@ -88,6 +125,7 @@ def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("persona_dirs", type=Path, nargs="+")
     parser.add_argument("--tag", required=True)
+    parser.add_argument("--time-feature", choices=("expected", "overlap"), default="expected")
     parser.add_argument("--index-root", type=Path, default=None,
                         help="build/read indexes at <root>/<persona> instead of <persona>/index_v2")
     parser.add_argument("--fit", action="store_true")
@@ -101,6 +139,8 @@ def main() -> int:
             print(f"refusing: {d.name} is a test persona (no fitting; test runs must be tagged TEST-*)")
             return 2
 
+    global TIME_FEATURE
+    TIME_FEATURE = args.time_feature
     weights = dict(SearchConfig().weights)
     if args.weights:
         weights = json.loads(args.weights.read_text(encoding="utf-8"))["weights"]
@@ -115,7 +155,10 @@ def main() -> int:
         meta = json.loads((d / "truth" / "persona.json").read_text(encoding="utf-8"))
         as_of = datetime.fromisoformat(meta["persona"]["end"]).astimezone()
         oracle = oracle_override(d)
+        dmg = damage_of(d)
         queries = [json.loads(x) for x in (d / "truth" / "queries_llm.jsonl").read_text(encoding="utf-8").splitlines()]
+        for q in queries:
+            q["persona"], q["target_damage"] = d.name, dmg.get(q["target"], "none")
         with Engine.open(idx) as eng:
             for q in queries:
                 for src in SOURCES:
@@ -158,11 +201,12 @@ def main() -> int:
     per = {s: [] for s in SOURCES}
     for q, src, pool, _ in records:
         ranked = offline_rank(pool, weights) if pool else []
-        per[src].append({"cue": q["cue"], **metrics(ranked, q)})
+        per[src].append({"cue": q["cue"], "persona": q["persona"], "target_damage": q["target_damage"],
+                         **metrics(ranked, q)})
     summary = {"tag": args.tag, "personas": [d.name for d in args.persona_dirs], "weights": weights,
                "n_queries": len(per["rules_v0"]), "seconds": round(time.perf_counter() - started, 1),
                "offline_online_mismatches": mismatches, "systems": {}, "by_cue": {}, "by_cue_target": {},
-               "paired": {}}
+               "paired": {}, "time_feature": TIME_FEATURE, "p_a2": {}, "p_a2s": {}}
     for s, rows in per.items():
         summary["systems"][s] = {m: {"mean": round(statistics.mean(r[m] for r in rows), 4),
                                      "ci95": [round(v, 4) for v in bootstrap_ci([r[m] for r in rows])]}
@@ -179,6 +223,29 @@ def main() -> int:
         diffs = [x["ndcg10"] - y["ndcg10"] for x, y in zip(per[a], per[b], strict=True)]
         summary["paired"][f"{a} - {b}"] = {"mean": round(statistics.mean(diffs), 4),
                                            "p": round(paired_randomisation_p(diffs), 5)}
+    # P-A2 (pre-registered): nDCG@10 on time-cued queries, time sources compared, all else frozen.
+    cued = {s: [r for r in rows if r["cue"] in TIME_CUED] for s, rows in per.items()}
+    summary["p_a2"]["n"] = len(cued["raw_mtime"])
+    for s in SOURCES:
+        summary["p_a2"][s] = round(statistics.mean(r["ndcg10"] for r in cued[s]), 4)
+    for a, b in (("recon_v1", "raw_mtime"), ("recon_v1", "rules_v0"), ("rules_v0", "raw_mtime"), ("oracle", "raw_mtime")):
+        diffs = [x["ndcg10"] - y["ndcg10"] for x, y in zip(cued[a], cued[b], strict=True)]
+        summary["p_a2"][f"{a} - {b}"] = {"mean": round(statistics.mean(diffs), 4),
+                                         "p": round(paired_randomisation_p(diffs), 5),
+                                         "ci95_persona": cluster_boot(cued[a], cued[b])}
+    # P-A2s (pre-registered, Decision 106): time-cued queries whose target's fs times were reset;
+    # share of the oracle's headroom over raw mtime recovered.
+    sub = {s: [r for r in rows if r["target_damage"] in RESET_DAMAGE] for s, rows in cued.items()}
+    summary["p_a2s"]["n"] = len(sub["raw_mtime"])
+    if sub["raw_mtime"]:
+        raw = statistics.mean(r["ndcg10"] for r in sub["raw_mtime"])
+        orc = statistics.mean(r["ndcg10"] for r in sub["oracle"])
+        summary["p_a2s"]["raw_mtime"], summary["p_a2s"]["oracle"] = round(raw, 4), round(orc, 4)
+        for s in ("rules_v0", "recon_v1"):
+            est = statistics.mean(r["ndcg10"] for r in sub[s])
+            summary["p_a2s"][s] = {"ndcg10": round(est, 4),
+                                   "share_of_headroom": round((est - raw) / (orc - raw), 4) if orc != raw else None,
+                                   "ci95_persona": cluster_boot(sub[s], sub["raw_mtime"], sub["oracle"])}
     run = args.out / args.tag
     run.mkdir(parents=True, exist_ok=True)
     (run / "summary.json").write_text(json.dumps(summary, indent=2), encoding="utf-8")
@@ -193,6 +260,8 @@ def main() -> int:
     for cue, row in summary["by_cue_target"].items():
         print(f"  {cue:<9} " + "  ".join(f"{s}={row[s]['mrr']:.3f}/{row[s]['hit1']:.3f}" for s in SOURCES))
     print("paired:", json.dumps(summary["paired"]))
+    print("P-A2 (time-cued):", json.dumps(summary["p_a2"]))
+    print("P-A2s (time-cued, target reset):", json.dumps(summary["p_a2s"]))
     return 0
 
 

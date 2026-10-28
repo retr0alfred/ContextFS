@@ -68,13 +68,21 @@ def main() -> int:
     parser.add_argument("--scale", type=float, default=1.0)
     parser.add_argument("--damage", choices=sorted(PROFILES), default="none")
     parser.add_argument("--migration-days-before-end", type=int, default=120)
+    # dev stress set only (log.md Phase 34): other timeline lengths and a second migration
+    parser.add_argument("--years", type=float, default=2.0)
+    parser.add_argument("--second-damage", choices=sorted(PROFILES), default=None)
+    parser.add_argument("--second-migration-days-before-end", type=int, default=None)
     parser.add_argument("--out", type=Path, default=PROJECT_ROOT / "data" / "bench")
     parser.add_argument("--force", action="store_true")
     parser.add_argument("--queries", type=int, default=42, help="template queries per persona")
     args = parser.parse_args()
 
-    persona = make_persona(args.archetype, args.seed, args.family)
+    persona = make_persona(args.archetype, args.seed, args.family, years=args.years)
     suffix = f"-x{args.scale:g}-{args.damage}"
+    if args.years != 2.0 or args.migration_days_before_end != 120:
+        suffix += f"-y{args.years:g}-m{args.migration_days_before_end}"
+    if args.second_damage:
+        suffix += f"-then-{args.second_damage}-m{args.second_migration_days_before_end}"
     out_dir = args.out / (persona.persona_id + suffix)
     if out_dir.exists():
         if not args.force:
@@ -86,6 +94,11 @@ def main() -> int:
     corpus = materialise(persona, plans, TemplateProvider(persona.family), out_dir)
     migration = persona.end - timedelta(days=args.migration_days_before_end)
     counts = apply_damage(corpus, out_dir / "truth", plans, args.damage, migration, persona.seed)
+    if args.second_damage:
+        second = persona.end - timedelta(days=args.second_migration_days_before_end)
+        counts2 = apply_damage(corpus, out_dir / "truth", plans, args.second_damage, second, persona.seed + 7919,
+                               chain=True)
+        counts = {"first": counts, "second": counts2, "second_migration": second.isoformat()}
 
     meta = {
         "generator": GENERATOR_VERSION,

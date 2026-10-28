@@ -1,0 +1,373 @@
+{
+  "recon_v1": {
+    "ALL|authored": {
+      "n": 4884,
+      "coverage": 0.9793,
+      "within1d": 0.9273
+    },
+    "ALL|arrived_here": {
+      "n": 4884,
+      "coverage": 0.869,
+      "within1d": 0.5246
+    },
+    "ALL|last_user_edit": {
+      "n": 976,
+      "coverage": 0.9621,
+      "within1d": 0.9119
+    },
+    "content_copy|authored": {
+      "n": 1159,
+      "coverage": 0.9733,
+      "within1d": 0.9111
+    },
+    "content_copy|arrived_here": {
+      "n": 1159,
+      "coverage": 0.5548,
+      "within1d": 0.2071
+    },
+    "content_copy|last_user_edit": {
+      "n": 262,
+      "coverage": 0.916,
+      "within1d": 0.7405
+    },
+    "edit_existence|authored": {
+      "TP": 976,
+      "FP": 0,
+      "FN": 0,
+      "precision": 1.0,
+      "recall": 1.0
+    },
+    "edit_existence|downloaded": {
+      "TP": 0,
+      "FP": 524,
+      "FN": 0,
+      "precision": 0.0,
+      "recall": null
+    },
+    "edit_existence|received": {
+      "TP": 0,
+      "FP": 0,
+      "FN": 0,
+      "precision": null,
+      "recall": null
+    }
+  },
+  "no_existence": {
+    "ALL|authored": {
+      "n": 4884,
+      "coverage": 0.9793,
+      "within1d": 0.9273
+    },
+    "ALL|arrived_here": {
+      "n": 4884,
+      "coverage": 0.869,
+      "within1d": 0.5246
+    },
+    "ALL|last_user_edit": {
+      "n": 976,
+      "coverage": 0.9621,
+      "within1d": 0.9119
+    },
+    "content_copy|authored": {
+      "n": 1159,
+      "coverage": 0.9733,
+      "within1d": 0.9111
+    },
+    "content_copy|arrived_here": {
+      "n": 1159,
+      "coverage": 0.5548,
+      "within1d": 0.2071
+    },
+    "content_copy|last_user_edit": {
+      "n": 262,
+      "coverage": 0.916,
+      "within1d": 0.7405
+    },
+    "edit_existence|authored": {
+      "TP": 976,
+      "FP": 0,
+      "FN": 0,
+      "precision": 1.0,
+      "recall": 1.0
+    },
+    "edit_existence|downloaded": {
+      "TP": 0,
+      "FP": 2285,
+      "FN": 0,
+      "precision": 0.0,
+      "recall": null
+    },
+    "edit_existence|received": {
+      "TP": 0,
+      "FP": 1623,
+      "FN": 0,
+      "precision": 0.0,
+      "recall": null
+    }
+  },
+  "arrival_B": {
+    "ALL|authored": {
+      "n": 4884,
+      "coverage": 0.9793,
+      "within1d": 0.9273
+    },
+    "ALL|arrived_here": {
+      "n": 4884,
+      "coverage": 0.9662,
+      "within1d": 0.5246
+    },
+    "ALL|last_user_edit": {
+      "n": 976,
+      "coverage": 0.9621,
+      "within1d": 0.9119
+    },
+    "content_copy|authored": {
+      "n": 1159,
+      "coverage": 0.9733,
+      "within1d": 0.9111
+    },
+    "content_copy|arrived_here": {
+      "n": 1159,
+      "coverage": 0.9646,
+      "within1d": 0.2071
+    },
+    "content_copy|last_user_edit": {
+      "n": 262,
+      "coverage": 0.916,
+      "within1d": 0.7405
+    },
+    "edit_existence|authored": {
+      "TP": 976,
+      "FP": 0,
+      "FN": 0,
+      "precision": 1.0,
+      "recall": 1.0
+    },
+    "edit_existence|downloaded": {
+      "TP": 0,
+      "FP": 524,
+      "FN": 0,
+      "precision": 0.0,
+      "recall": null
+    },
+    "edit_existence|received": {
+      "TP": 0,
+      "FP": 0,
+      "FN": 0,
+      "precision": null,
+      "recall": null
+    }
+  },
+  "sim_motw": {
+    "ALL|authored": {
+      "n": 4884,
+      "coverage": 0.9793,
+      "within1d": 0.9273
+    },
+    "ALL|arrived_here": {
+      "n": 4884,
+      "coverage": 0.9662,
+      "within1d": 0.5246
+    },
+    "ALL|last_user_edit": {
+      "n": 976,
+      "coverage": 0.9621,
+      "within1d": 0.9119
+    },
+    "content_copy|authored": {
+      "n": 1159,
+      "coverage": 0.9733,
+      "within1d": 0.9111
+    },
+    "content_copy|arrived_here": {
+      "n": 1159,
+      "coverage": 0.9646,
+      "within1d": 0.2071
+    },
+    "content_copy|last_user_edit": {
+      "n": 262,
+      "coverage": 0.916,
+      "within1d": 0.7405
+    },
+    "edit_existence|authored": {
+      "TP": 976,
+      "FP": 0,
+      "FN": 0,
+      "precision": 1.0,
+      "recall": 1.0
+    },
+    "edit_existence|downloaded": {
+      "TP": 0,
+      "FP": 0,
+      "FN": 0,
+      "precision": null,
+      "recall": null
+    },
+    "edit_existence|received": {
+      "TP": 0,
+      "FP": 0,
+      "FN": 0,
+      "precision": null,
+      "recall": null
+    }
+  },
+  "own_export_dt0": {
+    "ALL|authored": {
+      "n": 4884,
+      "coverage": 0.9793,
+      "within1d": 0.9273
+    },
+    "ALL|arrived_here": {
+      "n": 4884,
+      "coverage": 0.869,
+      "within1d": 0.5246
+    },
+    "ALL|last_user_edit": {
+      "n": 976,
+      "coverage": 0.7746,
+      "within1d": 0.832
+    },
+    "content_copy|authored": {
+      "n": 1159,
+      "coverage": 0.9733,
+      "within1d": 0.9111
+    },
+    "content_copy|arrived_here": {
+      "n": 1159,
+      "coverage": 0.5548,
+      "within1d": 0.2071
+    },
+    "content_copy|last_user_edit": {
+      "n": 262,
+      "coverage": 0.2176,
+      "within1d": 0.4427
+    },
+    "edit_existence|authored": {
+      "TP": 976,
+      "FP": 0,
+      "FN": 0,
+      "precision": 1.0,
+      "recall": 1.0
+    },
+    "edit_existence|downloaded": {
+      "TP": 0,
+      "FP": 524,
+      "FN": 0,
+      "precision": 0.0,
+      "recall": null
+    },
+    "edit_existence|received": {
+      "TP": 0,
+      "FP": 0,
+      "FN": 0,
+      "precision": null,
+      "recall": null
+    }
+  },
+  "edited_download": {
+    "ALL|authored": {
+      "n": 4884,
+      "coverage": 0.9793,
+      "within1d": 0.9273
+    },
+    "ALL|arrived_here": {
+      "n": 4884,
+      "coverage": 0.869,
+      "within1d": 0.5246
+    },
+    "ALL|last_user_edit": {
+      "n": 1787,
+      "coverage": 0.9793,
+      "within1d": 0.9519
+    },
+    "content_copy|authored": {
+      "n": 1159,
+      "coverage": 0.9733,
+      "within1d": 0.9111
+    },
+    "content_copy|arrived_here": {
+      "n": 1159,
+      "coverage": 0.5548,
+      "within1d": 0.2071
+    },
+    "content_copy|last_user_edit": {
+      "n": 262,
+      "coverage": 0.916,
+      "within1d": 0.7405
+    },
+    "edit_existence|authored": {
+      "TP": 976,
+      "FP": 0,
+      "FN": 0,
+      "precision": 1.0,
+      "recall": 1.0
+    },
+    "edit_existence|downloaded": {
+      "TP": 811,
+      "FP": 524,
+      "FN": 0,
+      "precision": 0.6075,
+      "recall": 1.0
+    },
+    "edit_existence|received": {
+      "TP": 0,
+      "FP": 0,
+      "FN": 0,
+      "precision": null,
+      "recall": null
+    }
+  },
+  "photo_mtime_import": {
+    "ALL|authored": {
+      "n": 4884,
+      "coverage": 0.9793,
+      "within1d": 0.9273
+    },
+    "ALL|arrived_here": {
+      "n": 4884,
+      "coverage": 0.869,
+      "within1d": 0.6484
+    },
+    "ALL|last_user_edit": {
+      "n": 976,
+      "coverage": 0.9621,
+      "within1d": 0.9119
+    },
+    "content_copy|authored": {
+      "n": 1159,
+      "coverage": 0.9733,
+      "within1d": 0.9111
+    },
+    "content_copy|arrived_here": {
+      "n": 1159,
+      "coverage": 0.5548,
+      "within1d": 0.2071
+    },
+    "content_copy|last_user_edit": {
+      "n": 262,
+      "coverage": 0.916,
+      "within1d": 0.7405
+    },
+    "edit_existence|authored": {
+      "TP": 976,
+      "FP": 0,
+      "FN": 0,
+      "precision": 1.0,
+      "recall": 1.0
+    },
+    "edit_existence|downloaded": {
+      "TP": 0,
+      "FP": 524,
+      "FN": 0,
+      "precision": 0.0,
+      "recall": null
+    },
+    "edit_existence|received": {
+      "TP": 0,
+      "FP": 0,
+      "FN": 0,
+      "precision": null,
+      "recall": null
+    }
+  }
+}

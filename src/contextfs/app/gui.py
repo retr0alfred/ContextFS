@@ -50,6 +50,8 @@ from PySide6.QtWidgets import (
 from contextfs.app.settings import Settings, validate_index_dir
 from contextfs.engine.fsio import DEFAULT_EXCLUDED_NAMES, plain_path
 
+#: The estimator whose dates the window shows and ranks with (log.md Phase 34, Decision 107).
+DATE_SOURCE = "recon_v1"
 EVENT_LABEL = {"authored": "Written", "arrived_here": "Came into your files", "last_user_edit": "Last edited"}
 
 
@@ -446,10 +448,15 @@ class MainWindow(QMainWindow):
             self.details.clear()
             return
         for r in resp.results:
-            ft = {row["event"]: row for row in dates[r.file_id]["file_time"] if row["estimator"] == "rules_v0"}
-            when = " · ".join(f"{EVENT_LABEL[e]} {_fmt(ft[e]['point_utc'], True)}"
-                              f"{'' if ft[e]['confidence'] == 'sure' else ' (' + ft[e]['confidence'] + ')'}"
-                              for e in ("last_user_edit", "arrived_here") if e in ft)
+            ft = {row["event"]: row for row in dates[r.file_id]["file_time"] if row["estimator"] == DATE_SOURCE}
+
+            def _when(row) -> str:
+                if row["hi_utc"] - row["lo_utc"] > 2 * 86400:  # an estimated range (recon_v1)
+                    return f"{_fmt(row['lo_utc'], True)} – {_fmt(row['hi_utc'], True)} (estimated)"
+                conf = row["confidence"]
+                return _fmt(row["point_utc"], True) + ("" if conf == "sure" else f" ({conf})")
+
+            when = " · ".join(f"{EVENT_LABEL[e]} {_when(ft[e])}" for e in ("last_user_edit", "arrived_here") if e in ft)
             why = r.reasons[0] if r.reasons else ""
             item = QListWidgetItem(f"{Path(r.rel_path).name}\n{r.rel_path}\n{when}\nWhy: {why}")
             item.setToolTip(r.snippet or r.rel_path)
@@ -471,8 +478,8 @@ class MainWindow(QMainWindow):
             html.append(f"<h4>Evidence</h4><p>{escape(r.snippet)}</p>")
         html.append("<h4>Dates for this file</h4><table cellpadding='3'>"
                     "<tr><th align='left'>event</th><th align='left'>estimate</th><th align='left'>how</th></tr>")
-        for row_ in sorted(d["file_time"], key=lambda x: (x["estimator"] != "rules_v0", x["event"])):
-            if row_["estimator"] != "rules_v0":
+        for row_ in sorted(d["file_time"], key=lambda x: x["event"]):
+            if row_["estimator"] != DATE_SOURCE:
                 continue
             span = (_fmt(row_["point_utc"]) if row_["hi_utc"] - row_["lo_utc"] <= 2
                     else f"{_fmt(row_['lo_utc'], True)} – {_fmt(row_['hi_utc'], True)}")

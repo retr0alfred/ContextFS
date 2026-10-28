@@ -715,10 +715,12 @@ def _folder_of(rel_path: str) -> str:
     return rel_path.rsplit("/", 1)[0] if "/" in rel_path else ""
 
 
-def estimate_folder(conn, root_id: int, folder: str, bulk_events, estimators=None):
+def estimate_folder(conn, root_id: int, folder: str, bulk_events, estimators=None, evidence_hook=None):
     """(file_ids, file_time rows) for one folder's direct children; writes nothing.
 
     Shared by ``recompute_times`` and the fitting harness, so both run exactly the same estimation.
+    ``evidence_hook(rel_path, rows) -> rows`` lets the *evaluation harness* perturb evidence for
+    robustness checks (log.md Phase 34); the engine never passes one.
     """
     # Direct children only, through the (root_id, rel_path) index: a range on the "folder/"
     # prefix ('0' is the character after '/'), not a LIKE that fetched the whole subtree
@@ -754,6 +756,9 @@ def estimate_folder(conn, root_id: int, folder: str, bulk_events, estimators=Non
             part,
         ):
             first_seen[r["file_id"]] = r["at"]
+    if evidence_hook is not None:
+        rel = {f["file_id"]: f["rel_path"] for f in files}
+        ev_rows = {i: evidence_hook(rel[i], rows) for i, rows in ev_rows.items()}
     births = {i: ev_rows[i]["ntfs:created"]["utc_s"] for i in ids if "ntfs:created" in ev_rows[i]}
     sibling_created = sorted(
         r["utc_s"]
