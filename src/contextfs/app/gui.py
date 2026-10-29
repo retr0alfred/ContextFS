@@ -55,6 +55,12 @@ DATE_SOURCE = "recon_v1"
 EVENT_LABEL = {"authored": "Written", "arrived_here": "Came into your files", "last_user_edit": "Last edited"}
 
 
+def child_args(settings: Settings, index_dir: Path) -> list[str]:
+    """The indexer child's arguments: the GPU only when the user turned it on (Decision 110)."""
+    gpu = "auto" if settings.gpu == "auto" else "off"
+    return ["--indexer", "--gpu", gpu, str(index_dir), *settings.roots]
+
+
 def _fmt(utc: int | None, resolution_day: bool = False) -> str:
     if utc is None:
         return "—"
@@ -280,8 +286,7 @@ class MainWindow(QMainWindow):
     # -- indexing child -----------------------------------------------------------------------
 
     def _child_command(self) -> tuple[str, list[str]]:
-        gpu = "auto" if self.settings.gpu == "auto" else "off"
-        args = ["--indexer", "--gpu", gpu, str(self.index_dir), *self.settings.roots]
+        args = child_args(self.settings, self.index_dir)
         if getattr(sys, "frozen", False):
             return sys.executable, args
         return sys.executable, ["-m", "contextfs.app", *args]

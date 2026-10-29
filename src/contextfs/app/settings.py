@@ -1,9 +1,9 @@
 r"""User settings shared by the GUI and the CLI (ADR-0013, ADR-0005 §6).
 
 Stored as JSON in ``%LOCALAPPDATA%\ContextFS\settings.json`` (or ``CONTEXTFS_HOME``). The first
-run writes it once; Settings can change roots, exclusions, index location and GPU use at any
-time. The index location is refused inside a scanned, non-excluded root, on a network share, or
-in a OneDrive-synced folder (ADR-0005 Rev. 1, ADR-0016).
+run writes it once; Settings can change roots, exclusions, index location and GPU use (off by
+default) at any time. The index location is refused inside a scanned, non-excluded root, on a
+network share, or in a OneDrive-synced folder (ADR-0005 Rev. 1, ADR-0016).
 """
 
 from __future__ import annotations
@@ -13,7 +13,10 @@ import os
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
 
-__all__ = ["Settings", "home_dir", "validate_index_dir"]
+__all__ = ["SETTINGS_VERSION", "Settings", "home_dir", "validate_index_dir"]
+
+#: 2 = CPU indexing by default (Decision 110); 1 = the GPU was on by default.
+SETTINGS_VERSION = 2
 
 
 def home_dir() -> Path:
@@ -32,8 +35,11 @@ class Settings:
     roots: list[str] = field(default_factory=list)
     excluded_names: list[str] = field(default_factory=list)  # extra names, on top of defaults
     index_dir: str = ""
-    gpu: str = "auto"  # auto | off
+    # CPU by default (log.md Decision 110): the GPU saved ~5% of index time at 10k files but
+    # added ~430 MB of indexer memory. The GPU stays an explicit choice in Settings.
+    gpu: str = "off"  # off | auto
     first_run_done: bool = False
+    version: int = SETTINGS_VERSION
 
     @classmethod
     def load(cls) -> Settings:
@@ -43,8 +49,12 @@ class Settings:
             return cls(index_dir=str(home_dir() / "index"))
         data = json.loads(path.read_text(encoding="utf-8"))
         known = {k: v for k, v in data.items() if k in cls.__dataclass_fields__}
-        s = cls(**known)
+        s = cls(**{"version": 1, **known})
         s.index_dir = s.index_dir or str(home_dir() / "index")
+        if s.version < 2:
+            # Version 1 files stored the old default, "auto", whether or not anyone chose it, so the
+            # GPU is turned off once; switching it back on in Settings is then remembered.
+            s.gpu, s.version = "off", 2
         return s
 
     def save(self) -> None:
