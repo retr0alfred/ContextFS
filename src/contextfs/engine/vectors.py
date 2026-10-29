@@ -52,6 +52,26 @@ class VectorFiles:
             os.fsync(fh.fileno())
         return start
 
+    def item_rows(self, conn, kind: str) -> tuple[dict[int, int], int]:
+        """({item_id: row}, rows in the file): the row ``load`` would return for each item.
+
+        Valid, committed rows only; where an item has several, the last one wins, as in a dict built
+        from ``load``'s output. Streams the table instead of fetching it whole.
+        """
+        total = self.rows(kind)
+        out: dict[int, int] = {}
+        for r in conn.execute("SELECT item_id, row FROM vectors WHERE kind=? AND valid=1 ORDER BY row", (kind,)):
+            if r["row"] < total:
+                out[int(r["item_id"])] = int(r["row"])
+        return out, total
+
+    def mapped(self, kind: str, total: int) -> np.ndarray:
+        """The first ``total`` rows as a read-only memory map: rows are read only when indexed.
+
+        For the indexer, which is the only writer; the search side keeps using ``load``.
+        """
+        return np.memmap(self._path(kind), dtype=np.float32, mode="r", shape=(total, DIM))
+
     def load(self, conn, kind: str) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
         """(matrix, item_ids, file_ids) for the *valid, committed* rows of ``kind``."""
         rows = conn.execute(

@@ -84,9 +84,17 @@ def rebuild_sessions(conn) -> int:
     from pathlib import Path
 
     index_dir = Path(conn.execute("PRAGMA database_list").fetchone()["file"]).parent
-    mat, item_ids, _ = VectorFiles(index_dir / "vectors").load(conn, "doc")
-    vec_of = {int(f): mat[i] for i, f in enumerate(item_ids)}
+    # Vectors are gathered block by block from a memory map, not loaded whole: the same values,
+    # without holding every document vector (twice) in memory at the end of a scan (log.md Phase 36).
+    vf = VectorFiles(index_dir / "vectors")
+    row_of, total = vf.item_rows(conn, "doc")
+    data = vf.mapped("doc", total) if total and row_of else None
     zero = np.zeros(DIM, np.float32)
+
+    def vec(file_id: int) -> np.ndarray:
+        row = row_of.get(int(file_id))
+        return zero if row is None or data is None else np.array(data[row])
+
     blocks, cur = [], [rows[0]]
     for prev, r in zip(rows, rows[1:], strict=False):
         if (r["point_utc"] - prev["point_utc"]) / 3600.0 > G_HOURS or len(cur) >= B_MAX:
@@ -97,7 +105,7 @@ def rebuild_sessions(conn) -> int:
     out, n_sessions = [], 0
     for b_index, block in enumerate(blocks):
         times = np.array([r["point_utc"] for r in block], dtype=np.float64)
-        vecs = np.stack([vec_of.get(r["file_id"], zero) for r in block])
+        vecs = np.stack([vec(r["file_id"]) for r in block])
         folders = [r["rel_path"].rsplit("/", 1)[0] if "/" in r["rel_path"] else "" for r in block]
         labels = _cluster(times, vecs, folders)
         groups: dict[int, list[int]] = {}
@@ -108,6 +116,7 @@ def rebuild_sessions(conn) -> int:
                 continue  # singletons are not sessions
             n_sessions += 1
             out += [(fid, f"s{b_index}-{lab}", f"b{b_index}") for fid in members]
+    data = None  # release the mapping before anything else touches the vector file
     conn.executemany("INSERT INTO sessions(file_id, session_id, block_id) VALUES (?,?,?)", out)
     conn.commit()
     return n_sessions
