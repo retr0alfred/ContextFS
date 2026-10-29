@@ -1,0 +1,8 @@
+A/B, 2026-10-29 ~21:25: indexer private memory (MB) every 5 s for the first 60 s of a fresh index of the
+same 100,300-file corpus (--gpu off). Script: C:\ContextFS-scratch\tmp\ab_start.py (scratch).
+old f79cb80a         [663, 1067, 976, 980, 1348, 1248, 1248, 1248, 1348, 1348, 1349, 1248]
+new 69d3e019         [549, 969, 975, 978, 980, 979, 1080, 979, 1080, 979, 980, 980]
+old f79cb80a again   [649, 965, 977, 980, 974, 1076, 976, 977, 977, 1077, 977, 1078]
+Reading: the ~+270 MB plateau seen in the first 100k run is run-dependent (the same build shows it in
+one run and not the next): ONNX Runtime's CPU arena keeps the size of the largest batch it has seen.
+It is not caused by, or removed by, the Phase 8 code change.
