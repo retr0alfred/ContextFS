@@ -38,6 +38,7 @@ class Settings:
     # CPU by default (log.md Decision 110): the GPU saved ~5% of index time at 10k files but
     # added ~430 MB of indexer memory. The GPU stays an explicit choice in Settings.
     gpu: str = "off"  # off | auto
+    theme: str = "system"  # system | light | dark (appearance only)
     first_run_done: bool = False
     version: int = SETTINGS_VERSION
 

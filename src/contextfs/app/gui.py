@@ -1,14 +1,16 @@
-"""ContextFS desktop GUI MVP (ADR-0001, ADR-0002, ADR-0013).
+"""ContextFS desktop window (ADR-0001, ADR-0002, ADR-0013; design: log.md Phase 36).
 
 - **First run** (three pages): places, exclusions, what to expect. Saved; never asked again.
 - **Every launch**: the window opens on the existing index; an indexer child process updates it,
-  with a progress chip and Cancel. Search never waits.
-- **Search**: one box, any query. Each row shows the file, its dates *by event*, the gated "why"
-  line and a snippet, with Open file / Open folder.
-- **Details**: the "Dates for this file" panel lists every raw time clue and each estimator's
-  per-event interval with its confidence. This is direction A made visible.
+  with progress in the status line and Cancel. Search never waits. **Update** (F5) runs it again.
+- **Search**: one box, any query. The line under it shows how the query was understood, with the
+  Time and File type switches. Each result shows the file, its folder, its dates *by event* and
+  why it was found.
+- **Details**: Open / Show in folder, why it ranks there, the evidence, and "Dates for this file":
+  each event's estimate, how sure it is and what it is based on, then the raw time clues.
 
 Searches run on one worker thread with a read-only engine. The GUI process never writes the index.
+The look (``app.theme``) is presentation only: what is searched, ranked and shown is unchanged.
 """
 
 from __future__ import annotations
@@ -21,14 +23,27 @@ import sys
 from html import escape
 from pathlib import Path
 
-from PySide6.QtCore import QObject, QProcess, QRunnable, Qt, QThreadPool, QTimer, Signal, Slot
-from PySide6.QtGui import QKeySequence, QShortcut
+from PySide6.QtCore import (
+    QObject,
+    QProcess,
+    QRect,
+    QRunnable,
+    QSize,
+    Qt,
+    QThreadPool,
+    QTimer,
+    Signal,
+    Slot,
+)
+from PySide6.QtGui import QColor, QFont, QFontMetrics, QKeySequence, QPainter, QShortcut
 from PySide6.QtWidgets import (
+    QAbstractItemView,
     QApplication,
     QCheckBox,
+    QComboBox,
     QDialog,
-    QDialogButtonBox,
     QFileDialog,
+    QFrame,
     QHBoxLayout,
     QLabel,
     QLineEdit,
@@ -39,7 +54,10 @@ from PySide6.QtWidgets import (
     QPlainTextEdit,
     QPushButton,
     QSplitter,
+    QStackedWidget,
     QStatusBar,
+    QStyle,
+    QStyledItemDelegate,
     QTextBrowser,
     QVBoxLayout,
     QWidget,
@@ -48,11 +66,39 @@ from PySide6.QtWidgets import (
 )
 
 from contextfs.app.settings import Settings, validate_index_dir
+from contextfs.app.theme import glyph_icon, theme
 from contextfs.engine.fsio import DEFAULT_EXCLUDED_NAMES, plain_path
 
 #: The estimator whose dates the window shows and ranks with (log.md Phase 34, Decision 107).
 DATE_SOURCE = "recon_v1"
 EVENT_LABEL = {"authored": "Written", "arrived_here": "Came into your files", "last_user_edit": "Last edited"}
+#: How sure a date is, in words ("sure" needs no word).
+CONF_WORD = {"sure": "", "probably": "probably", "unknown": "uncertain"}
+#: What each recon_v1 method rests on, in plain words (the method name is shown beside it).
+HOW = {
+    "infile_created": "the document's own “created” date",
+    "fs_min": "the file system's dates",
+    "copy_mtime": "the modified date, which survived a copy",
+    "download_no_infile": "when it was downloaded",
+    "reset_no_infile": "estimated: a copy reset this file's dates",
+    "own_created": "the same as when it was written",
+    "download_birth": "when it was downloaded",
+    "download_copy_mtime": "the download date, which survived a copy",
+    "download_reset": "estimated: downloaded, then copied with its dates reset",
+    "camera_import_birth": "when the photo was imported",
+    "camera_copied": "estimated from when the photo was taken",
+    "moved_unmarked": "estimated: copied in, with no download or camera clue",
+    "fs_mtime": "the file's modified date",
+    "fs_mtime_after_copy": "a save after the file was copied",
+    "reset_infile_modified": "the document's own “modified” date",
+    "reset_infile_unedited": "weak estimate: a copy reset its dates",
+    "reset_no_evidence": "estimated: a copy reset its dates and left no clue",
+    "download_edited": "a save after it was downloaded",
+    "photo_edited": "an edit after the photo was taken and imported",
+}
+CLUE_SOURCE = {"ntfs": "File system", "pdf": "PDF metadata", "ooxml": "Office document", "exif": "Photo (EXIF)",
+               "zip": "Archive entries", "motw": "Download mark"}
+EXAMPLES = ("the PDF I downloaded before my exam", "budget spreadsheet from March", "slides from the hackathon weekend")
 
 
 def child_args(settings: Settings, index_dir: Path) -> list[str]:
@@ -70,9 +116,68 @@ def _fmt(utc: int | None, resolution_day: bool = False) -> str:
     return dt.strftime("%d %b %Y") if resolution_day else dt.strftime("%d %b %Y, %H:%M")
 
 
+def _month(utc: int) -> str:
+    from contextfs.engine.timeev import local_datetime
+
+    return local_datetime(utc).strftime("%b %Y")
+
+
+def when_short(row: dict) -> str:
+    """One event's date for a result row: a day, or a month range when it is an estimate."""
+    if row["hi_utc"] - row["lo_utc"] > 2 * 86400:  # an estimated range (recon_v1)
+        lo, hi = _month(row["lo_utc"]), _month(row["hi_utc"])
+        return f"{lo} – {hi}, estimated" if lo != hi else f"{lo}, estimated"
+    word = CONF_WORD.get(row["confidence"], row["confidence"])
+    return _fmt(row["point_utc"], True) + (f" ({word})" if word else "")
+
+
 # ---------------------------------------------------------------------------------------------
 # First run
 # ---------------------------------------------------------------------------------------------
+
+
+def _note(text: str, role: str = "muted") -> QLabel:
+    lab = QLabel(text)
+    lab.setWordWrap(True)
+    lab.setProperty("role", role)
+    return lab
+
+
+def _button(text: str, icon: str | None = None, variant: str | None = None, tip: str = "") -> QPushButton:
+    b = QPushButton(text)
+    if variant:
+        b.setProperty("variant", variant)
+    if icon:
+        b.setProperty("glyph", icon)
+    if tip:
+        b.setToolTip(tip)
+    b.setCursor(Qt.CursorShape.PointingHandCursor)
+    return b
+
+
+def _refresh_icons(root: QWidget) -> None:
+    """Redraw every glyph button in the current ink (after a theme change)."""
+    for b in root.findChildren(QPushButton):
+        name = b.property("glyph")
+        if name:
+            col = theme.c.on_ink if b.property("variant") == "primary" else theme.c.text
+            b.setIcon(glyph_icon(name, col))
+
+
+def _wizard_page(title: str, subtitle: str = "") -> tuple[QWizardPage, QVBoxLayout]:
+    """A first-run page whose heading lines up with its content (Qt's own header is not used)."""
+    page = QWizardPage()
+    lay = QVBoxLayout(page)
+    lay.setContentsMargins(8, 4, 8, 4)
+    lay.setSpacing(10)
+    t = QLabel(title)
+    t.setProperty("role", "title")
+    t.setWordWrap(True)
+    lay.addWidget(t)
+    if subtitle:
+        lay.addWidget(_note(subtitle))
+    lay.addSpacing(4)
+    return page, lay
 
 
 class FirstRun(QWizard):
@@ -83,14 +188,21 @@ class FirstRun(QWizard):
         super().__init__()
         self.settings = settings
         self.setWindowTitle("Set up ContextFS")
+        self.setWizardStyle(QWizard.WizardStyle.ClassicStyle)
+        self.setOption(QWizard.WizardOption.NoBackButtonOnStartPage, True)
+        for which in (QWizard.WizardButton.NextButton, QWizard.WizardButton.FinishButton):
+            b = self.button(which)
+            b.setProperty("variant", "primary")
+            b.style().unpolish(b)  # a property set after creation needs a re-polish to restyle
+            b.style().polish(b)
+        self.resize(640, 520)
         self.roots = QListWidget()
-        places = QWizardPage()
-        places.setTitle("Which folders should ContextFS search?")
-        places.setSubTitle("Pick one or more folders, or a whole drive. You can change this later in Settings.")
-        add, remove = QPushButton("Add folder…"), QPushButton("Remove")
+        places, lay = _wizard_page("Which folders should ContextFS search?",
+                                   "Pick one or more folders, or a whole drive. You can change this later in Settings.")
+        add = _button("Add folder…", "add")
+        remove = _button("Remove", "remove", "quiet")
         add.clicked.connect(self._add)
         remove.clicked.connect(lambda: [self.roots.takeItem(self.roots.row(i)) for i in self.roots.selectedItems()])
-        lay = QVBoxLayout(places)
         lay.addWidget(self.roots)
         row = QHBoxLayout()
         row.addWidget(add)
@@ -99,31 +211,37 @@ class FirstRun(QWizard):
         lay.addLayout(row)
         onedrive = os.environ.get("ONEDRIVE")  # Windows env names are case-insensitive
         if onedrive:
-            lay.addWidget(QLabel(f"OneDrive found at {onedrive}. Files that are online-only are indexed by name "
-                                 "and dates and are never downloaded."))
+            lay.addWidget(_note(f"OneDrive found at {onedrive}. Files that are online-only are indexed by name "
+                                "and dates and are never downloaded."))
         self.addPage(places)
 
-        excl = QWizardPage()
-        excl.setTitle("What should be skipped?")
-        excl.setSubTitle("System folders (Windows, Program Files, AppData) are always skipped. These folder "
-                         "names are skipped anywhere; add your own, one per line.")
+        excl, xl = _wizard_page("What should be skipped?",
+                                "System folders (Windows, Program Files, AppData) are always skipped. These folder "
+                                "names are skipped anywhere; add your own, one per line.")
         self.extra = QPlainTextEdit("\n".join(sorted(DEFAULT_EXCLUDED_NAMES)))
-        QVBoxLayout(excl).addWidget(self.extra)
+        xl.addWidget(self.extra)
         self.addPage(excl)
 
-        expect = QWizardPage()
-        expect.setTitle("What to expect")
-        QVBoxLayout(expect).addWidget(QLabel(
-            "• ContextFS reads your files but never changes, moves or deletes them.\n"
-            "• Everything stays on this computer. There is no internet use and no telemetry.\n"
-            "• The first index takes a while (minutes for a few thousand files, longer for a whole drive).\n"
-            "  You can search while it runs; results get better as it goes.\n"
-            "• Every result tells you why it was found, including which dates it trusted."))
+        expect, el = _wizard_page("What to expect")
+        for head, body in (
+            ("Your files are only read.", "ContextFS never changes, moves or deletes them."),
+            ("Everything stays on this computer.", "There is no internet use and no telemetry."),
+            ("The first index takes a while.", "Minutes for a few thousand files, longer for a whole drive. "
+                                               "You can search while it runs; results get better as it goes."),
+            ("Every result says why it was found,", "including which dates it trusted and how sure they are."),
+        ):
+            h = QLabel(head)
+            h.setProperty("role", "heading")
+            el.addWidget(h)
+            el.addWidget(_note(body))
+            el.addSpacing(2)
+        el.addStretch()
         self.addPage(expect)
+        _refresh_icons(self)
 
     def _add(self) -> None:
         folder = QFileDialog.getExistingDirectory(self, "Choose a folder or drive")
-        if folder and not self.roots.findItems(folder, Qt.MatchExactly):
+        if folder and not self.roots.findItems(folder, Qt.MatchFlag.MatchExactly):
             self.roots.addItem(folder)
 
     def accept(self) -> None:
@@ -200,6 +318,87 @@ class SearchJob(QRunnable):
 
 
 # ---------------------------------------------------------------------------------------------
+# Result rows
+# ---------------------------------------------------------------------------------------------
+
+ROW = Qt.ItemDataRole.UserRole + 1
+
+
+class ResultDelegate(QStyledItemDelegate):
+    """One result: name and type, folder, dates by event, why it was found."""
+
+    PAD_X, PAD_Y, GAP = 16, 11, 3
+
+    def _fonts(self) -> tuple[QFont, QFont, QFont]:
+        base = QApplication.font()
+        name = QFont(base)
+        name.setPixelSize(14)
+        name.setWeight(QFont.Weight.DemiBold)
+        small = QFont(base)
+        small.setPixelSize(12)
+        tag = QFont(base)
+        tag.setPixelSize(11)
+        tag.setWeight(QFont.Weight.DemiBold)
+        return name, small, tag
+
+    def sizeHint(self, option, index) -> QSize:  # noqa: N802 - Qt API
+        """Fixed height: three or four lines."""
+        name, small, _ = self._fonts()
+        d = index.data(ROW) or {}
+        lines = 2 + bool(d.get("when")) + bool(d.get("why"))
+        h = QFontMetrics(name).height() + (lines - 1) * (QFontMetrics(small).height() + self.GAP)
+        return QSize(option.rect.width(), h + 2 * self.PAD_Y + 2)
+
+    def paint(self, p: QPainter, option, index) -> None:
+        """Draw the row in the current palette."""
+        d = index.data(ROW) or {}
+        c = theme.c
+        name_f, small_f, tag_f = self._fonts()
+        r = option.rect
+        p.save()
+        p.setRenderHint(QPainter.RenderHint.Antialiasing)
+        box = r.adjusted(6, 3, -6, -3)
+        if option.state & QStyle.StateFlag.State_Selected:
+            p.setPen(Qt.PenStyle.NoPen)
+            p.setBrush(QColor(c.selected))
+            p.drawRoundedRect(box, 6, 6)
+            p.setBrush(QColor(c.ink))
+            p.drawRoundedRect(QRect(box.left(), box.top() + 10, 3, box.height() - 20), 1.5, 1.5)
+        elif option.state & QStyle.StateFlag.State_MouseOver:
+            p.setPen(Qt.PenStyle.NoPen)
+            p.setBrush(QColor(c.hover))
+            p.drawRoundedRect(box, 6, 6)
+        x, w = r.left() + self.PAD_X, r.width() - 2 * self.PAD_X
+        y = r.top() + self.PAD_Y
+        # line 1: name, and the type on the right
+        p.setFont(tag_f)
+        tag = d.get("kind", "")
+        tag_w = QFontMetrics(tag_f).horizontalAdvance(tag) + (10 if tag else 0)
+        nh = QFontMetrics(name_f).height()
+        if tag:
+            p.setPen(QColor(c.faint))
+            p.drawText(QRect(x + w - tag_w, y, tag_w, nh), Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter, tag)
+        p.setFont(name_f)
+        p.setPen(QColor(c.text))
+        p.drawText(QRect(x, y, w - tag_w, nh), Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter,
+                   QFontMetrics(name_f).elidedText(d.get("name", ""), Qt.TextElideMode.ElideMiddle, w - tag_w))
+        y += nh + self.GAP
+        sh = QFontMetrics(small_f).height()
+        p.setFont(small_f)
+        for key, col, mode in (("folder", c.muted, Qt.TextElideMode.ElideMiddle),
+                               ("when", c.muted, Qt.TextElideMode.ElideRight),
+                               ("why", c.faint, Qt.TextElideMode.ElideRight)):
+            text = d.get(key)
+            if not text:
+                continue
+            p.setPen(QColor(col))
+            p.drawText(QRect(x, y, w, sh), Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter,
+                       QFontMetrics(small_f).elidedText(text, mode, w))
+            y += sh + self.GAP
+        p.restore()
+
+
+# ---------------------------------------------------------------------------------------------
 # Main window
 # ---------------------------------------------------------------------------------------------
 
@@ -216,72 +415,221 @@ class MainWindow(QMainWindow):
         self.pool.setMaxThreadCount(1)
         self.seq, self.reopen, self.proc = 0, False, None
         self._live_jobs: dict[int, SearchJob] = {}  # in-flight searches, owned by this thread
-        self.setWindowTitle("ContextFS — find files by what you remember")
-        self.resize(1200, 760)
+        self.setWindowTitle("ContextFS")
+        self.resize(1240, 800)
+        self.setMinimumSize(860, 560)
+        self.current = None
 
+        # -- header: search, Update, Settings
         self.box = QLineEdit()
-        self.box.setPlaceholderText('Describe the file: "the PDF I downloaded before my ML exam", '
-                                    '"budget sheet from March"…')
+        self.box.setObjectName("search")
+        self.box.setPlaceholderText('Describe the file: words from it, what kind of file, roughly when…')
         self.box.setAccessibleName("Search")
+        self.box.setClearButtonEnabled(True)
         self.box.returnPressed.connect(self.search)
-        self.read_as = QLabel("")
-        self.use_time, self.use_kind = QCheckBox("use time"), QCheckBox("use file type")
-        for cb in (self.use_time, self.use_kind):
-            cb.setChecked(True)
-            cb.toggled.connect(lambda _=None: self.search())
-        self.results = QListWidget()
-        self.results.setAccessibleName("Results")
-        self.results.currentRowChanged.connect(self.show_details)
-        self.results.itemDoubleClicked.connect(lambda _: self.open_file())
-        self.details = QTextBrowser()
-        self.details.setOpenExternalLinks(False)
-        open_btn, folder_btn = QPushButton("Open file"), QPushButton("Open folder")
-        open_btn.clicked.connect(self.open_file)
-        folder_btn.clicked.connect(self.open_folder)
-
-        top = QHBoxLayout()
-        top.addWidget(self.box, 1)
-        settings_btn = QPushButton("Settings")
+        self._search_icon = self.box.addAction(glyph_icon("search", theme.c.faint), QLineEdit.ActionPosition.LeadingPosition)
+        self.update_btn = _button("Update", "refresh", tip="Check your folders for new and changed files (F5)")
+        self.update_btn.clicked.connect(self.start_update)
+        settings_btn = _button("Settings", "settings", tip="Folders, graphics card, appearance, your index (Ctrl+,)")
         settings_btn.clicked.connect(self.open_settings)
-        top.addWidget(settings_btn)
-        right = QWidget()
-        rl = QVBoxLayout(right)
-        rl.addWidget(self.details, 1)
-        btns = QHBoxLayout()
-        btns.addWidget(open_btn)
-        btns.addWidget(folder_btn)
-        rl.addLayout(btns)
-        split = QSplitter()
-        split.addWidget(self.results)
-        split.addWidget(right)
-        split.setSizes([700, 500])
-        central = QWidget()
-        lay = QVBoxLayout(central)
-        lay.addLayout(top)
+        for b in (self.update_btn, settings_btn):
+            b.setFixedHeight(40)
+        header = QHBoxLayout()
+        header.setSpacing(8)
+        header.addWidget(self.box, 1)
+        header.addWidget(self.update_btn)
+        header.addWidget(settings_btn)
+
+        # -- how the query was read, and the two switches
+        self.read_as = QLabel("")
+        self.read_as.setProperty("role", "muted")
+        self.read_as.setTextFormat(Qt.TextFormat.RichText)
+        self.use_time = _button("Time", variant="pill", tip="Use dates when ranking. Turn off if a remembered date "
+                                                             "might be wrong.")
+        self.use_kind = _button("File type", variant="pill", tip="Use the kind of file (PDF, slides, photo…) when "
+                                                                  "ranking.")
+        for b in (self.use_time, self.use_kind):
+            b.setCheckable(True)
+            b.setChecked(True)
+            b.toggled.connect(lambda _=None: self.search())
+        use = QLabel("Use")
+        use.setProperty("role", "faint")
         chips = QHBoxLayout()
+        chips.setSpacing(6)
         chips.addWidget(self.read_as, 1)
+        chips.addWidget(use)
         chips.addWidget(self.use_time)
         chips.addWidget(self.use_kind)
+
+        # -- left pane: start page / results / nothing found
+        self.results = QListWidget()
+        self.results.setObjectName("results")
+        self.results.setAccessibleName("Results")
+        self.results.setItemDelegate(ResultDelegate(self.results))
+        self.results.setMouseTracking(True)
+        self.results.setVerticalScrollMode(QAbstractItemView.ScrollMode.ScrollPerPixel)
+        self.results.setUniformItemSizes(False)
+        self.results.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        self.results.currentRowChanged.connect(self.show_details)
+        self.results.itemDoubleClicked.connect(lambda _: self.open_file())
+        self.left = QStackedWidget()
+        self.left.addWidget(self._start_page())
+        self.left.addWidget(self.results)
+        self.nothing = _note("", "muted")
+        self.nothing.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.left.addWidget(self.nothing)
+        left_pane = self._pane(self.left)
+
+        # -- right pane: header with actions, then the details
+        self.d_name = QLabel("")
+        self.d_name.setProperty("role", "title")
+        self.d_name.setWordWrap(True)
+        self.d_name.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
+        self.d_path = QLineEdit()
+        self.d_path.setReadOnly(True)
+        self.d_path.setFrame(False)
+        self.d_path.setObjectName("path")
+        self.d_path.setAccessibleName("Full path")
+        self.open_btn = _button("Open", "open", "primary", "Open with its usual app (Enter)")
+        self.folder_btn = _button("Show in folder", "folder", tip="Show it in File Explorer (Ctrl+E)")
+        self.open_btn.clicked.connect(self.open_file)
+        self.folder_btn.clicked.connect(self.open_folder)
+        acts = QHBoxLayout()
+        acts.setSpacing(8)
+        acts.addWidget(self.open_btn)
+        acts.addWidget(self.folder_btn)
+        acts.addStretch()
+        self.details = QTextBrowser()
+        self.details.setObjectName("details")
+        self.details.setOpenExternalLinks(False)
+        self.details.setViewportMargins(14, 2, 10, 10)
+        head = QWidget()
+        hl = QVBoxLayout(head)
+        hl.setContentsMargins(20, 18, 20, 12)
+        hl.setSpacing(6)
+        hl.addWidget(self.d_name)
+        hl.addWidget(self.d_path)
+        hl.addSpacing(6)
+        hl.addLayout(acts)
+        rule = QFrame()
+        rule.setObjectName("rule")
+        body = QWidget()
+        bl = QVBoxLayout(body)
+        bl.setContentsMargins(0, 0, 0, 0)
+        bl.setSpacing(0)
+        bl.addWidget(head)
+        bl.addWidget(rule)
+        bl.addWidget(self.details, 1)
+        self.right = QStackedWidget()
+        self.right.addWidget(_note("Select a result to see why it was found and what its dates are based on.",
+                                   "faint"))
+        self.right.widget(0).setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.right.addWidget(body)
+        right_pane = self._pane(self.right)
+
+        split = QSplitter()
+        split.addWidget(left_pane)
+        split.addWidget(right_pane)
+        split.setSizes([640, 560])
+        split.setChildrenCollapsible(False)
+        split.setHandleWidth(12)
+        central = QWidget()
+        lay = QVBoxLayout(central)
+        lay.setContentsMargins(16, 14, 16, 10)
+        lay.setSpacing(10)
+        lay.addLayout(header)
         lay.addLayout(chips)
         lay.addWidget(split, 1)
         self.setCentralWidget(central)
+
         self.status = QStatusBar()
-        self.cancel_btn = QPushButton("Cancel update")
+        self.status.setSizeGripEnabled(False)
+        self.cancel_btn = _button("Cancel update", "cancel", "quiet")
         self.cancel_btn.clicked.connect(self.cancel_update)
         self.cancel_btn.hide()
         self.status.addPermanentWidget(self.cancel_btn)
         self.setStatusBar(self.status)
-        self.current = None
+        self._set_actions_enabled(False)
         from contextfs.app.winjob import ChildJob
 
         self.job = ChildJob()  # the child dies with this window, and has a memory limit (ADR-0001)
         self.restarts, self.restarts_total, self.closing, self.user_cancelled = 0, 0, False, False
         QShortcut(QKeySequence("F5"), self, activated=self.start_update)  # Refresh (ADR-0001 §4)
+        QShortcut(QKeySequence("Ctrl+L"), self, activated=self._focus_search)
+        QShortcut(QKeySequence("Ctrl+F"), self, activated=self._focus_search)
+        QShortcut(QKeySequence("Ctrl+,"), self, activated=self.open_settings)
+        QShortcut(QKeySequence("Ctrl+E"), self, activated=self.open_folder)
+        for key, widget, slot in ((Qt.Key.Key_Return, self.results, self.open_file),
+                                  (Qt.Key.Key_Down, self.box, self._focus_results)):
+            QShortcut(QKeySequence(key), widget, activated=slot).setContext(Qt.ShortcutContext.WidgetShortcut)
+        theme.changed.connect(self._restyle)
+        self._restyle()
         QTimer.singleShot(200, self.start_update)
         if os.environ.get("CONTEXTFS_SELFDRIVE"):  # hardening suite only; inert otherwise
             from contextfs.app.autotest import attach
 
             attach(self, os.environ["CONTEXTFS_SELFDRIVE"])
+
+    # -- layout helpers ------------------------------------------------------------------------
+
+    @staticmethod
+    def _pane(inner: QWidget) -> QFrame:
+        f = QFrame()
+        f.setObjectName("pane")
+        lay = QVBoxLayout(f)
+        lay.setContentsMargins(1, 1, 1, 1)
+        lay.addWidget(inner)
+        return f
+
+    def _start_page(self) -> QWidget:
+        page = QWidget()
+        lay = QVBoxLayout(page)
+        lay.setContentsMargins(28, 28, 28, 28)
+        lay.setSpacing(8)
+        lay.addStretch(2)
+        title = QLabel("Find a file by what you remember")
+        title.setProperty("role", "title")
+        lay.addWidget(title)
+        lay.addWidget(_note("Words from it, what kind of file it was, roughly when you had it — in any order. "
+                            "Every result says why it was found."))
+        lay.addSpacing(10)
+        try_ = QLabel("For example")
+        try_.setProperty("role", "faint")
+        lay.addWidget(try_)
+        for ex in EXAMPLES:
+            b = _button(f"“{ex}”", "search", "quiet", "Search for this")
+            b.setStyleSheet("text-align: left; padding-left: 0;")
+            b.clicked.connect(lambda _=None, q=ex: (self.box.setText(q), self.search()))
+            lay.addWidget(b, 0, Qt.AlignmentFlag.AlignLeft)
+        lay.addSpacing(12)
+        self.scope = _note("", "faint")
+        lay.addWidget(self.scope)
+        lay.addStretch(3)
+        return page
+
+    def _restyle(self) -> None:
+        """Redraw what the stylesheet cannot: glyphs, rows and the details document."""
+        _refresh_icons(self)
+        self._search_icon.setIcon(glyph_icon("search", theme.c.faint))
+        n = len(self.settings.roots)
+        self.scope.setText(f"Searching {n} folder{'s' if n != 1 else ''}. Index: {self.index_dir}" if n
+                           else "No folders chosen yet: add some in Settings.")
+        self.results.viewport().update()
+        if self.current is not None:
+            self.show_details(self.results.currentRow())
+
+    def _focus_search(self) -> None:
+        self.box.setFocus()
+        self.box.selectAll()
+
+    def _focus_results(self) -> None:
+        if self.results.count():
+            self.results.setFocus()
+            self.results.setCurrentRow(max(0, self.results.currentRow()))
+
+    def _set_actions_enabled(self, on: bool) -> None:
+        self.open_btn.setEnabled(on)
+        self.folder_btn.setEnabled(on)
 
     # -- indexing child -----------------------------------------------------------------------
 
@@ -319,6 +667,7 @@ class MainWindow(QMainWindow):
         if self.proc.waitForStarted(10000):
             self.job.assign(int(self.proc.processId()))
         self.cancel_btn.show()
+        self.update_btn.setEnabled(False)
         self.status.showMessage("Updating the index… search works meanwhile")
 
     def _child_output(self) -> None:
@@ -357,6 +706,7 @@ class MainWindow(QMainWindow):
         if code != 0 and err:
             self.status.showMessage(f"Indexing stopped (exit {code}): {err.splitlines()[-1][:200]}")
         self.cancel_btn.hide()
+        self.update_btn.setEnabled(True)
         self.proc = None
         # A hang (exit 3) or a crash: the file in progress got a strike; restarting retries it once
         # and then quarantines it, so a bad file costs a restart, never the whole scan.
@@ -442,61 +792,89 @@ class MainWindow(QMainWindow):
         frame = resp.frame
         bits = []
         for c in frame["time"]:
-            hint = "" if c["event_hint"] == "any" else f" ({EVENT_LABEL[c['event_hint']].lower()})"
-            bits.append(f"time: {c['surface']}{hint}, fading ±{c['band_days']:.0f} days")
+            hint = "" if c["event_hint"] == "any" else f" · {EVENT_LABEL[c['event_hint']].lower()}"
+            bits.append(f"time&nbsp;&nbsp;<b>{escape(c['surface'])}</b>{hint}, ±{c['band_days']:.0f} days")
         if frame["kind_word"]:
-            bits.append(f"type: {frame['kind_word']}")
-        self.read_as.setText("Read as: " + ("; ".join(bits) if bits else "words and meaning only"))
+            bits.append(f"type&nbsp;&nbsp;<b>{escape(frame['kind_word'])}</b>")
+        sep = "&nbsp;&nbsp;&nbsp;·&nbsp;&nbsp;&nbsp;"
+        self.read_as.setText("Understood as&nbsp;&nbsp;&nbsp;" + (sep.join(bits) if bits else "words and meaning only"))
         self.results.clear()
         if not resp.results:
-            self.results.addItem(QListWidgetItem("Nothing found. Try other words, or untick 'use time'."))
-            self.details.clear()
+            self.nothing.setText("Nothing found.\nTry other words, or turn off Time if the date you remember "
+                                 "might be wrong.")
+            self.left.setCurrentIndex(2)
+            self.right.setCurrentIndex(0)
+            self._set_actions_enabled(False)
             return
+        self.left.setCurrentIndex(1)
         for r in resp.results:
             ft = {row["event"]: row for row in dates[r.file_id]["file_time"] if row["estimator"] == DATE_SOURCE}
-
-            def _when(row) -> str:
-                if row["hi_utc"] - row["lo_utc"] > 2 * 86400:  # an estimated range (recon_v1)
-                    return f"{_fmt(row['lo_utc'], True)} – {_fmt(row['hi_utc'], True)} (estimated)"
-                conf = row["confidence"]
-                return _fmt(row["point_utc"], True) + ("" if conf == "sure" else f" ({conf})")
-
-            when = " · ".join(f"{EVENT_LABEL[e]} {_when(ft[e])}" for e in ("last_user_edit", "arrived_here") if e in ft)
+            when = "  ·  ".join(f"{EVENT_LABEL[e]} {when_short(ft[e])}" for e in ("last_user_edit", "arrived_here")
+                                if e in ft)
             why = r.reasons[0] if r.reasons else ""
-            item = QListWidgetItem(f"{Path(r.rel_path).name}\n{r.rel_path}\n{when}\nWhy: {why}")
+            rel = Path(r.rel_path)
+            item = QListWidgetItem()
+            item.setData(ROW, {"name": rel.name, "kind": rel.suffix.lstrip(".").upper(),
+                               "folder": str(rel.parent) if str(rel.parent) != "." else "", "when": when,
+                               "why": why[:1].upper() + why[1:]})
             item.setToolTip(r.snippet or r.rel_path)
-            item.setData(Qt.AccessibleTextRole, f"{Path(r.rel_path).name}. {why}")
+            item.setData(Qt.ItemDataRole.AccessibleTextRole, f"{rel.name}. {why}")
             self.results.addItem(item)
         self.results.setCurrentRow(0)
 
     def show_details(self, row: int) -> None:
-        """Evidence, reasons and the 'Dates for this file' panel."""
+        """Actions, reasons, evidence and the 'Dates for this file' panel."""
         if self.current is None or row < 0 or row >= len(self.current[0].results):
+            self.right.setCurrentIndex(0)
+            self._set_actions_enabled(False)
             return
         resp, dates = self.current
         r = resp.results[row]
         d = dates[r.file_id]
-        html = [f"<h3>{escape(Path(r.rel_path).name)}</h3><p>{escape(r.path)}</p>",
-                f"<p><i>Found by {escape(r.entered_via)}.</i></p><h4>Why it ranks here</h4><ul>"]
-        html += [f"<li>{escape(x)}</li>" for x in r.reasons] + ["</ul>"]
+        c = theme.c
+        self.right.setCurrentIndex(1)
+        self._set_actions_enabled(True)
+        self.d_name.setText(Path(r.rel_path).name)
+        self.d_path.setText(r.path)
+        self.d_path.setCursorPosition(0)
+        self.d_path.setToolTip(r.path)
+        self.details.document().setDefaultStyleSheet(
+            f"body {{ color: {c.text}; }} h4 {{ font-size: 13px; font-weight: 600; margin: 18px 0 6px 0; }}"
+            f"p {{ margin: 0 0 4px 0; }} .muted {{ color: {c.muted}; }} .faint {{ color: {c.faint}; }}"
+            f"td {{ padding: 4px 14px 4px 0; vertical-align: top; }} th {{ color: {c.faint}; font-weight: 400;"
+            f" padding: 0 14px 4px 0; text-align: left; }} .small {{ font-size: 11px; }}")
+        html = ["<h4 style='margin-top:4px'>Why it is here</h4>"]
+        html += [f"<p>{escape(x[:1].upper() + x[1:])}</p>" for x in r.reasons]
+        html.append(f"<p class='faint small'>Found by {escape(r.entered_via)}.</p>")
         if r.snippet:
-            html.append(f"<h4>Evidence</h4><p>{escape(r.snippet)}</p>")
-        html.append("<h4>Dates for this file</h4><table cellpadding='3'>"
-                    "<tr><th align='left'>event</th><th align='left'>estimate</th><th align='left'>how</th></tr>")
+            html.append("<h4>Evidence</h4>"
+                        f"<table width='100%' cellspacing='0' cellpadding='10' bgcolor='{c.sunken}'"
+                        f" style='border-left: 3px solid {c.border_strong}'><tr><td class='muted'>"
+                        f"{escape(r.snippet)}</td></tr></table>")
+        html.append("<h4>Dates for this file</h4><table cellspacing='0'>"
+                    "<tr><th>Event</th><th>When</th><th>Based on</th></tr>")
         for row_ in sorted(d["file_time"], key=lambda x: x["event"]):
             if row_["estimator"] != DATE_SOURCE:
                 continue
+            lo_day, hi_day = _fmt(row_["lo_utc"], True), _fmt(row_["hi_utc"], True)
             span = (_fmt(row_["point_utc"]) if row_["hi_utc"] - row_["lo_utc"] <= 2
-                    else f"{_fmt(row_['lo_utc'], True)} – {_fmt(row_['hi_utc'], True)}")
-            html.append(f"<tr><td>{EVENT_LABEL[row_['event']]}</td><td>{span} <i>({row_['confidence']})</i></td>"
-                        f"<td>{escape(row_['method'])}</td></tr>")
-        html.append("</table><h4>Raw clues</h4><table cellpadding='3'>")
+                    else lo_day if lo_day == hi_day else f"between {lo_day}<br>and {hi_day}")
+            word = CONF_WORD.get(row_["confidence"], row_["confidence"]) or "sure"
+            how = HOW.get(row_["method"], row_["method"].replace("_", " "))
+            html.append(f"<tr><td>{EVENT_LABEL[row_['event']]}</td><td>{span}<br><span class='faint small'>"
+                        f"{escape(word)}</span></td><td>{escape(how)}<br><span class='faint small'>"
+                        f"{escape(row_['method'])}</span></td></tr>")
+        html.append("</table><h4>Raw time clues</h4><table cellspacing='0' class='small'>")
         for e in d["evidence"]:
             if e["utc_s"] is None and e["source"] != "motw":
                 continue
-            val = "downloaded from the internet" if e["source"] == "motw" else _fmt(e["utc_s"])
-            zone = " (time zone not recorded)" if e["tz_state"] == "floating" else ""
-            html.append(f"<tr><td>{escape(e['source'])} {escape(e['kind'])}</td><td>{val}{zone}</td></tr>")
+            src = CLUE_SOURCE.get(e["source"], e["source"])
+            if e["source"] == "motw":
+                label, val = src, "downloaded from the internet"
+            else:
+                label, val = f"{src} · {e['kind']}", _fmt(e["utc_s"])
+            zone = " <span class='faint'>(time zone not recorded)</span>" if e["tz_state"] == "floating" else ""
+            html.append(f"<tr><td class='muted'>{escape(label)}</td><td>{val}{zone}</td></tr>")
         html.append("</table>")
         self.details.setHtml("".join(html))
 
@@ -523,38 +901,86 @@ class MainWindow(QMainWindow):
             subprocess.Popen(["explorer", "/select,", plain_path(r.path)])  # noqa: S603,S607
 
     def open_settings(self) -> None:
-        """Add or remove folders; changes apply on the next update."""
+        """Folders, the GPU option, appearance and the index; folder changes apply on the next update."""
         dlg = QDialog(self)
         dlg.setWindowTitle("Settings")
+        dlg.resize(600, 620)
+        lay = QVBoxLayout(dlg)
+        lay.setContentsMargins(24, 20, 24, 18)
+        lay.setSpacing(8)
+
+        def section(title: str, note: str | None = None) -> None:
+            if lay.count():
+                lay.addSpacing(14)
+            h = QLabel(title)
+            h.setProperty("role", "heading")
+            lay.addWidget(h)
+            if note:
+                lay.addWidget(_note(note))
+
+        section("Folders", "ContextFS searches these folders and everything inside them.")
         lst = QListWidget()
         lst.addItems(self.settings.roots)
-        add, rem = QPushButton("Add folder…"), QPushButton("Remove")
+        lst.setMinimumHeight(120)
+        lay.addWidget(lst, 1)
+        add, rem = _button("Add folder…", "add"), _button("Remove", "remove", "quiet")
         add.clicked.connect(lambda: (f := QFileDialog.getExistingDirectory(dlg, "Choose a folder")) and lst.addItem(f))
         rem.clicked.connect(lambda: [lst.takeItem(lst.row(i)) for i in lst.selectedItems()])
-        bb = QDialogButtonBox(QDialogButtonBox.Save | QDialogButtonBox.Cancel)
-        bb.accepted.connect(dlg.accept)
-        bb.rejected.connect(dlg.reject)
-        lay = QVBoxLayout(dlg)
-        lay.addWidget(QLabel("Folders ContextFS searches:"))
-        lay.addWidget(lst)
         row = QHBoxLayout()
         row.addWidget(add)
         row.addWidget(rem)
+        row.addStretch()
         lay.addLayout(row)
-        lay.addWidget(QLabel(f"Index location: {self.settings.index_dir}"))
-        gpu = QCheckBox("Use a dedicated graphics card to speed up indexing, when there is one\n"
-                        "(checked against the CPU on first use; search always runs on the CPU)")
+
+        section("Indexing")
+        gpu = QCheckBox("Use the graphics card (GPU) to index")
         gpu.setChecked(self.settings.gpu == "auto")
         lay.addWidget(gpu)
-        wipe = QPushButton("Delete my index…")
-        wipe.setToolTip("Removes the copy of text, names and dates ContextFS keeps. Your files are not touched.")
+        lay.addWidget(_note("Off by default. It can be faster on long documents but uses more memory. It is checked "
+                            "against the processor on first use; search always runs on the processor.", "faint"))
+
+        section("Appearance")
+        scheme = QComboBox()
+        scheme.addItems(["Same as Windows", "Light", "Dark"])
+        scheme.setCurrentIndex({"system": 0, "light": 1, "dark": 2}.get(self.settings.theme, 0))
+        srow = QHBoxLayout()
+        srow.addWidget(scheme)
+        srow.addStretch()
+        lay.addLayout(srow)
+
+        section("Your index", "A private copy of your files' text, names and dates, kept on this computer.")
+        loc = QLineEdit(str(self.settings.index_dir))
+        loc.setReadOnly(True)
+        loc.setAccessibleName("Index location")
+        lay.addWidget(loc)
+        wipe = _button("Delete my index…", "delete", "danger",
+                       "Removes the copy of text, names and dates ContextFS keeps. Your files are not touched.")
         wipe.clicked.connect(lambda: self.delete_index(dlg))
-        lay.addWidget(wipe)
-        lay.addWidget(bb)
+        wrow = QHBoxLayout()
+        wrow.addWidget(wipe)
+        wrow.addStretch()
+        lay.addLayout(wrow)
+
+        lay.addSpacing(16)
+        foot = QHBoxLayout()
+        foot.addStretch()
+        cancel, save = _button("Cancel"), _button("Save", variant="primary")
+        cancel.clicked.connect(dlg.reject)
+        save.clicked.connect(dlg.accept)
+        save.setDefault(True)
+        foot.addWidget(cancel)
+        foot.addWidget(save)
+        lay.addLayout(foot)
+        _refresh_icons(dlg)
         if dlg.exec():
             self.settings.roots = [lst.item(i).text() for i in range(lst.count())]
             self.settings.gpu = "auto" if gpu.isChecked() else "off"
+            self.settings.theme = ("system", "light", "dark")[scheme.currentIndex()]
             self.settings.save()
+            app = QApplication.instance()
+            if app is not None:
+                theme.apply(app, self.settings.theme)
+            self._restyle()
             self.start_update()
 
     def delete_index(self, parent=None) -> bool:
@@ -581,8 +1007,11 @@ class MainWindow(QMainWindow):
             shutil.rmtree(self.index_dir / name, ignore_errors=True)
         self.closing = False
         self.results.clear()
-        self.details.clear()
-        self.status.showMessage("Index deleted. Your files were not touched; press F5 to rebuild it.")
+        self.current = None
+        self.left.setCurrentIndex(0)
+        self.right.setCurrentIndex(0)
+        self._set_actions_enabled(False)
+        self.status.showMessage("Index deleted. Your files were not touched; press Update (F5) to rebuild it.")
         return True
 
 
@@ -591,6 +1020,7 @@ def run() -> int:
     app = QApplication.instance() or QApplication(sys.argv)
     app.setApplicationName("ContextFS")
     settings = Settings.load()
+    theme.apply(app, settings.theme)
     if not settings.first_run_done:
         wizard = FirstRun(settings)
         if not wizard.exec():
