@@ -120,3 +120,6 @@ def test_dates_read_as_words():
     assert when_short({"lo_utc": day, "hi_utc": day, "point_utc": day, "confidence": "unknown"}).endswith("(uncertain)")
     assert when_short({"lo_utc": day, "hi_utc": day + 400 * 86400, "point_utc": day, "confidence": "unknown"}).endswith(
         "estimated")
+    future = int(time.time()) + 900 * 86400  # a calibrated range can reach past today
+    assert when_short({"lo_utc": day, "hi_utc": future, "point_utc": day, "confidence": "unknown"}).endswith(
+        "– now, estimated")

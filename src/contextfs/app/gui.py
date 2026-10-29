@@ -122,10 +122,22 @@ def _month(utc: int) -> str:
     return local_datetime(utc).strftime("%b %Y")
 
 
+def _past(utc: int) -> bool:
+    """Whether a range end is still in the past (calibrated ranges can reach past today)."""
+    import time
+
+    return utc <= time.time()
+
+
 def when_short(row: dict) -> str:
-    """One event's date for a result row: a day, or a month range when it is an estimate."""
+    """One event's date for a result row: a day, or a month range when it is an estimate.
+
+    A range is shown ending "now" when its end lies in the future: that part cannot have happened.
+    Display only; the stored interval and ranking are unchanged.
+    """
     if row["hi_utc"] - row["lo_utc"] > 2 * 86400:  # an estimated range (recon_v1)
-        lo, hi = _month(row["lo_utc"]), _month(row["hi_utc"])
+        lo = _month(row["lo_utc"])
+        hi = _month(row["hi_utc"]) if _past(row["hi_utc"]) else "now"
         return f"{lo} – {hi}, estimated" if lo != hi else f"{lo}, estimated"
     word = CONF_WORD.get(row["confidence"], row["confidence"])
     return _fmt(row["point_utc"], True) + (f" ({word})" if word else "")
@@ -856,7 +868,8 @@ class MainWindow(QMainWindow):
         for row_ in sorted(d["file_time"], key=lambda x: x["event"]):
             if row_["estimator"] != DATE_SOURCE:
                 continue
-            lo_day, hi_day = _fmt(row_["lo_utc"], True), _fmt(row_["hi_utc"], True)
+            lo_day = _fmt(row_["lo_utc"], True)
+            hi_day = _fmt(row_["hi_utc"], True) if _past(row_["hi_utc"]) else "now"
             span = (_fmt(row_["point_utc"]) if row_["hi_utc"] - row_["lo_utc"] <= 2
                     else lo_day if lo_day == hi_day else f"between {lo_day}<br>and {hi_day}")
             word = CONF_WORD.get(row_["confidence"], row_["confidence"]) or "sure"
