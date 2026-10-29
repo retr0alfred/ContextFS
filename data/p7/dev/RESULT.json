@@ -1,0 +1,20 @@
+{
+  "split": "dev",
+  "config_sha256": "3934cb689e9c321b9bca1a371809a937d722ee7541f97327cb9200e2d8eb0b98",
+  "tag": "dev-p7",
+  "holm": {
+    "P-A1 raw_mtime - recon_v1 (arrival interval score)": {
+      "p": 0.1381855010986328,
+      "p_holm": 0.13819
+    },
+    "P-A2 recon_v1 - raw_mtime (time-cued)": {
+      "p": 0.05355,
+      "p_holm": 0.1071
+    },
+    "P-S recon_v1 - ce_rerank (all)": {
+      "p": 5e-05,
+      "p_holm": 0.00015
+    }
+  },
+  "finished": "2026-10-29T10:31:44+00:00"
+}
