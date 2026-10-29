@@ -31,7 +31,7 @@
     "session": 0.1
   },
   "n_queries": 758,
-  "seconds": 73.0,
+  "seconds": 50.5,
   "offline_online_mismatches": 0,
   "systems": {
     "time_off": {
@@ -431,7 +431,12 @@
       "ci95_persona": [
         -0.0036,
         0.0305
-      ]
+      ],
+      "power": {
+        "sd": 0.093,
+        "n_for_0.03": 76,
+        "n_for_observed": 463
+      }
     },
     "recon_v1 - rules_v0": {
       "mean": -0.0044,
@@ -439,7 +444,12 @@
       "ci95_persona": [
         -0.02,
         0.0065
-      ]
+      ],
+      "power": {
+        "sd": 0.0783,
+        "n_for_0.03": 54,
+        "n_for_observed": 2436
+      }
     },
     "rules_v0 - raw_mtime": {
       "mean": 0.0166,
@@ -447,7 +457,12 @@
       "ci95_persona": [
         -0.0003,
         0.0362
-      ]
+      ],
+      "power": {
+        "sd": 0.1102,
+        "n_for_0.03": 106,
+        "n_for_observed": 348
+      }
     },
     "oracle - raw_mtime": {
       "mean": 0.0328,
@@ -455,7 +470,12 @@
       "ci95_persona": [
         0.0084,
         0.0609
-      ]
+      ],
+      "power": {
+        "sd": 0.1497,
+        "n_for_0.03": 196,
+        "n_for_observed": 164
+      }
     }
   },
   "p_a2s": {
@@ -478,5 +498,27 @@
         0.8923
       ]
     }
+  },
+  "recon_v1_rows_sha256_16": {
+    "professional-s1-A-x2.5-mixed": "6d4b855261b44446",
+    "professional-s10-A-x2.5-copyfile_all": "e8970947e230bced",
+    "professional-s13-A-x2.5-mixed": "be7b624e37975738",
+    "professional-s16-A-x2.5-none": "e167353ef2fab82f",
+    "professional-s19-A-x2.5-content_copy_all": "ae3f9edd3f47fd79",
+    "professional-s4-A-x2.5-none": "164b0f7bcff93057",
+    "professional-s7-A-x2.5-content_copy_all": "f037f7a87ec0a0bf",
+    "researcher-s11-A-x2.5-content_copy_all": "f1cef300c0722b1a",
+    "researcher-s14-A-x2.5-copyfile_all": "e8f563bbcc7de547",
+    "researcher-s17-A-x2.5-mixed": "4e94fc015fd77320",
+    "researcher-s2-A-x2.5-copyfile_all": "927e0811f27c440f",
+    "researcher-s20-A-x2.5-none": "70ba642ce94230f8",
+    "researcher-s5-A-x2.5-mixed": "0a2acc31ded79016",
+    "researcher-s8-A-x2.5-none": "478f2f750978f8bd",
+    "student-s12-A-x1-none": "0e008b6d69c106e4",
+    "student-s15-A-x1-content_copy_all": "7dfaae18a5b9d5a6",
+    "student-s18-A-x1-copyfile_all": "cb2619880e313e9f",
+    "student-s3-A-x1-content_copy_all": "6f33895f1f859cd0",
+    "student-s6-A-x1-copyfile_all": "540ded5597bee97f",
+    "student-s9-A-x1-mixed": "3a88d120bc9dd293"
   }
 }

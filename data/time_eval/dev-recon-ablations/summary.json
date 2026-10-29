@@ -52,6 +52,59 @@
       "recall": null
     }
   },
+  "rules_v0_bulk": {
+    "ALL|authored": {
+      "n": 4884,
+      "coverage": 0.9496,
+      "within1d": 0.9265
+    },
+    "ALL|arrived_here": {
+      "n": 4884,
+      "coverage": 0.9728,
+      "within1d": 0.474
+    },
+    "ALL|last_user_edit": {
+      "n": 976,
+      "coverage": 1.0,
+      "within1d": 0.9119
+    },
+    "content_copy|authored": {
+      "n": 1159,
+      "coverage": 0.9983,
+      "within1d": 0.9085
+    },
+    "content_copy|arrived_here": {
+      "n": 1159,
+      "coverage": 0.981,
+      "within1d": 0.0009
+    },
+    "content_copy|last_user_edit": {
+      "n": 262,
+      "coverage": 1.0,
+      "within1d": 0.7405
+    },
+    "edit_existence|authored": {
+      "TP": 976,
+      "FP": 0,
+      "FN": 0,
+      "precision": 1.0,
+      "recall": 1.0
+    },
+    "edit_existence|downloaded": {
+      "TP": 0,
+      "FP": 1354,
+      "FN": 0,
+      "precision": 0.0,
+      "recall": null
+    },
+    "edit_existence|received": {
+      "TP": 0,
+      "FP": 1623,
+      "FN": 0,
+      "precision": 0.0,
+      "recall": null
+    }
+  },
   "no_existence": {
     "ALL|authored": {
       "n": 4884,

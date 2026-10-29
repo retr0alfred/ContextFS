@@ -1316,39 +1316,48 @@
   "macro": {
     "raw_mtime|authored": {
       "coverage": 0.2642,
-      "within1d": 0.3548
+      "within1d": 0.3548,
+      "is20_d": 1202.2373
     },
     "raw_mtime|arrived_here": {
       "coverage": 0.3382,
-      "within1d": 0.403
+      "within1d": 0.403,
+      "is20_d": 645.9135
     },
     "raw_mtime|last_user_edit": {
       "coverage": 0.7605,
-      "within1d": 0.7605
+      "within1d": 0.7605,
+      "is20_d": 522.7275
     },
     "recon_v1|authored": {
       "coverage": 0.9979,
-      "within1d": 0.941
+      "within1d": 0.941,
+      "is20_d": 0.271
     },
     "recon_v1|arrived_here": {
       "coverage": 0.9635,
-      "within1d": 0.523
+      "within1d": 0.523,
+      "is20_d": 230.8073
     },
     "recon_v1|last_user_edit": {
       "coverage": 1.0,
-      "within1d": 0.9351
+      "within1d": 0.9351,
+      "is20_d": 0.0
     },
     "rules_v0|authored": {
       "coverage": 0.9414,
-      "within1d": 0.9404
+      "within1d": 0.9404,
+      "is20_d": 0.0
     },
     "rules_v0|arrived_here": {
       "coverage": 0.748,
-      "within1d": 0.4704
+      "within1d": 0.4704,
+      "is20_d": 582.7292
     },
     "rules_v0|last_user_edit": {
       "coverage": 0.7605,
-      "within1d": 0.7605
+      "within1d": 0.7605,
+      "is20_d": 522.7275
     }
   },
   "existence": {
