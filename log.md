@@ -4342,3 +4342,246 @@ manifests). Nothing was fitted or tuned on test, and no test query was run.
   (C16 diagnosis). Running from an internal drive avoids it.
 - The 8 GB memory-cap risk's home (Decision 105).
 - The standing clean-account item.
+
+## Phase 35 — v2 programme, Phase 7: final evaluation, ONE run on the frozen test split (2026-10-29)
+
+The user's instruction: prepare (fidelity replay, freeze with a hash, add the fairer baseline), then
+run the single evaluation on the frozen test split and report it exactly as it comes out, with no
+re-running or adjusting after seeing results. Later: "staging the inputs on C: first … so the Phase 7
+run never reads from D:".
+
+### 1. Pre-test step 1: simulator-fidelity replay (ADR-0015 §4)
+- `scripts/replay_damage_sample.py` (dev personas only; refuses family B). For a seeded 5% sample
+  (min 10) of every damage behaviour in the 16 damaged dev personas:
+  - each persona is regenerated undamaged from its seed, and the sampled file's bytes are checked
+    equal to the damaged copy (proves the pair);
+  - the original is pushed through the real tool the behaviour models (T v1's own drivers):
+    Copy-Item, shutil.copyfile, robocopy, git clone;
+  - real and simulated results are classified kept/reset per field.
+- Command: `python scripts/replay_damage_sample.py data/bench/*-A-* --work C:\ContextFS-scratch\replay`
+- Output: `data/transfer_table/replay_v1.{json,md}` (sha256 7b66b6fa…):
+
+  | behaviour (tool) | n | birth | mtime | in-file | MotW | errors |
+  |---|---|---|---|---|---|---|
+  | content_copy (shutil.copyfile) | 58 | 1.00 | 1.00 | 1.00 | 1.00 | 0 |
+  | copyfile (Copy-Item) | 80 | 1.00 | 1.00 (2 not compared) | 1.00 | 1.00 | 0 |
+  | git_clone (git clone) | 10 | 1.00 | 1.00 (1 not compared) | 1.00 | 1.00 | 0 |
+  | robocopy | 14 | 1.00 | 1.00 | 1.00 | 1.00 | 0 |
+
+  - 162/162 sampled files agree on every field. ADR-0015's failure criterion (< 95% per field) is
+    not met.
+  - mtime is not compared for files whose planned last edit is after the migration (3 files).
+  - **Scope:** the replay checks kept/reset per field, i.e. the *kind* of damage. It does not check
+    the simulator's lag or timing distributions, which the real tools do not produce.
+
+### 2. Pre-test step 3: the fairer baseline
+- `rules_v0_bulk` = rules_v0 plus recon_v1's bulk-copy detector (review 2, finding 5). It is an
+  evaluation-only estimator (`RulesV0Bulk` in `engine/estimate.py`, not in `ESTIMATORS`), written by
+  `scripts/eval_estimators.py`, and reported in P-A1, P-A2 and P-A2s.
+
+### 3. The D: drive, and staging the run on C: (Decision 109)
+- From 13:51 the USB drive reset again (UASPStor 129 every ~16 s, Ntfs 50/140) during the bench
+  wiring check (read-heavy). The user re-plugged it and chose to stage every input of the run on C:.
+- Drive check after the re-plug: the last storage error was at 14:56:28, Ntfs 98 (volume
+  consistent) at 14:56:47, quiet afterwards; 85 files / 2.3 MB of `src` read in 1.3 s.
+- **Copy** (`C:\ContextFS-scratch\p7stage_copy.ps1`, robocopy `/COPY:DAT /DCOPY:DAT`; T v1 measured
+  that robocopy keeps birth, mtime and MotW): src, scripts, contextfs.toml, pyproject.toml,
+  data/splits, the dev baseline per-query file, models/onnx, models/hf, the 44 personas' corpus and
+  truth (not their old index folders), the base interpreter, and the venv (throttled `/IPG:3`).
+  - 97 robocopy jobs, all exit codes 0–3, 0 failures; 0 storage warnings; 10.6 min.
+- **Verification** (`C:\ContextFS-scratch\p7stage_verify.py`, D: vs C:), `ok: true`:
+  - 44 personas, 10,863 files: path, content, NTFS birth, mtime and Mark-of-the-Web all equal;
+  - src 73, scripts 37, splits 2, models/onnx 5, models/hf 26 files: full sha256 equal; config,
+    pyproject and the dev per-query file equal;
+  - base interpreter 2,785 and venv 34,000 files: count, size and mtime equal for every file;
+    content sha256 equal for a seeded 3% sample (83 + 1,020 files). 4 min 26 s.
+- **Found and fixed:** the venv's `python.exe` is a launcher that started the **D:** base
+  interpreter even after `pyvenv.cfg` was repointed (seen as a D: child process). In the stage only,
+  the launcher was replaced by the base interpreter itself (python.exe and its DLLs in
+  `.venv\Scripts`, the classic copied-venv layout) and the editable `.pth` repointed to the staged
+  `src`. Smoke test: sys.prefix and base_prefix on C:, contextfs from the stage, 0 `sys.path`
+  entries, 0 modules and 0 of 327 loaded DLLs from D:.
+- `p7_run.py run` refuses unless the script, interpreter, prefixes and every `sys.path` entry are
+  on the stage, and loads Hugging Face models offline from `<root>/models/hf`.
+- A sampler logged D:'s read rate every 10 s during each run (all processes; it cannot attribute
+  reads to a process). See §6 for the numbers.
+
+### 4. Pre-test step 2: freeze (and its history, all before the test run began)
+- `scripts/p7_run.py freeze` hashes 75 files (all of `src/contextfs`, the six harness scripts,
+  contextfs.toml, both split files, the ONNX model and tokenizer) and a **fingerprint of every
+  persona** (path, content, birth, mtime, MotW of each corpus and truth file). `verify` and `run`
+  refuse on any difference. On the test split `begin` records the single run; a finished run can
+  never be repeated.
+- Freezes, in order (each verified identical on D: and on the stage):
+  1. `730e5565…` (commit 370645a).
+  2. `70390673…` (f172016): the first dev dry run showed P-A2 overwriting P-A1's `summary.json`
+     (same tag, same folder); each stage now writes its own folder.
+  3. **`3934cb68…`** (3eb47c0): Decision 108 below. **This is the configuration of the test run.**
+- recon_params.py: file sha256 2f30b4d8…; its JSON body recomputes to 46c06469… as logged in
+  Phase 34 (two different hashes of the same, unchanged parameters).
+- Frozen engine: CPU, 4 threads, time source recon_v1, expected-overlap feature, Decision 100
+  weights (fitted on dev). Sessions stay on rules_v0 (Decision 107).
+
+### Decision 108 — P-A1's test and a three-member Holm family (fixes a pre-registration gap; before any test result)
+- ADR-0015 §7, ADR-0008 and the Phase 31 power plan put **three** primaries under Holm (P-A1,
+  P-A2, P-S). P-A1 was only ever written down as a descriptive E5 table with no test, and the first
+  frozen runner corrected over two, which would have made P-A2's correction weaker than
+  pre-registered.
+- **P-A1 test, defined now:** per persona, the mean interval score (α = 0.2, days; an abstention
+  scores as the full 1990-to-now range) of the arrival event ("came into your files") over **all**
+  its files, undamaged ones included, so width spent on undamaged files counts against recon_v1.
+  Statistic raw_mtime − recon_v1 (positive = recon_v1 better); paired sign-flip randomisation over
+  personas; percentile bootstrap CI over personas. Comparator raw mtime, as in P-A2.
+  rules_v0 and rules_v0_bulk comparisons are reported, outside the family.
+- **Holm family:** {P-A1, P-A2 recon_v1 − raw (time-cued), P-S recon_v1 − ce_rerank (all)}.
+- **Seen on dev before the test run, and not acted on:** the final dev rehearsal gave this test
+  p = 0.138 (+219 d; recon_v1 better on 11 of 20 personas). The statistic was not changed after
+  that: it was chosen before any result for a stated reason, and switching to, e.g., damaged files
+  only would be choosing the test by its outcome.
+
+### 5. Dev rehearsal (frozen config 3934cb68…, `run --split dev --skip-bench`; in-sample)
+- All stages pass: indexes 290.7 s, P-A1 15.5 s, P-A2 100.8 s, P-S 3.1 s. The P-S join matched
+  758/758 dev queries both ways. D: reads during the run: 41 samples, all 0.
+- It reproduces Phase 34's dev P-A2 means exactly (raw 0.718, rules_v0 0.735, recon_v1 0.730,
+  oracle 0.751; P-A2s n = 55, recon_v1 49%), with the final all-dev calibration instead of LOPO
+  (row fingerprints differ, as they must).
+- Holm on dev (in-sample): P-A1 p 0.138; P-A2 p 0.054 (Holm 0.107); P-S p 0.00005 (Holm 0.00015).
+- Outputs: `data/p7/dev/` (commit c2d044c).
+
+### 6. THE test run (run 1 of 1; config 3934cb68…; started 2026-10-29T10:32:07Z, recorded and pushed before it executed)
+Command (from the stage): `.venv\Scripts\python.exe scripts\p7_run.py run --split test`
+24 test personas (family B, seeds 1001–1024), 5,715 files, 916 queries. Exit 0, finished
+2026-10-29T11:42:54Z; `data/p7/test_runs.json` now says `finished`, and the runner refuses any
+further test run. Stage times: indexes 323.2 s, P-A1 22.5 s, P-A2 207.7 s, baselines 3,666.5 s
+(v1 index + cross-encoder, CPU), P-S 3.8 s. Every output is in `data/p7/test/` (commit 262a7a0),
+including `run.log` and `d_drive_reads.csv`.
+- **Nothing was re-run or adjusted after any test number was seen.**
+- D: reads during the run: 19 of 422 ten-second samples non-zero, ~7 MB in total. The sampler is
+  per volume, not per process. The non-zero samples coincide with my own tool calls, whose working
+  directory is the D: project (reading log.md, the README and git history for this write-up). The
+  run's process cannot hold a D: path (guard above), and the dev rehearsal, during which I made
+  no D: calls, read 0 bytes.
+
+#### P-A1 (intrinsic time accuracy; `data/p7/test/p_a1/TEST-p7/summary.json`)
+- **Primary test (Decision 108):** raw_mtime − recon_v1 mean arrival interval score per persona
+  = **+266.7 days** (recon_v1 558.4, raw 825.1), **p = 0.088**, persona CI [12.4, 568.3];
+  recon_v1 better on 13 of 24 personas. Holm-adjusted: see the Holm table.
+  - Secondary (not in the family): vs rules_v0 +241.8 d, p = 0.093, CI [2.3, 521.1];
+    vs rules_v0_bulk +29.7 d, p = 0.69, CI [−103.2, 192.6] (recon_v1 better on 9 of 24).
+- **Content-copied files** (n = 1,427 files; coverage CI = persona cluster bootstrap):
+
+  | event | estimator | coverage [CI] | within 1 d | MdAE | width p50 | interval score (median) |
+  |---|---|---|---|---|---|---|
+  | arrival | recon_v1 | **0.883 [0.825, 0.941]** | 0.179 | 22.3 d | 913 d | 913 d |
+  | arrival | rules_v0 | 0.072 [0.027, 0.124] | 0.001 | 287 d | 0 | 2,700 d |
+  | arrival | rules_v0_bulk | 0.976 [0.970, 0.982] | 0.001 | 287 d | 526 d | 527 d |
+  | arrival | raw mtime | 0.000 | 0.001 | 287 d | 0 | 2,871 d |
+  | last edit (n = 302) | recon_v1 | 1.00 | **0.702** | 0 | 0 (p90 1,532 d) | 0 |
+  | last edit | rules_v0 | 0.056 | 0.056 | 266 d | 0 | 2,661 d |
+  | last edit | rules_v0_bulk | 1.00 | 0.702 | 0 | 0 (p90 13,302 d) | 0 |
+
+- **Macro interval score over damage types, arrival:** recon_v1 249.5 d, rules_v0 683.5, raw
+  717.9, **rules_v0_bulk 140.4** (better than recon_v1).
+- **All files, arrival:** coverage recon_v1 0.969 at median width 48 d (p90 913 d), interval
+  score 48.0 d; rules_v0 0.744, width 0, 11.9 d; rules_v0_bulk 0.973, 9.1 d, 11.6 d; raw 0.364.
+  The cost of pooled widening on undamaged files is visible: undamaged arrival median width 21.1 d
+  for recon_v1 vs 0 for rules_v0, at equal coverage (1.00).
+- **Dates for edits that never happened** (`last_user_edit` false positives):
+
+  | origin | raw mtime | rules_v0 | rules_v0_bulk | recon_v1 |
+  |---|---|---|---|---|
+  | downloaded (2,777) | 2,777 | 1,579 | 1,579 | **644** |
+  | received / camera (1,715) | 1,715 | 1,715 | 1,715 | **0** |
+
+  Recall of real edits is 1.00 for every estimator (1,223/1,223).
+- git_clone (n = 19 files): recon_v1 arrival coverage 0.947, MdAE 1.9 d; rules_v0 0.000.
+- Authored ≈ 1.00 for recon_v1 is partly by construction (in-file "created" equals truth).
+
+#### P-A2 / P-A2s (time-cued retrieval; `data/p7/test/p_a2/TEST-p7/summary.json`)
+- Time-cued test queries (cue temporal|mixed): **n = 269**. nDCG@10: time off 0.654, raw mtime
+  0.715, rules_v0 0.727, rules_v0_bulk 0.727, **recon_v1 0.723**, oracle 0.735.
+- **Primary: recon_v1 − raw mtime = +0.0084, p = 0.163, persona CI [−0.002, 0.023]. Not
+  significant.** At the observed effect (sd 0.097) about 1,046 queries would be needed; dev's
+  power estimate (~463 at +0.012) had already predicted a likely null on ~265 test queries.
+- Secondary (not in the family): recon_v1 − rules_v0 −0.0034 (p = 0.098); recon_v1 − rules_v0_bulk
+  **−0.0033 (p = 0.033, CI [−0.0065, −0.0003])**, i.e. on test recon_v1 ranks slightly *below* the
+  rule baseline with the bulk detector; rules_v0 − raw +0.0117 (p = 0.037); rules_v0_bulk − raw
+  +0.0117 (p = 0.055); oracle − raw +0.0203 (p = 0.025).
+- **P-A2s** (time-cued, target reset; n = 71): raw 0.679, oracle 0.724. Share of the oracle's
+  headroom recovered: recon_v1 62% [36, 96], rules_v0 70% [39, 104], rules_v0_bulk 66% [38, 105].
+  Not distinguishable; recon_v1 is lowest.
+
+#### P-S (system vs the strongest baseline; `data/p7/test/p_s/p_s.json`)
+- ContextFS = the frozen engine (recon_v1, default config); baseline = BM25 + dense +
+  cross-encoder rerank (`bench_eval.py --ce`, cross-encoder/ms-marco-MiniLM-L6-v2). Same 916 test
+  queries, joined by query id (0 unmatched either way). nDCG@10:
+
+  | queries | n | ContextFS | CE rerank | diff | p | persona CI |
+  |---|---|---|---|---|---|---|
+  | **all (primary)** | 916 | **0.672** | 0.562 | **+0.110** | 0.00005 | [0.094, 0.126] |
+  | memory cues (temporal, activity, mixed, vague) | 531 | 0.695 | 0.545 | +0.150 | 0.00005 | [0.129, 0.174] |
+  | content cues (semantic, entity, format) | 385 | 0.640 | 0.585 | +0.054 | 0.00025 | [0.030, 0.077] |
+
+  (p = 0.00005 is the floor of a 20,000-draw randomisation test.)
+- **What this does and does not show:**
+  - the gain is the engine as a whole, **not direction A**: with time switched off, the engine
+    scores 0.634, and the choice of time source moves it by < 0.01 (raw 0.666, rules_v0 0.672,
+    recon_v1 0.671, oracle 0.676);
+  - the engine's weights were fitted on dev (Decision 100); the test split was held out from every
+    system;
+  - the queries are template- and LLM-generated from the same generator as the corpus, so this is an
+    in-distribution replication, not evidence about real users.
+- Other systems on the same test queries (nDCG@10 / MRR / Hit@1): BM25 0.478 / 0.292 / 0.163; dense
+  MaxP 0.375 / 0.256 / 0.142; RRF60 0.464 / 0.285 / 0.148; v1 (the old ContextFS) 0.461 / 0.354 /
+  0.235; CE rerank 0.562 / 0.320 / 0.175; **ContextFS v2 0.671 / 0.431 / 0.274**.
+- Temporal-cue queries remain hard for everything: Hit@1 on the target for recon_v1 0.104, raw
+  mtime 0.104, **oracle (true times) 0.118** (n = 144).
+
+#### Holm across the three primaries (`data/p7/test/RESULT.json`)
+| primary | p | Holm-adjusted p | at α = 0.05 |
+|---|---|---|---|
+| P-A1: raw_mtime − recon_v1, arrival interval score per persona | 0.088 | **0.177** | not significant |
+| P-A2: recon_v1 − raw mtime, nDCG@10 on time-cued queries | 0.163 | **0.177** | not significant |
+| P-S: ContextFS − CE rerank, nDCG@10 on all queries | 0.00005 | **0.00015** | significant |
+
+### Honest reading (test split, simulator)
+- **System (P-S): confirmed.** The v2 engine beats the strongest baseline by +0.110 nDCG@10, larger
+  on memory cues (+0.150) and still positive on content cues (+0.054). This is not a direction-A
+  result.
+- **Direction A, intrinsic (P-A1): not confirmed as pre-registered.** The descriptive picture
+  replicates dev: on content-copied files recon_v1 replaces confidently wrong dates (coverage 0.07
+  at zero width for rules_v0) with intervals that contain the truth 88% of the time, at a median
+  width of 913 d. It recovers last-edit dates within a day for 70% of them (6% for rules_v0), and
+  it stops dating edits that never happened (644 vs 1,579 downloads; 0 vs 1,715 camera files).
+  But the pre-registered whole-persona test is +267 d, p = 0.088 (Holm 0.177): the gain is
+  concentrated in content-copy personas, and recon_v1 pays width on everything else.
+- **The fairer baseline matters.** rules_v0 plus recon_v1's bulk detector matches or beats
+  recon_v1 on several E5 rows (content-copy arrival coverage 0.976 vs 0.883; macro arrival interval
+  score 140 vs 250 days). recon_v1's distinct contributions are point accuracy (arrival within 1 d
+  0.179 vs 0.001) and existence gating (false edits 644/0 vs 1,579/1,715).
+- **Direction A, extrinsic (P-A2): null.** +0.008 nDCG@10 over raw mtime (p = 0.163). Every time
+  source sits within 0.02 of raw mtime, the oracle included (+0.020). Better file times buy little
+  ranking on these queries.
+- **External validity** still rests on the real-user study: the undamaged model is defaults, the
+  origin cues are simulator properties, and the test split is an in-distribution replication of
+  dev. The fidelity replay checks the kinds of damage, not their timing.
+
+### Decision 109 — Stage the run's inputs on C: (user decision, 2026-10-29)
+- The user chose a one-time copy of every input the run reads (corpora, models, Python
+  environment) into the disposable `C:\ContextFS-scratch\p7stage`, so the run never reads from the
+  USB drive. The copy, its verification and the venv launcher fix are in §3.
+- The stage (~4.5 GB) and `C:\ContextFS-scratch\p7` (the test-run indexes) are disposable. They are
+  kept until the user says otherwise, because they let anyone re-check the run's outputs against
+  its frozen configuration (`p7_run.py verify` on the stage).
+
+### README
+- Rewritten so that every number in it comes from this phase's test run (or the Phase 33 hardening
+  suite, labelled as such). The v1 numbers (17-query smoke fixture, unverified) are removed, and
+  the README says so.
+
+### Not done / open
+- The 8 GB memory-cap risk's home (Decision 105) still awaits the user.
+- The standing clean-account item (Decision 105).
+- Sessions on recon_v1: still not evaluated (Decision 107).
+- Delete the C: stage once the user no longer needs it (~4.5 GB plus the test indexes).
+- Next: v2-P8 (optimise), only with a tolerance the user signs off first.
