@@ -1,0 +1,39 @@
+{
+  "system": "recon_v1",
+  "baseline": "ce_rerank",
+  "unmatched_engine": 0,
+  "unmatched_bench": 0,
+  "all": {
+    "n": 916,
+    "contextfs": 0.6715,
+    "baseline": 0.5617,
+    "diff": 0.1098,
+    "p": 5e-05,
+    "ci95_persona": [
+      0.0941,
+      0.1258
+    ]
+  },
+  "memory_cue": {
+    "n": 531,
+    "contextfs": 0.6948,
+    "baseline": 0.5448,
+    "diff": 0.15,
+    "p": 5e-05,
+    "ci95_persona": [
+      0.1285,
+      0.1735
+    ]
+  },
+  "content": {
+    "n": 385,
+    "contextfs": 0.6395,
+    "baseline": 0.5851,
+    "diff": 0.0543,
+    "p": 0.00025,
+    "ci95_persona": [
+      0.0302,
+      0.0772
+    ]
+  }
+}
