@@ -48,8 +48,9 @@ from contextfs.evalkit import (  # noqa: E402
 TOP = 100
 
 
-def ensure_index(persona_dir: Path, reindex: bool) -> Path:
-    index = persona_dir / "index"
+def ensure_index(persona_dir: Path, reindex: bool, index_root: Path | None = None) -> Path:
+    # --index-root keeps derived indexes off the project's USB disk (log.md Decision 104)
+    index = (index_root / persona_dir.name) if index_root else persona_dir / "index"
     if reindex or not (index / "contextfs.db").exists():
         cmd = [
             sys.executable,
@@ -299,6 +300,8 @@ def main() -> int:
     parser.add_argument("--ce", action="store_true", help="add the cross-encoder rerank baseline")
     parser.add_argument("--queries", choices=["template", "llm"], default="llm")
     parser.add_argument("--out", type=Path, default=PROJECT_ROOT / "data" / "bench_results")
+    parser.add_argument("--index-root", type=Path, default=None,
+                        help="build/read v1 indexes at <root>/<persona> instead of <persona>/index")
     args = parser.parse_args()
 
     for d in args.persona_dirs:
@@ -329,7 +332,7 @@ def main() -> int:
     systems: list[str] = []
     started = time.perf_counter()
     for d in args.persona_dirs:
-        index = ensure_index(d, args.reindex)
+        index = ensure_index(d, args.reindex, args.index_root)
         ps = PersonaSystems(d, index, embedder, args.k1, args.b, cross_encoder)
         qfile = "queries_llm.jsonl" if args.queries == "llm" else "queries.jsonl"
         for line in (d / "truth" / qfile).read_text(encoding="utf-8").splitlines():

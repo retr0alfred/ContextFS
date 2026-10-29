@@ -45,7 +45,7 @@ from contextfs.evalkit import (  # noqa: E402
     reciprocal_rank,
 )
 
-SOURCES = ("time_off", "raw_mtime", "rules_v0", "recon_v1", "oracle")
+SOURCES = ("time_off", "raw_mtime", "rules_v0", "rules_v0_bulk", "recon_v1", "oracle")
 #: The generator writes naive wall-clock times in IST (no DST); a fixed zone keeps results independent
 #: of the evaluating machine's zone (review 2, finding 8; matches scripts/time_eval.py).
 GENERATOR_TZ = timezone(timedelta(hours=5, minutes=30))
@@ -255,7 +255,8 @@ def main() -> int:
     summary["p_a2"]["n"] = len(cued["raw_mtime"])
     for s in SOURCES:
         summary["p_a2"][s] = round(statistics.mean(r["ndcg10"] for r in cued[s]), 4)
-    for a, b in (("recon_v1", "raw_mtime"), ("recon_v1", "rules_v0"), ("rules_v0", "raw_mtime"), ("oracle", "raw_mtime")):
+    for a, b in (("recon_v1", "raw_mtime"), ("recon_v1", "rules_v0"), ("recon_v1", "rules_v0_bulk"),
+                 ("rules_v0", "raw_mtime"), ("rules_v0_bulk", "raw_mtime"), ("oracle", "raw_mtime")):
         diffs = [x["ndcg10"] - y["ndcg10"] for x, y in zip(cued[a], cued[b], strict=True)]
         summary["p_a2"][f"{a} - {b}"] = {"mean": round(statistics.mean(diffs), 4),
                                          "p": round(paired_randomisation_p(diffs), 5),
@@ -269,13 +270,19 @@ def main() -> int:
         raw = statistics.mean(r["ndcg10"] for r in sub["raw_mtime"])
         orc = statistics.mean(r["ndcg10"] for r in sub["oracle"])
         summary["p_a2s"]["raw_mtime"], summary["p_a2s"]["oracle"] = round(raw, 4), round(orc, 4)
-        for s in ("rules_v0", "recon_v1"):
+        for s in ("rules_v0", "rules_v0_bulk", "recon_v1"):
             est = statistics.mean(r["ndcg10"] for r in sub[s])
             summary["p_a2s"][s] = {"ndcg10": round(est, 4),
                                    "share_of_headroom": round((est - raw) / (orc - raw), 4) if orc != raw else None,
                                    "ci95_persona": cluster_boot(sub[s], sub["raw_mtime"], sub["oracle"])}
     run = args.out / args.tag
     run.mkdir(parents=True, exist_ok=True)
+    # per-query nDCG@10 per source, for the paired P-S comparison against the bench_eval baselines
+    with open(run / "per_query.jsonl", "w", encoding="utf-8") as fh:
+        for i, q in enumerate(r for r in records if r[1] == SOURCES[0]):
+            row = {"query_id": q[0]["query_id"], "persona": q[0]["persona"], "cue": q[0]["cue"],
+                   "ndcg10": {s: per[s][i]["ndcg10"] for s in SOURCES}}
+            fh.write(json.dumps(row) + "\n")
     (run / "summary.json").write_text(json.dumps(summary, indent=2), encoding="utf-8")
     print(json.dumps({k: summary[k] for k in ("n_queries", "weights", "offline_online_mismatches")}, indent=1))
     for s, m in summary["systems"].items():

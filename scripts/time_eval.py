@@ -155,8 +155,8 @@ def main() -> int:
     parser.add_argument("--recompute", action="store_true")
     parser.add_argument("--out", type=Path, default=ROOT / "data" / "time_eval")
     args = parser.parse_args()
-    if any("-B-" in d.name for d in args.persona_dirs):
-        print("refusing: test personas (family B) are frozen until v2-P7")
+    if any("-B-" in d.name for d in args.persona_dirs) and not args.tag.startswith("TEST-"):
+        print("refusing: test personas (family B) only in the frozen P7 run (tag TEST-*, scripts/p7_run.py)")
         return 2
     per: dict[tuple, list[dict]] = {}
     exist: dict[tuple, list[int]] = {}  # (est, origin, event) -> [TP, FN, FP, TN]
