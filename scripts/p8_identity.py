@@ -34,16 +34,17 @@ def logical(index: Path) -> dict[str, str]:
     from contextfs.engine.vectors import VectorFiles
 
     c = sqlite3.connect(f"file:{(index / 'contextfs.db').as_posix()}?mode=ro", uri=True)
+    c.row_factory = sqlite3.Row  # VectorFiles.load reads rows by name
     path = {r[0]: r[1] for r in c.execute("SELECT file_id, rel_path FROM files")}
     parts = {
-        "files": sorted(c.execute("SELECT rel_path, size, content_hash, status FROM files")),
-        "chunks": sorted((path[f], o, t) for f, o, t in c.execute("SELECT file_id, ord, text FROM chunks")),
+        "files": sorted(tuple(r) for r in c.execute("SELECT rel_path, size, content_hash, status FROM files")),
+        "chunks": sorted((path[r[0]], r[1], r[2]) for r in c.execute("SELECT file_id, ord, text FROM chunks")),
         "file_time": sorted((path[r[0]], *r[1:]) for r in c.execute(
             "SELECT file_id, estimator, event, lo_utc, hi_utc, point_utc, confidence, method FROM file_time")),
     }
     sessions: dict = {}
-    for fid, sid in c.execute("SELECT file_id, session_id FROM sessions"):
-        sessions.setdefault(sid, []).append(path[fid])
+    for r in c.execute("SELECT file_id, session_id FROM sessions"):
+        sessions.setdefault(r[1], []).append(path[r[0]])
     parts["sessions"] = sorted(sorted(s) for s in sessions.values())
     mat, _, fids = VectorFiles(index / "vectors").load(c, "doc")
     c.close()
