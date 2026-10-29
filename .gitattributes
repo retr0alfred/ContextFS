@@ -1,0 +1,2 @@
+# Hashed evaluation records (frozen config, run records, results): never rewrite line endings
+data/p7/** -text
