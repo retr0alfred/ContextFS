@@ -224,22 +224,25 @@ def run(split: str, cfg: dict, digest: str, skip_bench: bool) -> int:
         marks.mkdir(parents=True, exist_ok=True)
         (marks / "indexes.json").write_text(json.dumps({"seconds": round(time.perf_counter() - t, 1)}),
                                            encoding="utf-8")
+    # each harness writes <its --out>/<tag>/summary.json, so every stage gets its own folder
     stage("P-A1", marks / "p_a1.json",
-          [PY, "scripts/time_eval.py", *map(str, dirs), "--tag", tag, "--index-root", str(v2), "--out", str(out)])
+          [PY, "scripts/time_eval.py", *map(str, dirs), "--tag", tag, "--index-root", str(v2),
+           "--out", str(out / "p_a1")])
     stage("P-A2", marks / "p_a2.json",
           [PY, "scripts/engine_eval.py", *map(str, dirs), "--tag", tag, "--index-root", str(v2),
-           "--time-feature", "expected", "--out", str(out)])
-    bench_pq = out / f"{tag}-bench" / "per_query.jsonl"
+           "--time-feature", "expected", "--out", str(out / "p_a2")])
+    bench_pq = out / "baselines" / f"{tag}-bench" / "per_query.jsonl"
     if not skip_bench:
         stage("baselines", marks / "bench.json",
               [PY, "scripts/bench_eval.py", *map(str, dirs), "--tag", f"{tag}-bench", "--ce",
-               "--index-root", str(v1), "--out", str(out)])
+               "--index-root", str(v1), "--out", str(out / "baselines")])
     else:
         bench_pq = ROOT / "data" / "bench_results" / "dev-v1-llm" / "per_query.jsonl"
     stage("P-S", marks / "p_s.json",
-          [PY, "scripts/p_s_eval.py", str(out / tag / "per_query.jsonl"), str(bench_pq), "--out", str(out / "p_s")])
+          [PY, "scripts/p_s_eval.py", str(out / "p_a2" / tag / "per_query.jsonl"), str(bench_pq),
+           "--out", str(out / "p_s")])
     # Holm over the two pre-registered primaries
-    eng = json.loads((out / tag / "summary.json").read_text(encoding="utf-8"))
+    eng = json.loads((out / "p_a2" / tag / "summary.json").read_text(encoding="utf-8"))
     ps = json.loads((out / "p_s" / "p_s.json").read_text(encoding="utf-8"))
     sys.path.insert(0, str(ROOT / "src"))
     from contextfs.evalkit import holm
