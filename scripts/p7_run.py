@@ -5,11 +5,18 @@ r"""The frozen v2-P7 evaluation run (log.md Phase 35).
     python scripts/p7_run.py begin --split test     # record the one test run (commit this first)
     python scripts/p7_run.py run --split test
 
+    python scripts/p7_run.py verify                 # check the frozen hashes against this root
+
 ``run`` first verifies that the frozen configuration's hash matches, and that every code file,
-parameter file, model and split file it lists still has its frozen hash; any difference refuses
+parameter file, model and split file it lists, and every persona's corpus and truth (content,
+NTFS birth and modified times, Mark-of-the-Web), still has its frozen hash; any difference refuses
 the run. On the test split the run counter is capped at ONE: a started run may resume its
 remaining stages (same configuration), a finished run can never be repeated, and nothing is ever
 tuned on test.
+
+``run`` executes only from the staged copy in ``STAGE`` (inputs, models and Python environment
+copied off the USB drive, log.md Phase 35): it refuses when this script, the interpreter or any
+``sys.path`` entry lies outside it. Hugging Face models load offline from ``<root>/models/hf``.
 
 Stages (each skipped when its output already exists, so an interrupted run resumes rather than
 restarts):
@@ -28,6 +35,7 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import os
 import platform
 import subprocess
 import sys
@@ -39,11 +47,28 @@ ROOT = Path(__file__).resolve().parents[1]
 OUT = ROOT / "data" / "p7"
 CONFIG, CONFIG_SHA, RUNS = OUT / "frozen_config.json", OUT / "frozen_config.sha256", OUT / "test_runs.json"
 SCRATCH = Path(r"C:\ContextFS-scratch\p7")
+STAGE = Path(r"C:\ContextFS-scratch\p7stage")
 PY = sys.executable
+os.environ["HF_HOME"] = str(ROOT / "models" / "hf")  # inherited by every stage's subprocess
+os.environ["HF_HUB_OFFLINE"] = os.environ["TRANSFORMERS_OFFLINE"] = "1"
 
 
 def sha_file(p: Path) -> str:
     return hashlib.sha256(p.read_bytes()).hexdigest()
+
+
+def persona_fingerprint(d: Path) -> str:
+    """Hash of a persona's corpus and truth: path, content, NTFS birth and mtime, MotW stream."""
+    h = hashlib.sha256()
+    for p in sorted(x for s in ("corpus", "truth") for x in (d / s).rglob("*") if x.is_file()):
+        st = p.stat()
+        try:
+            motw = (Path(str(p) + ":Zone.Identifier")).read_bytes()
+        except OSError:
+            motw = b""
+        h.update(f"{p.relative_to(d).as_posix()}|{st.st_size}|{st.st_birthtime_ns}|{st.st_mtime_ns}|".encode())
+        h.update(hashlib.sha256(p.read_bytes()).digest() + hashlib.sha256(motw).digest())
+    return h.hexdigest()
 
 
 def tracked_files() -> list[Path]:
@@ -90,7 +115,10 @@ def freeze() -> int:
         "added_baseline": "rules_v0_bulk = rules_v0 with recon_v1's bulk-copy detector (review 2, finding 5)",
         "test_run_cap": 1,
         "scratch": str(SCRATCH),
+        "stage": str(STAGE),
+        "sessions_time_source": "rules_v0 (Decision 107; moving sessions is carried forward)",
         "hashes": {str(f.relative_to(ROOT)).replace("\\", "/"): sha_file(f) for f in tracked_files()},
+        "persona_fingerprints": {d.name: persona_fingerprint(d) for s in ("dev", "test") for d in personas(s)},
     }
     OUT.mkdir(parents=True, exist_ok=True)
     blob = json.dumps(cfg, indent=1, sort_keys=True).encode("utf-8")
@@ -110,7 +138,20 @@ def verify() -> tuple[dict, str]:
     bad = [f for f, h in cfg["hashes"].items() if not (ROOT / f).exists() or sha_file(ROOT / f) != h]
     if bad:
         raise SystemExit(f"refusing: {len(bad)} frozen files changed since the freeze, e.g. {bad[:5]}")
+    bad = [n for n, h in cfg["persona_fingerprints"].items() if persona_fingerprint(ROOT / "data" / "bench" / n) != h]
+    if bad:
+        raise SystemExit(f"refusing: {len(bad)} persona corpora differ from the freeze, e.g. {bad[:5]}")
+    print(f"verified at {ROOT}: {len(cfg['hashes'])} files and {len(cfg['persona_fingerprints'])} personas "
+          f"match config {digest[:16]}")
     return cfg, digest
+
+
+def check_stage() -> None:
+    inside = [ROOT, Path(sys.executable).resolve(), Path(sys.prefix).resolve(), Path(sys.base_prefix).resolve()]
+    off = [str(p) for p in inside if not p.resolve().is_relative_to(STAGE)]
+    off += [p for p in sys.path if p and Path(p).resolve().drive.upper() != STAGE.drive.upper()]
+    if off:
+        raise SystemExit(f"refusing: the run must execute entirely from {STAGE}; outside it: {off[:5]}")
 
 
 def stage(name: str, marker: Path, cmd: list[str]) -> None:
@@ -222,13 +263,17 @@ def run(split: str, cfg: dict, digest: str, skip_bench: bool) -> int:
 
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    parser.add_argument("action", choices=("freeze", "begin", "run"))
+    parser.add_argument("action", choices=("freeze", "verify", "begin", "run"))
     parser.add_argument("--split", choices=("dev", "test"), default="dev")
     parser.add_argument("--skip-bench", action="store_true", help="dev only: reuse Phase 31's dev baselines")
     args = parser.parse_args()
     if args.action == "freeze":
         return freeze()
+    if args.action == "run":
+        check_stage()
     cfg, digest = verify()
+    if args.action == "verify":
+        return 0
     if args.action == "begin":
         return begin(digest)
     if args.split == "test" and args.skip_bench:
