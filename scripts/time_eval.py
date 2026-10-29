@@ -147,6 +147,43 @@ def summarise(recs: list[dict], boot: int = 1000) -> dict:
     }
 
 
+def p_a1_test(per: dict[tuple, list[dict]], a: str = "recon_v1",
+              others: tuple[str, ...] = ("raw_mtime", "rules_v0", "rules_v0_bulk"),
+              event: str = "arrived_here") -> dict:
+    """The pre-registered P-A1 test (log.md Decision 108), fixed before the test run.
+
+    Per persona: mean interval score (alpha 0.2, days; abstention = the full range) of ``event`` over
+    ALL its files, undamaged ones included, so width spent on undamaged files counts. The statistic
+    is other - a (positive = ``a`` better); paired sign-flip randomisation over personas and a
+    percentile bootstrap CI over personas. ``raw_mtime - recon_v1`` is the Holm-family member.
+    """
+    from contextfs.evalkit import bootstrap_ci, paired_randomisation_p
+
+    def by_persona(name: str) -> dict[str, float]:
+        acc: dict[str, list[float]] = {}
+        for r in per.get((name, "ALL", event), []):
+            lo, hi = (r["lo"], r["hi"]) if r["point"] is not None else FULL_RANGE
+            acc.setdefault(r["persona"], []).append(interval_score(lo, hi, r["truth"]) / DAY)
+        return {p: statistics.mean(v) for p, v in acc.items()}
+
+    out = {}
+    ma = by_persona(a)
+    for b in others:
+        mb = by_persona(b)
+        keys = sorted(set(ma) & set(mb))
+        if not keys:
+            continue
+        diffs = [mb[k] - ma[k] for k in keys]
+        out[f"{b} - {a}"] = {
+            "event": event, "n_personas": len(keys),
+            f"mean_is_d_{a}": round(statistics.mean(ma[k] for k in keys), 3),
+            f"mean_is_d_{b}": round(statistics.mean(mb[k] for k in keys), 3),
+            "diff": round(statistics.mean(diffs), 3), "p": paired_randomisation_p(diffs),
+            "ci95_persona": [round(x, 3) for x in bootstrap_ci(diffs)],
+            "personas_a_better": sum(d > 0 for d in diffs)}
+    return out
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("persona_dirs", type=Path, nargs="+")
@@ -195,6 +232,7 @@ def main() -> int:
             if rows:
                 summary["macro"][f"{name}|{event}"] = {
                     m: round(statistics.mean(r[m] for r in rows), 4) for m in ("coverage", "within1d", "is20_d")}
+    summary["p_a1_test"] = p_a1_test(per)
     for (name, origin, event), (tp, fn, fp, tn) in sorted(exist.items()):
         summary["existence"][f"{name}|{origin}|{event}"] = {
             "TP": tp, "FN": fn, "FP": fp, "TN": tn,

@@ -26,8 +26,9 @@ restarts):
 3. P-A2 / P-A2s: scripts/engine_eval.py (expected-overlap feature, Decision 100 weights);
 4. baselines: scripts/bench_eval.py --ce (v1 index in the scratch folder);
 5. P-S: scripts/p_s_eval.py;
-6. Holm over the pre-registered primaries {P-A2: recon_v1 - raw_mtime on time-cued queries,
-   P-S: recon_v1 - ce_rerank on all queries}; P-A1 and P-A2s are reported with CIs.
+6. Holm over the three pre-registered primaries {P-A1: raw_mtime - recon_v1 arrival interval
+   score per persona (Decision 108), P-A2: recon_v1 - raw_mtime on time-cued queries,
+   P-S: recon_v1 - ce_rerank on all queries}; the other comparisons and P-A2s are reported with CIs.
 """
 
 from __future__ import annotations
@@ -105,13 +106,16 @@ def freeze() -> int:
                    "weights_source": SearchConfig().weights_source},
         "time_sources": ["time_off", "raw_mtime", "rules_v0", "rules_v0_bulk", "recon_v1", "oracle"],
         "p_a1": "scripts/time_eval.py: coverage (persona CI), within-1-day, MdAE incl. abstentions, "
-                "width p50/p90, interval score (alpha 0.2), existence P/R; per damage type and event",
+                "width p50/p90, interval score (alpha 0.2), existence P/R; per damage type and event. "
+                "Test (Decision 108): per-persona mean arrival interval score over all files, "
+                "raw_mtime - recon_v1, paired sign-flip over personas",
         "p_a2": {"time_cued_cues": ["temporal", "mixed"], "metric": "nDCG@10", "primary_pair": "recon_v1 - raw_mtime"},
         "p_a2s": {"target_damage": ["content_copy", "git_clone"], "metric": "share of oracle headroom over raw_mtime"},
         "p_s": {"system": "recon_v1 (default config)", "baseline": "ce_rerank (scripts/bench_eval.py --ce)",
                 "memory_cues": ["temporal", "activity", "mixed", "vague"],
                 "content_cues": ["semantic", "entity", "format"], "primary": "all queries"},
-        "holm_family": ["P-A2 recon_v1 - raw_mtime (time-cued)", "P-S recon_v1 - ce_rerank (all)"],
+        "holm_family": ["P-A1 raw_mtime - recon_v1 (arrival interval score)",
+                        "P-A2 recon_v1 - raw_mtime (time-cued)", "P-S recon_v1 - ce_rerank (all)"],
         "added_baseline": "rules_v0_bulk = rules_v0 with recon_v1's bulk-copy detector (review 2, finding 5)",
         "test_run_cap": 1,
         "scratch": str(SCRATCH),
@@ -241,13 +245,15 @@ def run(split: str, cfg: dict, digest: str, skip_bench: bool) -> int:
     stage("P-S", marks / "p_s.json",
           [PY, "scripts/p_s_eval.py", str(out / "p_a2" / tag / "per_query.jsonl"), str(bench_pq),
            "--out", str(out / "p_s")])
-    # Holm over the two pre-registered primaries
+    # Holm over the three pre-registered primaries (ADR-0015 §7; Decision 108)
+    pa1 = json.loads((out / "p_a1" / tag / "summary.json").read_text(encoding="utf-8"))
     eng = json.loads((out / "p_a2" / tag / "summary.json").read_text(encoding="utf-8"))
     ps = json.loads((out / "p_s" / "p_s.json").read_text(encoding="utf-8"))
     sys.path.insert(0, str(ROOT / "src"))
     from contextfs.evalkit import holm
 
-    fam = {"P-A2 recon_v1 - raw_mtime (time-cued)": eng["p_a2"]["recon_v1 - raw_mtime"]["p"],
+    fam = {"P-A1 raw_mtime - recon_v1 (arrival interval score)": pa1["p_a1_test"]["raw_mtime - recon_v1"]["p"],
+           "P-A2 recon_v1 - raw_mtime (time-cued)": eng["p_a2"]["recon_v1 - raw_mtime"]["p"],
            "P-S recon_v1 - ce_rerank (all)": ps["all"]["p"]}
     adj = holm(fam)
     result = {"split": split, "config_sha256": digest, "tag": tag,
