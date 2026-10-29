@@ -4526,14 +4526,14 @@ including `run.log` and `d_drive_reads.csv`.
 - **What this does and does not show:**
   - the gain is the engine as a whole, **not direction A**: with time switched off, the engine
     scores 0.634, and the choice of time source moves it by < 0.01 (raw 0.666, rules_v0 0.672,
-    recon_v1 0.671, oracle 0.676);
+    recon_v1 0.672, oracle 0.676);
   - the engine's weights were fitted on dev (Decision 100); the test split was held out from every
     system;
   - the queries are template- and LLM-generated from the same generator as the corpus, so this is an
     in-distribution replication, not evidence about real users.
 - Other systems on the same test queries (nDCG@10 / MRR / Hit@1): BM25 0.478 / 0.292 / 0.163; dense
   MaxP 0.375 / 0.256 / 0.142; RRF60 0.464 / 0.285 / 0.148; v1 (the old ContextFS) 0.461 / 0.354 /
-  0.235; CE rerank 0.562 / 0.320 / 0.175; **ContextFS v2 0.671 / 0.431 / 0.274**.
+  0.235; CE rerank 0.562 / 0.320 / 0.175; **ContextFS v2 0.672 / 0.431 / 0.274**.
 - Temporal-cue queries remain hard for everything: Hit@1 on the target for recon_v1 0.104, raw
   mtime 0.104, **oracle (true times) 0.118** (n = 144).
 
