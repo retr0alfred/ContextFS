@@ -951,6 +951,12 @@ class MainWindow(QMainWindow):
         lay.addWidget(gpu)
         lay.addWidget(_note("Off by default. It can be faster on long documents but uses more memory. It is checked "
                             "against the processor on first use; search always runs on the processor.", "faint"))
+        from contextfs.app.winjob import default_memory_limit
+
+        if default_memory_limit() < 2 * 2**30:  # 8 GB of RAM or less: the indexer's limit is 1.5 GB
+            lay.addWidget(_note("Not recommended on this computer: with the graphics card, indexing more than about "
+                                "10,000 files can reach the memory limit set for computers with 8 GB of RAM or "
+                                "less.", "muted"))
 
         section("Appearance")
         scheme = QComboBox()
