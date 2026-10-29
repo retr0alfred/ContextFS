@@ -19,7 +19,7 @@ Last updated: 2026-10-29 (end of v2-P8; v2-P9 kit exported) · Branch: `v2`
 
 ## Open items needing the user
 1. **Skipped folder names are ignored** (pre-existing bug found in Phase 8): names added in first run are saved but never passed
-   to the indexer. Fix ready to make (output-identical with default settings); needs your OK — now or before the conference.
+   to the indexer. **Deferred by the user to before the conference** (2026-10-29); the fix is output-identical with default settings.
 2. The paper (written elsewhere from the kit). Optional for the memory-cue framing: a dev ablation of which signal serves which cue.
 3. `C:\ContextFS-scratch` holds disposable copies (p7stage ~4.5 GB, p8code, p8/mem 100k corpus and indexes, harden8): say when to delete.
 4. **Standing item (no phase):** clean-account check (Part B of `docs/release/CLEAN_ACCOUNT_CHECKLIST.md`) before any release or

@@ -4756,3 +4756,7 @@ screenshot, and a candid project summary for the paper writer (not for inclusion
 ### Open
 - The paper itself (the user writes it elsewhere).
 - A dev-split ablation of which signal serves which cue, if the memory-cue framing is foregrounded (see the summary).
+
+### Decision 112 — The skipped-folder-names bug waits until before the conference (user decision, 2026-10-29)
+- The pre-existing bug found in Phase 8 (user-added skipped folder names saved but never passed to the indexer) is
+  not fixed now; the user will have it fixed before the conference. It stays the first open item in `docs/STATUS.md`.
