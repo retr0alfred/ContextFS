@@ -4,6 +4,8 @@ r"""Phase 8 zero-tolerance check: is the app's index and its top-10 bit-identica
     python scripts/p8_identity.py build --code-root C:\ContextFS-scratch\p7stage --mode p7 --bench DIR --work DIR --out ref.json
     # candidate: new code, through the app's own path (default Settings -> child_args -> indexer_child)
     python scripts/p8_identity.py build --code-root DIR --mode app --bench DIR --work DIR --out new.json
+    # the packaged build: ContextFS.exe --indexer --gpu off, then ContextFS-console.exe --find
+    python scripts/p8_identity.py build --code-root DIR --mode exe --dist DIST --bench DIR --work DIR --out exe.json
     python scripts/p8_identity.py compare ref.json new.json
 
 Per dev persona it records a hash of the *logical* index (files, chunks, every file_time row,
@@ -81,12 +83,35 @@ def build_app(index: Path, corpus: Path, home: Path) -> str:
     return " ".join(args[:3])
 
 
+def build_exe(dist: Path, index: Path, corpus: Path, queries: list[dict], as_of: datetime) -> dict:
+    """Index and query through the packaged build.
+
+    ``ContextFS.exe --indexer --gpu off`` is what the GUI sends by default; queries go through
+    ``ContextFS-console.exe --find``, which reports scores rounded to 6 places.
+    """
+    import subprocess
+
+    rc = subprocess.run([str(dist / "ContextFS.exe"), "--indexer", "--gpu", "off", str(index), str(corpus)],
+                        capture_output=True, timeout=3600).returncode
+    if rc != 0:
+        raise SystemExit(f"packaged indexer exit {rc} on {corpus}")
+    qfile = index.parent / f"{index.name}.queries.txt"
+    qfile.write_text("\n".join(q["text"] for q in queries), encoding="utf-8")
+    out = subprocess.run([str(dist / "ContextFS-console.exe"), "--find", str(index), "--as-of", as_of.isoformat(),
+                          "--queries", str(qfile)], capture_output=True, timeout=3600)
+    got = json.loads(out.stdout.decode("utf-8").strip().splitlines()[-1])["queries"]
+    assert [g["query"] for g in got] == [q["text"] for q in queries]
+    return {q["query_id"]: [[r["rel_path"], repr(r["score"])] for r in g["results"][:10]]
+            for q, g in zip(queries, got, strict=True)}
+
+
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     sub = ap.add_subparsers(dest="cmd", required=True)
     b = sub.add_parser("build")
     b.add_argument("--code-root", type=Path, required=True)
-    b.add_argument("--mode", choices=("p7", "app"), required=True)
+    b.add_argument("--mode", choices=("p7", "app", "exe"), required=True)
+    b.add_argument("--dist", type=Path, help="mode exe: the packaged build's folder")
     b.add_argument("--bench", type=Path, required=True)
     b.add_argument("--work", type=Path, required=True)
     b.add_argument("--out", type=Path, required=True)
@@ -116,18 +141,22 @@ def main() -> int:
 
             shutil.rmtree(index)
         child = None
-        if args.mode == "p7":
-            build_p7(index, d / "corpus")
-        else:
-            child = build_app(index, d / "corpus", args.work / "home")
         as_of = datetime.fromisoformat(json.loads((d / "truth" / "persona.json").read_text(encoding="utf-8"))
                                        ["persona"]["end"]).replace(tzinfo=GENERATOR_TZ)
-        tops = {}
-        with Engine.open(index) as eng:
-            for line in (d / "truth" / "queries_llm.jsonl").read_text(encoding="utf-8").splitlines():
-                q = json.loads(line)
-                resp = eng.search(q["text"], SearchConfig(top_k=25), as_of=as_of)  # the GUI's SearchJob config
-                tops[q["query_id"]] = [[r.rel_path, repr(r.score)] for r in resp.results[:10]]
+        queries = [json.loads(x) for x in (d / "truth" / "queries_llm.jsonl").read_text(encoding="utf-8").splitlines()]
+        if args.mode == "exe":
+            child = "ContextFS.exe --indexer --gpu off"
+            tops = build_exe(args.dist, index, d / "corpus", queries, as_of)
+        else:
+            if args.mode == "p7":
+                build_p7(index, d / "corpus")
+            else:
+                child = build_app(index, d / "corpus", args.work / "home")
+            tops = {}
+            with Engine.open(index) as eng:
+                for q in queries:
+                    resp = eng.search(q["text"], SearchConfig(top_k=25), as_of=as_of)  # the GUI's SearchJob config
+                    tops[q["query_id"]] = [[r.rel_path, repr(r.score)] for r in resp.results[:10]]
         result["personas"][d.name] = {"index": logical(index), "child_args": child, "top10": tops}
         print(f"{d.name}: {result['personas'][d.name]['index']['logical'][:16]} ({len(tops)} queries)", flush=True)
     result["seconds"] = round(time.perf_counter() - t0, 1)
@@ -138,6 +167,11 @@ def main() -> int:
 
 def compare(a_path: Path, b_path: Path) -> int:
     a, b = (json.loads(p.read_text(encoding="utf-8")) for p in (a_path, b_path))
+    rounded = "exe" in (a["mode"], b["mode"])  # the console reports scores to 6 places
+
+    def norm(top: list) -> list:
+        return [[p, repr(round(float(s), 6))] for p, s in top] if rounded else top
+
     bad, n_q = [], 0
     for name in sorted(set(a["personas"]) | set(b["personas"])):
         pa, pb = a["personas"].get(name), b["personas"].get(name)
@@ -149,7 +183,7 @@ def compare(a_path: Path, b_path: Path) -> int:
                 bad.append(f"{name}: index part '{k}' differs")
         for qid, top in pa["top10"].items():
             n_q += 1
-            if pb["top10"].get(qid) != top:
+            if pb["top10"].get(qid) is None or norm(pb["top10"][qid]) != norm(top):
                 bad.append(f"{name}: top-10 differs for {qid}")
     print(f"personas {len(a['personas'])} vs {len(b['personas'])}; queries compared {n_q}; differences {len(bad)}")
     for x in bad[:20]:
