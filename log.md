@@ -4585,3 +4585,174 @@ including `run.log` and `d_drive_reads.csv`.
 - Sessions on recon_v1: still not evaluated (Decision 107).
 - Delete the C: stage once the user no longer needs it (~4.5 GB plus the test indexes).
 - Next: v2-P8 (optimise), only with a tolerance the user signs off first.
+
+## Phase 36 — v2 programme, Phase 8: minimal optimisation at zero tolerance, and the window redesign (2026-10-29)
+
+### Decision 110 — Phase 8 scope and tolerance (user decisions, 2026-10-29)
+- **Zero tolerance:** only changes whose index and top-10 dev results are bit-identical to the Phase 7
+  build.
+- **CPU by default:** indexing defaults to the CPU (reverses the default set by Decisions 97–100, as the
+  user approved). DirectML/GPU stays an explicit option in Settings; it is not removed.
+- **Memory at scale:** measure peak indexer memory at a larger scale to confirm whether the 8 GB risk
+  (Decision 105) is resolved.
+- **recon_v1 unchanged:** no redesign; the test split is spent.
+- **Window redesign:** monotone, light and dark, everything reachable, nothing cluttered. UI only.
+- Why this scope (assessment given before the decision): of ADR-0014's v2-P8 list, ANN and int8
+  change retrieval; granite is slower; the watcher breaks the no-background-service principle; NER is
+  already absent from v2; sparse session linkage was already replaced by capped gap blocks. The GPU
+  saved ~5% of index time at 10k files but added ~430 MB of memory (Phase 33).
+
+### 1. CPU default (commit df80e1c)
+- `Settings.gpu` defaults to `"off"`; a `version` field (2) was added. Version-1 settings files stored
+  the old default `"auto"` whether or not anyone chose it, so they are moved to `"off"` once; turning
+  the GPU back on is then remembered.
+- `gui.child_args()` builds the indexer child's arguments (`--gpu off` unless chosen).
+- Tests: `tests/test_app_settings.py` (5): new settings → CPU; v1 file → CPU once, then the user's
+  choice sticks; a v2 `auto` is kept; the child gets `--gpu off` by default; `--gpu off` → CPU device.
+
+### 2. The zero-tolerance check (`scripts/p8_identity.py`)
+- Per dev persona: a hash of the *logical* index (files, chunks, every `file_time` row, sessions, and
+  the raw bytes of every document vector) and, for every query, the top-10 paths and scores under the
+  app's search configuration (default `SearchConfig`, top_k 25, as of the persona's end).
+- Reference: the frozen Phase 7 code (`C:\ContextFS-scratch\p7stage`, config 3934cb68…) indexing exactly
+  as `p7_run.py` did (Engine, CPU, 4 threads).
+- Candidates, each run off the USB drive (`C:\ContextFS-scratch\p8code`):
+  1. the Phase 8 code through the app's own path: default Settings → `child_args` → `indexer_child`
+     (`--indexer --gpu off`);
+  2. the **packaged build** (exe sha256[:16] `9703ae0e…`): `ContextFS.exe --indexer --gpu off`, then
+     `ContextFS-console.exe --find` (scores reported to 6 places).
+- **Result: both IDENTICAL — 20 dev personas, 758 queries, 0 differences** (`data/p8/`; commits
+  8ec1975, 03732bf).
+- **Sensitivity control:** a 1-thread CPU build was also identical (ONNX Runtime's CPU path is
+  deterministic here, so it is no control); a **GPU-built** index of the same persona differs in the
+  vector bytes (max |Δ| 2.7×10⁻⁷) and the harness flags it. So the check detects sub-micro changes,
+  and the old GPU default could not have met a zero tolerance.
+
+### 3. Peak memory at scale (`scripts/p8_memory_scale.py`) — and Decision 111
+- Method: the hardening suite's C15 corpus recipe (seed 15) at **100,300 files** (100,000 synthetic
+  notes + 300 dev documents), generated on C:. The packaged indexer child (`--gpu off`) runs in a Job
+  Object whose limit is raised for the measurement only (12 GB), so the true peak is seen instead of a
+  limit kill; private memory is sampled every 5 s against progress; then a no-op update, 60 searches
+  through `ContextFS-console.exe --find`, and the index size.
+  `python scripts/p8_memory_scale.py --dist <build> --work C:\ContextFS-scratch\p8\mem --scale 100000 --gpu off`
+- **Before (build f79cb80a, the Phase 6/7 build; `data/p8/memory_100000_off.json`):** exit 0 in 4,921 s;
+  **peak 1,583 MB** — under the 2 GB limit used on this laptop but **over the 1,536 MB limit for machines
+  with 8 GB of RAM or less**. So the 8 GB risk was **not** resolved at 100k files by the CPU default.
+  - Where: during the scan private memory sat at ~1,250–1,266 MB (brief batch spikes to 1,366); after the
+    last file it read 1,266 MB in every 5 s sample, yet the job peak was 1,583: a short ~317 MB spike.
+  - Cause, measured directly on a copy of that index: `rebuild_sessions` alone **+321 MB**. It loaded every
+    document vector twice (`np.fromfile` of the whole file, then a fancy-indexed copy; 100k × 384 × 4 B ≈
+    154 MB each), although only 299 files were session candidates.
+- **Decision 111 — fix it at zero tolerance (commit bfde225).** `rebuild_sessions` now maps each item to
+  the row `load()` would return (`VectorFiles.item_rows`) and gathers each ≤ 500-file block's vectors
+  from a read-only memory map (`VectorFiles.mapped`). Same bytes, so output-identical; `load()` and the
+  search path are untouched (a mapping held open in the GUI process could conflict with the indexer
+  appending). Measured on the same index copy: **+321 MB → +47 MB**, sessions identical (hash
+  a7898cd3…). Test: `tests/test_vectors_mapped.py` (mapped rows equal `load()` bit for bit, also after
+  edits and deletions). The identity check was re-run after the fix: app path and packaged build
+  69d3e019 both IDENTICAL (`data/p8/new_app_after_memfix.json`, `exe_69d3e019.json`).
+- **After (build 69d3e019; `data/p8/after_memfix/memory_100000_off.json`):** exit 0 in 6,331 s;
+  **peak 1,098 MB**.
+- **Correction to my own first reading:** the drop (1,583 → 1,098) is larger than the fix explains.
+  The scan-time level also differed from the first seconds (1,231 vs 968 MB after ~130 files). An A/B on
+  the same corpus (`data/p8/arena_ab.txt`) shows the **same old build** at ~1,250–1,350 MB in one run and
+  ~977 MB in the next: ONNX Runtime's CPU arena keeps the size of the largest batch it has seen, and which
+  batch that is varies between runs. So:
+  - the fix removes the end-of-scan spike (−274 MB);
+  - the rest of the difference is run-to-run arena variation, not the code;
+  - **the honest bound for the fixed build is the worst scan level observed, ~1,350 MB** (the end-of-scan
+    step now adds 47 MB to the ~1,266 MB steady level). That is **under 1,536 MB with ~180 MB of margin**:
+    resolved at 100k files on the CPU, without a large cushion. Beyond 10⁵ files was not measured.
+- Other numbers at 100,300 files (both runs; not paper numbers): no-op launch update 10.3 s; search
+  p50 397 / p95 456 ms (before) and 439 / 505 ms (after, a slower run overall) — exact search over 100k
+  files is ~7× slower than at 10k (p95 66 ms) and above the 300 ms target used at 10k; index 664 MB.
+  Indexing ~15–20 files/s (the first run overlapped identity builds at below-normal priority).
+- **The GPU option on ≤ 8 GB machines:** with the GPU, 10k files already reached ~1.5 GB (Phase 33), so
+  Settings now says it is not recommended there (UI text only, commit ae42dbd).
+
+### 4. The window redesign (commits c2462c2, 4e6fe43, d9e5a34)
+- **Look** (`app/theme.py`): one neutral grey scale, no accent hue. The only strong colour is the ink
+  (near-black on light, near-white on dark), used for the primary action, focus and the selected row's
+  marker. Segoe UI Variable; icons are glyphs from the system icon font drawn in the current ink. The
+  scheme follows Windows live, or Settings → Appearance picks Light or Dark.
+- **Layout:**
+  - header: a large search field, and visible **Update** (F5; previously undiscoverable) and
+    **Settings** buttons;
+  - "Understood as" line (how the query was read) with the **Time** and **File type** switches as
+    pills;
+  - result rows with hierarchy: name and type, folder, dates by event, why it was found;
+  - details: **Open** and **Show in folder** at the top, then why, evidence, "Dates for this file"
+    (event, when, how sure, what it is based on in plain words with the method name beside it) and
+    the raw time clues with readable source names;
+  - start page with clickable example searches; Settings in sections (Folders, Indexing, Appearance,
+    Your index); first-run pages with aligned headings.
+  - Keyboard: F5, Ctrl+L/Ctrl+F, Ctrl+, , Enter (open), Ctrl+E (show in folder), Down (to results).
+- **Wording fixes (display only):** confidence "unknown" reads "uncertain"; a one-day interval reads as
+  a day, not "between X and X"; a calibrated range that reaches past today is shown ending "now"
+  (that part cannot have happened). Stored intervals and ranking are unchanged.
+- **Why it is UI only:** Phase 7 never ran the GUI. The GUI reaches ranking only through `SearchJob`
+  (`Engine.search(query, SearchConfig(overrides, top_k=25))`) and the indexer child's arguments; both
+  are unchanged, as are the switches' override mapping and the attributes the hardening suite drives.
+  Verified by `test_parity` (GUI = CLI = engine), the new `tests/test_app_window.py` (5: search fills
+  rows and details; the switches send the same overrides; light/dark/system restyle; the suite's hooks
+  exist; date wording), and the identity check above.
+- Screenshots: `docs/ui/phase36-{light,dark}-{empty,results,settings,firstrun}.png`, rendered from the
+  real window by `scripts/ui_snapshot.py`.
+
+### 5. Packaged build and hardening
+- Builds were made off the USB drive (`C:\ContextFS-scratch\p8code`, staged venv): 9703ae0e (UI + CPU default),
+  69d3e019 (+ memory fix), **c8c926f5 (final: + the GPU warning)**; each 330 MB, 289 files, no v1-only library,
+  self test ALL PASS.
+- Identity on the final build: IDENTICAL (20 personas, 758 queries; `data/p8/exe_c8c926f5.json`).
+- **Hardening suite on c8c926f5: 22/22 cases pass** (`data/hardening/p8-final`).
+  `python scripts\hardening\run_suite.py --tag p8-final --work C:\ContextFS-scratch\harden8 --pause 8 --scale 10000
+  --dist C:\ContextFS-scratch\p8code\dist\ContextFS` (run from the C: code root).
+  - C15 (10,301 files, GPU path as the case specifies): 529 s, peak 1,527 MB, no-op 1.5 s, search p50 57 / p95 66 ms.
+  - C16 (packaged GUI while indexing): no stall > 250 ms; search p95 < 500 ms — on the redesigned window.
+- Tests: `test_app_settings` (5), `test_app_window` (5), `test_vectors_mapped` (1), and the engine, guard, fsio,
+  GPU and parity suites: 66 passed, 1 skipped (opt-in GPU).
+
+### Found, not fixed (outside the UI-only scope; needs the user)
+- **Skipped folder names are ignored.** The first-run page invites the user to add folder names to
+  skip and saves them (`Settings.excluded_names`), but nothing passes them to the indexer; only the
+  built-in defaults are ever skipped. This predates Phase 8. The fix threads the names through the
+  child's arguments to the walker; with default settings it is output-identical. It is an indexing
+  change, so it was not made without the user's OK.
+- The index location is shown in Settings but cannot be changed after first run (also pre-existing;
+  the settings module's docstring says it can).
+
+### Not done in Phase 8
+- Nothing beyond the user's scope was changed. ANN, int8, granite, a watcher and session-linkage changes were not
+  pursued (assessment above); recon_v1 is unchanged.
+- The "skipped folder names" bug above is reported to the user, not fixed.
+
+## Phase 37 — v2 programme, Phase 9: paper-kit export (2026-10-29; started in parallel with the end of Phase 8 at the user's instruction)
+
+The user: "prepare material only — I'll write the actual paper elsewhere", as one zip: plain data/results from
+Phases 5–8, factual bullet summaries per phase, diagrams (architecture, benchmark/damage pipeline, recon_v1
+pipeline), result charts (P-S; arrival-date coverage recon_v1 vs rules_v0 vs rules_v0+bulk), one real-app example
+screenshot, and a candid project summary for the paper writer (not for inclusion).
+
+### What was produced
+- `scripts/paper_kit_export.py` — reshapes the repo's result files into CSV/JSON (no new numbers):
+  Phase 7 test (P-S, P-A1 rows/macro/existence/test, P-A2 means/pairs, P-A2s, Holm, systems, per-cue, replay, run
+  record), Phase 7 dev rehearsal, Phase 6 dev, hardening cases for p5-final3 / p6-final / p8-final plus scale
+  metrics, Phase 8 identity, memory before/after with time series, arena A/B, limits.
+- `scripts/paper_kit_figures.py` — hand-laid SVG (two greys, Arial, explicit arrowheads; Qt renders SVG Tiny only)
+  → vector PDF and 300 dpi PNG: `fig_architecture`, `fig_benchmark_pipeline`, `fig_recon_v1_pipeline`,
+  `chart_ps_ndcg10`, `chart_arrival_coverage`. Chart labels round the stored decimal strings half-up (re-rounding the
+  float 0.6715 had given 0.671; the mean is 0.67153).
+- Screenshot of the real app (`scripts/ui_snapshot.py`): dev persona professional-s1, query "chargebee mobile
+  banking revamp may 2025"; target `invoice_chargebee_2.xlsx` (content-copied) ranked first; raw clues show the
+  file-system times reset to the copy (02 Jun 2026) while recon_v1 gives written / last edited 02 May 2025 and
+  arrival "between 01 May 2025 and now". Selected as the largest dev recon_v1 − raw gain among content-copied
+  time-cued targets ranked first (dev nDCG@10: recon_v1 1.000, rules_v0 0.766, raw 0.614) — labelled in the kit as
+  favourable, not typical.
+- `phase_summaries.md` (bullets only), `PROJECT_SUMMARY_for_paper_writer.md` (defensible vs hedged findings,
+  decisions and alternatives, nuances), `references_verified.md` (the prior-art search with DOIs and 2021+ tags).
+- Location: `docs/paper_kit/` and `docs/paper_kit/ContextFS_paper_kit.zip` — **git-ignored and not pushed**
+  (paper-strategy material; the repo is public). The two scripts are committed.
+
+### Open
+- The paper itself (the user writes it elsewhere).
+- A dev-split ablation of which signal serves which cue, if the memory-cue framing is foregrounded (see the summary).

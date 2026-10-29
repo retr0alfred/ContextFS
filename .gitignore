@@ -114,3 +114,5 @@ docs/research/
 
 # --- Generated benchmark personas (released as generator + seeds, not files: ADR-0015 §10) ---
 data/bench/
+# Paper kit (paper-strategy material; local only, Phase 37)
+docs/paper_kit/

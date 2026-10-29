@@ -92,10 +92,15 @@ It also stops inventing edits that never happened (`last edited` dates on files 
 - On time-cued queries, better file times barely help ranking. Even true file times leave Hit@1
   on temporal-cue queries at 0.118 (ContextFS 0.104; n = 144).
 
-### The desktop app (hardening suite, log.md Phases 33–34)
-- 22 of 22 hardening cases pass on the packaged build: read-only on your files; crashes, hangs and
-  kills; damaged index; low disk; the window never stalls for more than 250 ms.
-- With 10,000 files: search p95 66 ms, and a no-change launch update in 1.6 s.
+### The desktop app (hardening suite and scale runs, log.md Phases 33–36)
+- 22 of 22 hardening cases pass on the final packaged build: read-only on your files; crashes,
+  hangs and kills; damaged index; low disk; the window never stalls for more than 250 ms.
+- With 10,000 files: search p95 66 ms, and a no-change launch update in 1.5 s.
+- With 100,300 files, indexing on the processor (the default): peak indexer memory 1,098 MB in the
+  measured run (worst level observed across runs ~1,350 MB), a no-change launch update in 10.3 s,
+  search p95 456–505 ms.
+- The final build gives bit-identical indexes and results to the build evaluated above
+  (20 dev personas, 758 queries).
 
 ### Limits of this evidence
 - **Simulated data.** The persona generator, the damage model and the queries are ours. The test
